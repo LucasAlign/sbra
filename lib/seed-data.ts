@@ -1,212 +1,312 @@
-import type { AlumniProfile, CommunityPost, Module, SupportRequest } from "@/lib/types";
+import type { Business, CommunityPost, Member, Module, SupportRequest } from "@/lib/types";
 
-export const alumniSeed: AlumniProfile[] = [
+// SBRA member businesses (the directory) — Greater Reading / Berks County, PA.
+export const businessSeed: Business[] = [
+  {
+    id: "keystone-web",
+    name: "Keystone Web Studio",
+    category: "Marketing & Web",
+    description: "Websites, branding, and social content for local small businesses.",
+    servicesOffered: "Web design, Branding, SEO, Social media management",
+    referralsWanted: "Owners launching or rebranding a business who need a professional website",
+    website: "keystonewebstudio.com",
+    address: "512 Penn Ave",
+    city: "Wyomissing, PA",
+    tier: "small"
+  },
+  {
+    id: "berks-apparel",
+    name: "Berks Apparel Co.",
+    category: "Retail & Apparel",
+    description: "Custom apparel and pop-up retail for teams, events, and local brands.",
+    servicesOffered: "Custom printing, Embroidery, Event pop-ups, Team merch",
+    referralsWanted: "Businesses, schools, or clubs needing branded apparel or event merch",
+    website: "berksapparel.co",
+    address: "48 N 5th St",
+    city: "Reading, PA",
+    tier: "solo"
+  },
+  {
+    id: "sweet-laurel",
+    name: "Sweet Laurel Catering",
+    category: "Food & Catering",
+    description: "Dessert-forward catering for corporate events, mingles, and celebrations.",
+    servicesOffered: "Event catering, Dessert bars, Coffee service, Corporate lunches",
+    referralsWanted: "Offices and event planners booking catering for meetings or parties",
+    website: "sweetlaurelcatering.com",
+    address: "22 Main St",
+    city: "Exeter, PA",
+    tier: "small"
+  },
+  {
+    id: "greenedge-lawn",
+    name: "GreenEdge Lawn & Landscape",
+    category: "Home & Property Services",
+    description: "Full-service lawn care and landscaping for homes and commercial properties.",
+    servicesOffered: "Lawn maintenance, Landscaping, Snow removal, Commercial grounds",
+    referralsWanted: "Property managers and homeowners needing recurring grounds care",
+    website: "greenedgeberks.com",
+    address: "1900 Shillington Rd",
+    city: "Sinking Spring, PA",
+    tier: "growth"
+  },
+  {
+    id: "polished-nails",
+    name: "Polished Mobile Nail Studio",
+    category: "Beauty & Wellness",
+    description: "On-location nail and spa services for events, offices, and private parties.",
+    servicesOffered: "Mobile manicures, Event packages, Bridal parties, Office wellness days",
+    referralsWanted: "Event planners and HR teams booking wellness or bridal experiences",
+    website: "polishedmobilenails.com",
+    address: "77 Kutztown Rd",
+    city: "Laureldale, PA",
+    tier: "solo"
+  },
+  {
+    id: "vantage-insurance",
+    name: "Vantage Insurance Group",
+    category: "Financial & Insurance",
+    description: "Commercial and personal insurance tailored to small business owners.",
+    servicesOffered: "Business insurance, Workers comp, Personal lines, Benefits",
+    referralsWanted: "New business owners who need commercial coverage or a policy review",
+    website: "vantageinsgroup.com",
+    address: "2601 Keiser Blvd",
+    city: "Wyomissing, PA",
+    tier: "enterprise"
+  },
+  {
+    id: "cornerstone-books",
+    name: "Cornerstone Bookkeeping",
+    category: "Accounting & Finance",
+    description: "Bookkeeping, payroll, and cash-flow coaching for growing small businesses.",
+    servicesOffered: "Bookkeeping, Payroll, Tax prep coordination, Cash-flow reviews",
+    referralsWanted: "Owners behind on their books or preparing for tax season",
+    website: "cornerstonebooksberks.com",
+    address: "150 N 6th St",
+    city: "Reading, PA",
+    tier: "small"
+  }
+];
+
+// Members (people). Each belongs to one Business (many-to-one).
+export const memberSeed: Member[] = [
   {
     id: "maya-chen",
+    businessId: "keystone-web",
     name: "Maya Chen",
-    cohort: "2023",
-    school: "Wyomissing Area",
-    industry: "Digital media",
-    email: "maya.chen@example.com",
+    title: "Owner & Creative Director",
+    email: "maya@keystonewebstudio.com",
     phone: "484-555-0198",
-    city: "Wyomissing, PA",
-    business: "Brand studio for student founders",
-    status: "Founder",
-    skills: "Branding, websites, social media. Needs help with pricing retainers.",
-    openToMentor: true
+    bio: "Helps first-time owners get a clean, credible web presence. Loves swapping referrals with printers and photographers.",
+    isOwner: true
+  },
+  {
+    id: "devin-brooks",
+    businessId: "keystone-web",
+    name: "Devin Brooks",
+    title: "Web Developer",
+    email: "devin@keystonewebstudio.com",
+    phone: "484-555-0111",
+    bio: "Front-end developer and the studio's main point of contact for support and hosting questions.",
+    isOwner: false
   },
   {
     id: "ari-rivera",
+    businessId: "berks-apparel",
     name: "Ari Rivera",
-    cohort: "2024",
-    school: "Reading High",
-    industry: "Apparel",
-    email: "ari.rivera@example.com",
+    title: "Owner",
+    email: "ari@berksapparel.co",
     phone: "484-555-0142",
-    city: "Reading, PA",
-    business: "Local apparel pop-up brand",
-    status: "Launching",
-    skills: "Retail, pop-ups, sales. Needs vendor fair contacts.",
-    openToMentor: false
+    bio: "Runs pop-ups across Berks County. Always looking to connect with event organizers and team leads.",
+    isOwner: true
   },
   {
     id: "jada-lee",
+    businessId: "sweet-laurel",
     name: "Jada Lee",
-    cohort: "2025",
-    school: "Exeter",
-    industry: "Food concept",
-    email: "jada.lee@example.com",
+    title: "Owner & Head Baker",
+    email: "jada@sweetlaurelcatering.com",
     phone: "484-555-0176",
-    city: "Exeter, PA",
-    business: "Weekend dessert catering idea",
-    status: "Early idea",
-    skills: "Menu testing, customer discovery. Needs licensing guidance.",
-    openToMentor: false
+    bio: "Caters SBRA mingles and corporate events. Happy to trade referrals with venues and planners.",
+    isOwner: true
   },
   {
     id: "noah-patel",
+    businessId: "greenedge-lawn",
     name: "Noah Patel",
-    cohort: "2022",
-    school: "Wilson",
-    industry: "Lawn care",
-    email: "noah.patel@example.com",
+    title: "Owner",
+    email: "noah@greenedgeberks.com",
     phone: "484-555-0113",
-    city: "Sinking Spring, PA",
-    business: "Neighborhood lawn care service",
-    status: "Operating",
-    skills: "Hiring, estimates, operations. Open to mentor younger alumni.",
-    openToMentor: true
+    bio: "Grew from solo routes to a small crew. Mentors newer members on hiring and estimating.",
+    isOwner: true
+  },
+  {
+    id: "marisol-ortiz",
+    businessId: "greenedge-lawn",
+    name: "Marisol Ortiz",
+    title: "Operations Lead",
+    email: "marisol@greenedgeberks.com",
+    phone: "484-555-0159",
+    bio: "Coordinates crews and commercial accounts. Your contact for scheduling and quotes.",
+    isOwner: false
   },
   {
     id: "sofia-martinez",
+    businessId: "polished-nails",
     name: "Sofia Martinez",
-    cohort: "2024",
-    school: "Muhlenberg",
-    industry: "Beauty services",
-    email: "sofia.martinez@example.com",
+    title: "Owner",
+    email: "sofia@polishedmobilenails.com",
     phone: "484-555-0187",
-    city: "Laureldale, PA",
-    business: "Mobile nail art studio",
-    status: "Founder",
-    skills: "Client scheduling, brand partnerships, customer referrals.",
-    openToMentor: true
+    bio: "Turns event bookings into repeat clients. Great referral partner for planners and HR teams.",
+    isOwner: true
+  },
+  {
+    id: "grace-whitfield",
+    businessId: "vantage-insurance",
+    name: "Grace Whitfield",
+    title: "Principal Agent",
+    email: "grace@vantageinsgroup.com",
+    phone: "484-555-0125",
+    bio: "Twenty years insuring Berks small businesses. Offers free policy reviews to fellow members.",
+    isOwner: true
+  },
+  {
+    id: "tom-alvarez",
+    businessId: "cornerstone-books",
+    name: "Tom Alvarez",
+    title: "Owner & Lead Bookkeeper",
+    email: "tom@cornerstonebooksberks.com",
+    phone: "484-555-0168",
+    bio: "Keeps members' books clean and tax-ready. Frequent Breakfast Referral Club speaker on cash flow.",
+    isOwner: true
   }
 ];
 
 export const learningModules: Module[] = [
   {
     number: "01",
-    title: "Market Analysis",
-    description: "Customer, competition, and opportunity."
+    title: "Referral Fundamentals",
+    description: "How to give a great referral and close the loop."
   },
   {
     number: "02",
-    title: "Legal Entity Basics",
-    description: "LLC, insurance, and risk decisions."
+    title: "Your 30-Second Intro",
+    description: "Sharpen the pitch you deliver at Breakfast Club."
   },
   {
     number: "03",
-    title: "Pitch Deck Studio",
-    description: "Story, numbers, visuals, and practice."
+    title: "Pricing & Cash Flow",
+    description: "Set profitable prices and read your numbers."
   }
 ];
 
 export const communityPosts: CommunityPost[] = [
   {
-    id: "ari-pop-up",
+    id: "ari-popup",
     author: "Ari Rivera",
-    cohort: "2024 alumni",
-    business: "apparel startup",
+    businessName: "Berks Apparel Co.",
     timeAgo: "18 min ago",
-    category: "Startup Win",
+    category: "Referral Win",
     tone: "coral",
-    body: "First weekend pop-up is booked. I used the pricing worksheet from EEA and finally feel confident about margins.",
+    body:
+      "Closed the loop on the referral from Jada — catered event led to a 60-shirt merch order. Thank-you logged! This is exactly why I show up Friday mornings.",
     attachments: [
-      { id: "ari-booth", name: "Pop-up booth mockup", kind: "image", label: "Booth setup" },
-      { id: "ari-products", name: "First product rack", kind: "image", label: "Product rack" },
-      { id: "ari-brand", name: "Brand color board", kind: "image", label: "Color board" }
+      { id: "ari-booth", name: "Pop-up booth", kind: "image", label: "Booth setup" },
+      { id: "ari-products", name: "Merch rack", kind: "image", label: "Product rack" }
     ],
-    reactions: 18,
-    comments: 4
+    reactions: 22,
+    comments: 5
   },
   {
-    id: "jada-menu",
-    author: "Jada Lee",
-    cohort: "2025 alumni",
-    business: "food concept",
+    id: "tom-huddle",
+    author: "Tom Alvarez",
+    businessName: "Cornerstone Bookkeeping",
     timeAgo: "42 min ago",
-    category: "Mentor Ask",
+    category: "The Pitch",
     tone: "violet",
     body:
-      "Does anyone have experience testing a menu before renting kitchen space? Looking for a mentor who knows food licensing basics.",
-    note: "Gary from the sponsor network can help. Tap Support to request an intro.",
-    attachments: [{ id: "jada-menu-pdf", name: "draft-menu-pricing.pdf", kind: "file" }],
-    reactions: 9,
-    comments: 7
+      "I'm the feature speaker at this Friday's Breakfast Referral Club — walking through the three numbers every owner should check weekly. Bring your questions.",
+    note: "Reserve your seat under Events. Members eat for the cost of the meal.",
+    attachments: [{ id: "tom-onepager", name: "cash-flow-one-pager.pdf", kind: "file" }],
+    reactions: 14,
+    comments: 8
   },
   {
     id: "noah-hiring",
     author: "Noah Patel",
-    cohort: "2022 alumni",
-    business: "lawn care service",
+    businessName: "GreenEdge Lawn & Landscape",
     timeAgo: "2 hr ago",
-    category: "Hiring",
+    category: "Member Ask",
     tone: "green",
     body:
-      "I am bringing on two weekend helpers for summer routes. Sharing the interview questions and training checklist in case anyone else is hiring.",
-    attachments: [{ id: "noah-checklist", name: "summer-helper-training-checklist.docx", kind: "file" }],
-    reactions: 24,
+      "Adding two crew members for summer commercial accounts. If you know reliable folks in Berks, send them my way — happy to return the referral.",
+    attachments: [{ id: "noah-checklist", name: "crew-training-checklist.docx", kind: "file" }],
+    reactions: 19,
     comments: 6
   },
   {
-    id: "sofia-before-after",
+    id: "sofia-mingle",
     author: "Sofia Martinez",
-    cohort: "2024 alumni",
-    business: "mobile nail art studio",
+    businessName: "Polished Mobile Nail Studio",
     timeAgo: "Yesterday",
-    category: "Portfolio",
+    category: "Mingle",
     tone: "blue",
     body:
-      "Tested a small event package for prom season. The bundle sold better when I showed three simple examples instead of a giant menu.",
-    attachments: [
-      { id: "sofia-set-a", name: "Event package sample", kind: "image", label: "Sample A" },
-      { id: "sofia-set-b", name: "Client inspiration board", kind: "image", label: "Inspiration" }
-    ],
+      "Hosting next month's Mingle at my studio! Come see the space, grab a mini-manicure, and let's trade some referrals. Applying to host was easy — recommend it.",
+    attachments: [{ id: "sofia-space", name: "Studio space", kind: "image", label: "Studio" }],
     reactions: 31,
     comments: 9
   },
   {
-    id: "maya-resource",
-    author: "Maya Chen",
-    cohort: "2023 alumni",
-    business: "digital media",
+    id: "grace-resource",
+    author: "Grace Whitfield",
+    businessName: "Vantage Insurance Group",
     timeAgo: "Yesterday",
-    category: "Resource",
+    category: "Announcement",
     tone: "violet",
     body:
-      "I cleaned up the one-page website checklist I use with first-time founders. It covers homepage sections, testimonials, photos, and launch day QA.",
-    attachments: [{ id: "maya-checklist", name: "student-founder-website-checklist.pdf", kind: "file" }],
-    reactions: 42,
-    comments: 12
+      "Reminder to members: I offer free policy reviews. If you've grown this year, your coverage may be behind. Book a 20-minute slot and let's make sure you're protected.",
+    reactions: 27,
+    comments: 4
   }
 ];
 
 export const supportCategories = [
-  "Business idea feedback",
-  "Pitch review",
+  "Referral introduction",
+  "Bookkeeping or legal",
   "Marketing help",
-  "Funding guidance",
-  "Mentor intro",
-  "Website or brand"
+  "Hiring or HR",
+  "Vendor recommendation",
+  "Membership question"
 ];
 
 export const supportRequests: SupportRequest[] = [
   {
-    id: "pitch-review",
-    title: "Pitch review",
-    category: "Pitch review",
-    status: "Assigned to EEA staff",
-    detail: "Review deck flow before next practice night."
+    id: "referral-intro",
+    title: "Intro to a commercial landscaper",
+    category: "Referral introduction",
+    status: "Assigned to SBRA staff",
+    detail: "Property manager member needs grounds care for three sites — who should I connect them to?"
   },
   {
-    id: "food-licensing",
-    title: "Food licensing",
-    category: "Mentor intro",
-    status: "Waiting on mentor match",
-    detail: "Find someone familiar with cottage food and kitchen rental decisions."
+    id: "bookkeeping-help",
+    title: "Bookkeeping before tax season",
+    category: "Bookkeeping or legal",
+    status: "Waiting on member match",
+    detail: "New member is behind on their books and wants a referral to a trusted bookkeeper."
   },
   {
     id: "website-feedback",
-    title: "Website feedback",
-    category: "Website or brand",
+    title: "Website refresh quote",
+    category: "Marketing help",
     status: "Resolved yesterday",
-    detail: "Homepage copy and pricing section were reviewed."
+    detail: "Connected member with Keystone Web Studio for a homepage refresh."
   }
 ];
 
 export const viewTitles = {
   community: "Community Home",
-  directory: "Alumni Directory",
+  directory: "Member Directory",
   learn: "Learning Hub",
   support: "Support Center",
   profile: "My Profile",

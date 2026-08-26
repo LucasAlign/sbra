@@ -15,15 +15,26 @@ import {
 } from "@/lib/data";
 import { parseRosterFile } from "@/lib/importers";
 import {
-  alumniSeed,
+  businessSeed,
   communityPosts,
   initials,
   learningModules,
+  memberSeed,
   supportCategories,
   supportRequests,
   viewTitles
 } from "@/lib/seed-data";
-import type { AlumniProfile, CommunityPost, PostAttachment, SupportRequest, UserRole, ViewKey } from "@/lib/types";
+import {
+  tierLabels,
+  type Business,
+  type CommunityPost,
+  type Member,
+  type MembershipTier,
+  type PostAttachment,
+  type SupportRequest,
+  type UserRole,
+  type ViewKey
+} from "@/lib/types";
 
 // Firebase removed (seed-first, decision #6). These stubs preserve the call
 // sites; they never run while getLiveServices() returns null. When the backend
@@ -34,7 +45,7 @@ const onAuthStateChanged = (
 ): (() => void) => () => {};
 const signOut = async (_auth: unknown): Promise<void> => {};
 
-type ProfileTextField = Exclude<keyof AlumniProfile, "id" | "openToMentor">;
+type MemberTextField = "name" | "title" | "email" | "phone" | "bio";
 type DraftPostAttachment = PostAttachment & { file?: File };
 
 type GlobalSearchResult = {
@@ -42,52 +53,51 @@ type GlobalSearchResult = {
   label: string;
   detail: string;
   view: ViewKey;
-  profile?: AlumniProfile;
+  businessId?: string;
 };
 
-const profileFields: ProfileTextField[] = [
-  "name",
-  "cohort",
-  "school",
-  "industry",
-  "email",
-  "phone",
-  "city",
-  "status",
-  "business",
-  "skills"
-];
+const memberFields: MemberTextField[] = ["name", "title", "email", "phone", "bio"];
 
 const navItems: Array<{ key: ViewKey; label: string; count: string; icon: ViewKey; adminOnly?: boolean }> = [
   { key: "community", label: "Home", count: "12", icon: "community" },
-  { key: "directory", label: "Directory", count: "248", icon: "directory" },
-  { key: "learn", label: "Learn", count: "36", icon: "learn" },
+  { key: "directory", label: "Directory", count: "Members", icon: "directory" },
+  { key: "learn", label: "Learn", count: "3", icon: "learn" },
   { key: "support", label: "Support", count: "4", icon: "support" },
   { key: "profile", label: "Profile", count: "You", icon: "profile" },
   { key: "admin", label: "Admin", count: "Live", icon: "admin", adminOnly: true }
 ];
 
+function splitList(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function SBRAApp() {
   const liveServices = useMemo(() => getLiveServices(), []);
-  const firebaseEnabled = Boolean(liveServices);
+  const backendEnabled = Boolean(liveServices);
   const [role, setRole] = useState<UserRole | null>(null);
   const [liveProfile, setLiveProfile] = useState<LiveUserProfile | null>(null);
-  const [authLoading, setAuthLoading] = useState(firebaseEnabled);
+  const [authLoading, setAuthLoading] = useState(backendEnabled);
   const [liveNote, setLiveNote] = useState(
-    firebaseEnabled ? "Firebase is connected. Sign in to load live data." : "Demo mode: add Firebase env vars to enable live auth, posts, support, and uploads."
+    backendEnabled
+      ? "Backend connected. Sign in to load live data."
+      : "Demo mode: running on seed data. Sign in as a member or admin to explore."
   );
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-  const [loginRole, setLoginRole] = useState<UserRole>("alumni");
+  const [loginRole, setLoginRole] = useState<UserRole>("member");
   const [activeView, setActiveView] = useState<ViewKey>("community");
-  const [alumni, setAlumni] = useState(alumniSeed);
+  const [members, setMembers] = useState<Member[]>(memberSeed);
+  const [businesses, setBusinesses] = useState<Business[]>(businessSeed);
   const [posts, setPosts] = useState(communityPosts);
   const [requests, setRequests] = useState(supportRequests);
   const [search, setSearch] = useState("");
-  const [cohortFilter, setCohortFilter] = useState("all");
-  const [mentorOnly, setMentorOnly] = useState(false);
-  const [activeProfile, setActiveProfile] = useState<AlumniProfile | null>(null);
-  const [draftProfile, setDraftProfile] = useState<AlumniProfile | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [activeBusiness, setActiveBusiness] = useState<Business | null>(null);
+  const [activeMember, setActiveMember] = useState<Member | null>(null);
+  const [draftMember, setDraftMember] = useState<Member | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [postDraft, setPostDraft] = useState("");
   const [postAttachments, setPostAttachments] = useState<DraftPostAttachment[]>([]);
@@ -99,8 +109,27 @@ export function SBRAApp() {
   const [supportDetail, setSupportDetail] = useState("");
   const [adminNote, setAdminNote] = useState("Choose an admin tool to preview the next operational workflow.");
   const [importNote, setImportNote] = useState(
-    "Upload CSV or Excel columns like name, cohort, school, industry, email, phone, business, status, city, skills."
+    "Upload CSV or Excel columns like name, business, category, email, phone, city, services, referralsWanted."
   );
+
+  const businessById = useMemo(() => {
+    const map = new Map<string, Business>();
+    businesses.forEach((business) => map.set(business.id, business));
+    return map;
+  }, [businesses]);
+
+  const membersByBusiness = useMemo(() => {
+    const map = new Map<string, Member[]>();
+    members.forEach((member) => {
+      const list = map.get(member.businessId) ?? [];
+      list.push(member);
+      map.set(member.businessId, list);
+    });
+    return map;
+  }, [members]);
+
+  const currentMember = liveProfile ?? members[0];
+  const currentBusiness = currentMember ? businessById.get(currentMember.businessId) : undefined;
 
   useEffect(() => {
     if (!liveServices) {
@@ -112,7 +141,7 @@ export function SBRAApp() {
     const authFallback = window.setTimeout(() => {
       if (!authSettled) {
         setAuthLoading(false);
-        setLiveNote("Firebase is connected. Sign in to load live data.");
+        setLiveNote("Backend connected. Sign in to load live data.");
       }
     }, 3000);
 
@@ -127,15 +156,15 @@ export function SBRAApp() {
       }
 
       try {
-        const profile = await loadOrCreateUserProfile(user, "alumni");
+        const profile = await loadOrCreateUserProfile(user, "member");
         if (!profile) return;
         setLiveProfile(profile);
         setRole(profile.role);
-        setAlumni((records) => [profile, ...records.filter((person) => person.id !== profile.id)]);
+        setMembers((records) => [profile, ...records.filter((person) => person.id !== profile.id)]);
         setActiveView("community");
-        setLiveNote("Firebase profile loaded. Feed and support requests are live.");
+        setLiveNote("Profile loaded. Feed and support requests are live.");
       } catch (error) {
-        setLiveNote(error instanceof Error ? error.message : "Unable to load Firebase profile.");
+        setLiveNote(error instanceof Error ? error.message : "Unable to load profile.");
       } finally {
         setAuthLoading(false);
       }
@@ -166,41 +195,67 @@ export function SBRAApp() {
   }, [liveServices, role]);
 
   const visibleNav = navItems.filter((item) => !item.adminOnly || role === "admin");
-  const cohorts = useMemo(() => Array.from(new Set(alumni.map((person) => person.cohort))).sort().reverse(), [alumni]);
-  const filteredAlumni = useMemo(() => {
+
+  const categories = useMemo(
+    () => Array.from(new Set(businesses.map((business) => business.category))).sort(),
+    [businesses]
+  );
+
+  const filteredBusinesses = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return alumni.filter((person) => {
-      const matchesQuery = !query || Object.values(person).join(" ").toLowerCase().includes(query);
-      const matchesCohort = cohortFilter === "all" || person.cohort === cohortFilter;
-      const matchesMentor = !mentorOnly || person.openToMentor;
-      return matchesQuery && matchesCohort && matchesMentor;
+    return businesses.filter((business) => {
+      const haystack = [
+        business.name,
+        business.category,
+        business.description,
+        business.servicesOffered,
+        business.referralsWanted,
+        business.city
+      ]
+        .join(" ")
+        .toLowerCase();
+      const matchesQuery = !query || haystack.includes(query);
+      const matchesCategory = categoryFilter === "all" || business.category === categoryFilter;
+      return matchesQuery && matchesCategory;
     });
-  }, [alumni, cohortFilter, mentorOnly, search]);
+  }, [businesses, categoryFilter, search]);
 
   const globalResults = useMemo<GlobalSearchResult[]>(() => {
     const query = globalSearch.trim().toLowerCase();
     if (!query) return [];
 
     const results: GlobalSearchResult[] = [];
-    alumni.forEach((person) => {
-      const haystack = [person.name, person.cohort, person.school, person.industry, person.business, person.city, person.skills]
+    businesses.forEach((business) => {
+      const haystack = [business.name, business.category, business.servicesOffered, business.referralsWanted, business.city]
         .join(" ")
         .toLowerCase();
       if (haystack.includes(query)) {
         results.push({
-          id: `alumni-${person.id}`,
-          label: person.name,
-          detail: `${person.cohort} - ${person.industry} - ${person.business}`,
+          id: `business-${business.id}`,
+          label: business.name,
+          detail: `${business.category} · ${business.city}`,
           view: "directory",
-          profile: person
+          businessId: business.id
+        });
+      }
+    });
+
+    members.forEach((member) => {
+      const business = businessById.get(member.businessId);
+      const haystack = [member.name, member.title, member.email, business?.name ?? ""].join(" ").toLowerCase();
+      if (haystack.includes(query)) {
+        results.push({
+          id: `member-${member.id}`,
+          label: member.name,
+          detail: `${member.title}${business ? ` · ${business.name}` : ""}`,
+          view: "directory",
+          businessId: member.businessId
         });
       }
     });
 
     posts.forEach((post) => {
-      const haystack = [post.author, post.category, post.body, post.business, ...(post.attachments ?? []).map((item) => item.name)]
-        .join(" ")
-        .toLowerCase();
+      const haystack = [post.author, post.category, post.body, post.businessName].join(" ").toLowerCase();
       if (haystack.includes(query)) {
         results.push({
           id: `post-${post.id}`,
@@ -214,12 +269,7 @@ export function SBRAApp() {
     learningModules.forEach((module) => {
       const haystack = [module.title, module.description].join(" ").toLowerCase();
       if (haystack.includes(query)) {
-        results.push({
-          id: `module-${module.number}`,
-          label: module.title,
-          detail: module.description,
-          view: "learn"
-        });
+        results.push({ id: `module-${module.number}`, label: module.title, detail: module.description, view: "learn" });
       }
     });
 
@@ -236,30 +286,30 @@ export function SBRAApp() {
     });
 
     return results.slice(0, 8);
-  }, [alumni, globalSearch, posts, requests]);
+  }, [businessById, businesses, globalSearch, members, posts, requests]);
 
   const alerts = useMemo(
     () => [
       {
         id: "support-alert",
         title: "Support queue updated",
-        detail: `${requests.filter((request) => request.status !== "Resolved yesterday").length} requests need attention.`,
+        detail: `${requests.filter((request) => !request.status.toLowerCase().startsWith("resolved")).length} requests need attention.`,
         view: "support" as ViewKey
       },
       {
-        id: "mentor-alert",
-        title: "Mentor matches ready",
-        detail: `${alumni.filter((person) => person.openToMentor).length} alumni are open to mentoring.`,
+        id: "referral-alert",
+        title: "Referrals wanted",
+        detail: `${businesses.length} member businesses are open to new referrals.`,
         view: "directory" as ViewKey
       },
       {
         id: "event-alert",
-        title: "Pitch Practice Night",
-        detail: "32 RSVPs for Thursday at Penn State Berks.",
+        title: "Breakfast Referral Club",
+        detail: "Friday 7:30 AM at B2 Bistro — Tom Alvarez is the feature speaker.",
         view: "community" as ViewKey
       }
     ],
-    [alumni, requests]
+    [businesses.length, requests]
   );
 
   async function loginAs(nextRole: UserRole) {
@@ -270,7 +320,7 @@ export function SBRAApp() {
     }
 
     setAuthLoading(true);
-    setLiveNote("Opening Firebase sign-in...");
+    setLiveNote("Opening sign-in...");
     try {
       const credential = await signInForRole(nextRole);
       if (!credential) return;
@@ -278,11 +328,11 @@ export function SBRAApp() {
       if (!profile) return;
       setLiveProfile(profile);
       setRole(profile.role);
-      setAlumni((records) => [profile, ...records.filter((person) => person.id !== profile.id)]);
+      setMembers((records) => [profile, ...records.filter((person) => person.id !== profile.id)]);
       setActiveView("community");
       setLiveNote(`Signed in as ${profile.role}.`);
     } catch (error) {
-      setLiveNote(error instanceof Error ? error.message : "Firebase sign-in failed.");
+      setLiveNote(error instanceof Error ? error.message : "Sign-in failed.");
     } finally {
       setAuthLoading(false);
     }
@@ -311,7 +361,7 @@ export function SBRAApp() {
       if (!profile) return;
       setLiveProfile(profile);
       setRole(profile.role);
-      setAlumni((records) => [profile, ...records.filter((person) => person.id !== profile.id)]);
+      setMembers((records) => [profile, ...records.filter((person) => person.id !== profile.id)]);
       setActiveView("community");
       setLoginPassword("");
       setLiveNote(`Signed in as ${profile.role}.`);
@@ -342,22 +392,26 @@ export function SBRAApp() {
     setSettingsOpen(false);
   }
 
-  function openProfile(person: AlumniProfile) {
-    setActiveProfile(person);
-    setDraftProfile({ ...person });
+  function openBusiness(business: Business) {
+    setActiveBusiness(business);
   }
 
-  async function saveProfile() {
-    if (!draftProfile) return;
-    setAlumni((records) => records.map((person) => (person.id === draftProfile.id ? draftProfile : person)));
-    if (liveProfile && draftProfile.id === liveProfile.id) {
-      const updatedProfile = { ...liveProfile, ...draftProfile };
+  function openMemberEditor(member: Member) {
+    setActiveMember(member);
+    setDraftMember({ ...member });
+  }
+
+  async function saveMember() {
+    if (!draftMember) return;
+    setMembers((records) => records.map((person) => (person.id === draftMember.id ? draftMember : person)));
+    if (liveProfile && draftMember.id === liveProfile.id) {
+      const updatedProfile = { ...liveProfile, ...draftMember };
       setLiveProfile(updatedProfile);
       await saveUserProfile(updatedProfile);
-      setLiveNote("Profile saved to Firebase.");
+      setLiveNote("Profile saved.");
     }
-    setActiveProfile(null);
-    setDraftProfile(null);
+    setActiveMember(null);
+    setDraftMember(null);
   }
 
   async function createPost() {
@@ -374,7 +428,7 @@ export function SBRAApp() {
         setPostDraft("");
         setPostAttachments([]);
         setComposerOpen(false);
-        setLiveNote("Post saved to Firebase.");
+        setLiveNote("Post saved.");
       } catch (error) {
         setLiveNote(error instanceof Error ? error.message : "Unable to save this post.");
       }
@@ -383,11 +437,10 @@ export function SBRAApp() {
 
     const newPost: CommunityPost = {
       id: `post-${Date.now()}`,
-      author: "Maya Chen",
-      cohort: "2023 alumni",
-      business: "digital media",
+      author: currentMember?.name ?? "SBRA Member",
+      businessName: currentBusiness?.name ?? "",
       timeAgo: "Just now",
-      category: body.endsWith("?") ? "Community Ask" : "Update",
+      category: body.endsWith("?") ? "Member Ask" : "Update",
       tone: body.endsWith("?") ? "violet" : "green",
       body: body || "Shared new files with the community.",
       attachments: postAttachments,
@@ -426,7 +479,7 @@ export function SBRAApp() {
       try {
         await createLiveSupportRequest({ category: supportCategory, detail, profile: liveProfile });
         setSupportDetail("");
-        setLiveNote("Support request saved to Firebase.");
+        setLiveNote("Support request saved.");
       } catch (error) {
         setLiveNote(error instanceof Error ? error.message : "Unable to save this support request.");
       }
@@ -450,8 +503,9 @@ export function SBRAApp() {
     setAlertsOpen(false);
     setSettingsOpen(false);
     setGlobalSearch("");
-    if (result.profile) {
-      openProfile(result.profile);
+    if (result.businessId) {
+      const business = businessById.get(result.businessId);
+      if (business) openBusiness(business);
     }
   }
 
@@ -460,13 +514,16 @@ export function SBRAApp() {
 
     try {
       const imported = await parseRosterFile(file);
-      setAlumni((records) => [...imported, ...records]);
-      setImportNote(`Imported ${imported.length} alumni record${imported.length === 1 ? "" : "s"} from ${file.name}.`);
+      setBusinesses((records) => [...imported.map((row) => row.business), ...records]);
+      setMembers((records) => [...imported.map((row) => row.member), ...records]);
+      setImportNote(`Imported ${imported.length} member${imported.length === 1 ? "" : "s"} from ${file.name}.`);
       setActiveView("directory");
     } catch (error) {
       setImportNote(error instanceof Error ? error.message : "Unable to import this roster.");
     }
   }
+
+  const roleLabel = role === "admin" ? "Admin" : "Member";
 
   if (authLoading) {
     return (
@@ -488,11 +545,12 @@ export function SBRAApp() {
           <LogoBlock large />
           <p className="eyebrow">Small Business Resource Association</p>
           <h1>SBRA</h1>
+          <p className="tagline">Be Better. Grow Faster.</p>
           <p className="login-copy">{liveNote}</p>
           <form className="login-form" onSubmit={(event) => void loginWithEmailPassword(event)}>
             <div className="role-toggle" aria-label="Choose sign-in role">
-              <button type="button" className={loginRole === "alumni" ? "active" : ""} onClick={() => setLoginRole("alumni")}>
-                Alumni
+              <button type="button" className={loginRole === "member" ? "active" : ""} onClick={() => setLoginRole("member")}>
+                Member
               </button>
               <button type="button" className={loginRole === "admin" ? "active" : ""} onClick={() => setLoginRole("admin")}>
                 Admin
@@ -519,7 +577,7 @@ export function SBRAApp() {
               Sign In
             </button>
           </form>
-          {firebaseEnabled && (
+          {backendEnabled && (
             <div className="login-actions compact">
               <button className="secondary-button" onClick={() => void loginAs(loginRole)}>
                 Continue with Google
@@ -549,11 +607,14 @@ export function SBRAApp() {
         </nav>
 
         <section className="theme-card">
-          <p className="section-label">{firebaseEnabled ? "Phase 2 live" : "Phase 2 demo"}</p>
+          <p className="section-label">Signed in</p>
           <div className="role-grid compact">
             <div>
-              <strong>{role === "admin" ? "Admin" : "Alumni"}</strong>
-              <span>{liveProfile?.email || (role === "admin" ? "Reports, import, moderation" : "Community, learning, support")}</span>
+              <strong>{roleLabel}</strong>
+              <span>
+                {liveProfile?.email ||
+                  (role === "admin" ? "Reports, import, moderation" : currentBusiness?.name || "Member")}
+              </span>
             </div>
           </div>
           <div className="live-note">{liveNote}</div>
@@ -567,11 +628,11 @@ export function SBRAApp() {
       <main className="main-panel">
         <header className="glass-panel topbar">
           <div>
-            <p className="eyebrow">Welcome back, {liveProfile?.name.split(" ")[0] || "Maya"}</p>
+            <p className="eyebrow">Welcome back, {currentMember?.name.split(" ")[0] || "there"}</p>
             <h2>{viewTitles[activeView]}</h2>
           </div>
           <div className="top-actions">
-            <span className="session-pill">{role === "admin" ? "Admin" : "Alumni"}</span>
+            <span className="session-pill">{roleLabel}</span>
             <button
               className={globalSearchOpen ? "icon-button active" : "icon-button"}
               aria-label="Search"
@@ -613,7 +674,7 @@ export function SBRAApp() {
               <input
                 aria-label="Search SBRA"
                 autoFocus
-                placeholder="Search people, posts, support, modules..."
+                placeholder="Search businesses, members, posts, support..."
                 value={globalSearch}
                 onChange={(event) => setGlobalSearch(event.target.value)}
               />
@@ -625,7 +686,7 @@ export function SBRAApp() {
                   </button>
                 ))}
                 {globalSearch.trim() && globalResults.length === 0 && <p>No matches yet.</p>}
-                {!globalSearch.trim() && <p>Try a name, cohort, business, support topic, or module.</p>}
+                {!globalSearch.trim() && <p>Try a business, member, service, support topic, or module.</p>}
               </div>
             </div>
           )}
@@ -651,11 +712,11 @@ export function SBRAApp() {
                   <input type="checkbox" defaultChecked />
                 </label>
                 <label>
-                  <span>Mentor match alerts</span>
+                  <span>Referral alerts</span>
                   <input type="checkbox" defaultChecked />
                 </label>
                 <label>
-                  <span>Compact directory rows</span>
+                  <span>Compact directory cards</span>
                   <input type="checkbox" />
                 </label>
               </div>
@@ -666,6 +727,7 @@ export function SBRAApp() {
         {activeView === "community" && (
           <CommunityView
             posts={posts}
+            authorInitials={currentMember ? initials(currentMember.name) : "SB"}
             composerOpen={composerOpen}
             postDraft={postDraft}
             attachments={postAttachments}
@@ -683,15 +745,14 @@ export function SBRAApp() {
         )}
         {activeView === "directory" && (
           <DirectoryView
-            alumni={filteredAlumni}
-            cohorts={cohorts}
-            cohortFilter={cohortFilter}
-            mentorOnly={mentorOnly}
+            businesses={filteredBusinesses}
+            membersByBusiness={membersByBusiness}
+            categories={categories}
+            categoryFilter={categoryFilter}
             search={search}
-            onCohortFilter={setCohortFilter}
-            onMentorOnly={setMentorOnly}
+            onCategoryFilter={setCategoryFilter}
             onSearch={setSearch}
-            onOpenProfile={openProfile}
+            onOpenBusiness={openBusiness}
           />
         )}
         {activeView === "learn" && <LearnView />}
@@ -705,10 +766,15 @@ export function SBRAApp() {
             onCreateRequest={createSupportRequest}
           />
         )}
-        {activeView === "profile" && <ProfileView profile={liveProfile ?? alumni[0]} onEdit={openProfile} />}
+        {activeView === "profile" && (
+          <ProfileView member={currentMember} business={currentBusiness} onEdit={openMemberEditor} />
+        )}
         {activeView === "admin" && role === "admin" && (
           <AdminView
-            alumniCount={alumni.length}
+            businessCount={businesses.length}
+            memberCount={members.length}
+            categories={categories}
+            businesses={businesses}
             importNote={importNote}
             adminNote={adminNote}
             onAdminAction={setAdminNote}
@@ -718,29 +784,36 @@ export function SBRAApp() {
       </main>
 
       <nav className="glass-panel mobile-nav" aria-label="Mobile primary">
-        {visibleNav.map((item) => {
-          return (
-            <button
-              key={item.key}
-              className={activeView === item.key ? "active" : ""}
-              onClick={() => changeView(item.key)}
-              aria-label={item.label}
-            >
-              <span className="mobile-icon">
-                <NavIcon icon={item.icon} />
-              </span>
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
+        {visibleNav.map((item) => (
+          <button
+            key={item.key}
+            className={activeView === item.key ? "active" : ""}
+            onClick={() => changeView(item.key)}
+            aria-label={item.label}
+          >
+            <span className="mobile-icon">
+              <NavIcon icon={item.icon} />
+            </span>
+            <span>{item.label}</span>
+          </button>
+        ))}
       </nav>
 
-      {activeProfile && draftProfile && (
-        <ProfileModal
-          draft={draftProfile}
-          onChange={setDraftProfile}
-          onClose={() => setActiveProfile(null)}
-          onSave={saveProfile}
+      {activeBusiness && (
+        <BusinessModal
+          business={activeBusiness}
+          members={membersByBusiness.get(activeBusiness.id) ?? []}
+          onClose={() => setActiveBusiness(null)}
+        />
+      )}
+
+      {activeMember && draftMember && (
+        <MemberModal
+          draft={draftMember}
+          business={businessById.get(draftMember.businessId)}
+          onChange={setDraftMember}
+          onClose={() => setActiveMember(null)}
+          onSave={saveMember}
         />
       )}
     </div>
@@ -753,6 +826,10 @@ function LogoBlock({ large = false }: { large?: boolean }) {
       <span className="brand-wordmark">SBRA</span>
     </div>
   );
+}
+
+function TierBadge({ tier }: { tier: MembershipTier }) {
+  return <span className={`tier-badge tier-${tier}`}>{tierLabels[tier]}</span>;
 }
 
 function NavButton({
@@ -887,6 +964,7 @@ function UtilityIcon({ icon }: { icon: "bell" | "settings" | "paperclip" }) {
 
 function CommunityView({
   posts,
+  authorInitials,
   composerOpen,
   postDraft,
   attachments,
@@ -898,6 +976,7 @@ function CommunityView({
   onCancelPost
 }: {
   posts: CommunityPost[];
+  authorInitials: string;
   composerOpen: boolean;
   postDraft: string;
   attachments: PostAttachment[];
@@ -912,13 +991,13 @@ function CommunityView({
     <section className="content-grid">
       <div className="feed-column">
         <div className="glass-panel composer">
-          <div className="avatar">MC</div>
+          <div className="avatar">{authorInitials}</div>
           {composerOpen ? (
             <div className="composer-form">
               <textarea
                 aria-label="New community post"
                 autoFocus
-                placeholder="Share a win, ask for help, or post an opportunity..."
+                placeholder="Share a win, ask for a referral, or post an opportunity..."
                 value={postDraft}
                 onChange={(event) => onPostDraft(event.target.value)}
               />
@@ -958,19 +1037,20 @@ function CommunityView({
             </div>
           ) : (
             <button className="composer-input" onClick={onOpenComposer}>
-              Share a win, ask for help, or post an opportunity...
+              Share a win, ask for a referral, or post an opportunity...
             </button>
           )}
         </div>
 
-        {posts.map((post, index) => (
+        {posts.map((post) => (
           <article className="glass-panel post-card" key={post.id}>
             <div className="post-head">
               <div className={`avatar ${post.tone}`}>{initials(post.author)}</div>
               <div>
                 <h3>{post.author}</h3>
                 <p>
-                  {post.cohort} - {post.business} - {post.timeAgo}
+                  {post.businessName ? `${post.businessName} · ` : ""}
+                  {post.timeAgo}
                 </p>
               </div>
               <span className={`pill ${post.tone === "violet" ? "violet" : ""}`}>{post.category}</span>
@@ -985,14 +1065,14 @@ function CommunityView({
             )}
             {post.note && (
               <div className="reply-box">
-                <strong>Coach note</strong>
+                <strong>SBRA note</strong>
                 <span>{post.note}</span>
               </div>
             )}
             <div className="post-actions">
               <button>Celebrate {post.reactions > 0 ? post.reactions : ""}</button>
               <button>Comment {post.comments > 0 ? post.comments : ""}</button>
-              <button>{post.category.includes("Ask") ? "Request Intro" : "Save"}</button>
+              <button>{post.category.includes("Ask") ? "Give Referral" : "Save"}</button>
             </div>
           </article>
         ))}
@@ -1001,23 +1081,23 @@ function CommunityView({
       <aside className="right-rail">
         <section className="glass-panel rail-card">
           <p className="section-label">Upcoming</p>
-          <h3>Pitch Practice Night</h3>
-          <p>Thursday, 6:30 PM at Penn State Berks</p>
+          <h3>Breakfast Referral Club</h3>
+          <p>Friday, 7:30 AM at B2 Bistro</p>
           <div className="mini-row">
-            <span>RSVPs</span>
-            <strong>32</strong>
+            <span>Members going</span>
+            <strong>18</strong>
           </div>
           <button className="secondary-button">RSVP</button>
         </section>
 
         <section className="glass-panel rail-card">
-          <p className="section-label">Mentor matches</p>
-          {["Sam Torres", "Nina Patel"].map((name, index) => (
+          <p className="section-label">New members</p>
+          {["Grace Whitfield", "Tom Alvarez"].map((name, index) => (
             <div className="mentor" key={name}>
               <div className={index === 0 ? "avatar blue" : "avatar violet"}>{initials(name)}</div>
               <div>
                 <strong>{name}</strong>
-                <span>{index === 0 ? "Branding, websites, pricing" : "Finance, projections, grants"}</span>
+                <span>{index === 0 ? "Vantage Insurance Group" : "Cornerstone Bookkeeping"}</span>
               </div>
             </div>
           ))}
@@ -1045,87 +1125,164 @@ function AttachmentPreview({ attachment }: { attachment: PostAttachment }) {
 }
 
 function DirectoryView({
-  alumni,
-  cohorts,
-  cohortFilter,
-  mentorOnly,
+  businesses,
+  membersByBusiness,
+  categories,
+  categoryFilter,
   search,
-  onCohortFilter,
-  onMentorOnly,
+  onCategoryFilter,
   onSearch,
-  onOpenProfile
+  onOpenBusiness
 }: {
-  alumni: AlumniProfile[];
-  cohorts: string[];
-  cohortFilter: string;
-  mentorOnly: boolean;
+  businesses: Business[];
+  membersByBusiness: Map<string, Member[]>;
+  categories: string[];
+  categoryFilter: string;
   search: string;
-  onCohortFilter: (value: string) => void;
-  onMentorOnly: (value: boolean) => void;
+  onCategoryFilter: (value: string) => void;
   onSearch: (value: string) => void;
-  onOpenProfile: (person: AlumniProfile) => void;
+  onOpenBusiness: (business: Business) => void;
 }) {
   return (
     <section>
       <div className="glass-panel toolbar">
         <input
-          aria-label="Search alumni"
-          placeholder="Search alumni by name, school, industry..."
+          aria-label="Search member businesses"
+          placeholder="Search by business, service, or referral need..."
           value={search}
           onChange={(event) => onSearch(event.target.value)}
         />
-        <select
-          aria-label="Filter by cohort"
-          value={cohortFilter}
-          onChange={(event) => onCohortFilter(event.target.value)}
-        >
-          <option value="all">All cohorts</option>
-          {cohorts.map((cohort) => (
-            <option value={cohort} key={cohort}>
-              {cohort}
+        <select aria-label="Filter by category" value={categoryFilter} onChange={(event) => onCategoryFilter(event.target.value)}>
+          <option value="all">All categories</option>
+          {categories.map((category) => (
+            <option value={category} key={category}>
+              {category}
             </option>
           ))}
         </select>
-        <label className={mentorOnly ? "toggle-chip active" : "toggle-chip"}>
-          <input type="checkbox" checked={mentorOnly} onChange={(event) => onMentorOnly(event.target.checked)} />
-          Open to mentor
-        </label>
       </div>
-      <div className="glass-panel directory-list">
-        <div className="directory-header">
-          <span>Alumni</span>
-          <span>Cohort</span>
-          <span>School</span>
-          <span>Industry</span>
-          <span>Business / Idea</span>
-          <span>City</span>
-          <span>Status</span>
-        </div>
-        {alumni.map((person, index) => (
-          <button className="alumni-row" key={person.id} onClick={() => onOpenProfile(person)}>
-            <span className="alumni-person">
-              <span className={`mini-avatar ${index % 3 === 1 ? "coral" : index % 3 === 2 ? "green" : "blue"}`}>
-                {initials(person.name)}
-              </span>
-              <span>
-                <strong>{person.name}</strong>
-                <small>{person.email}</small>
-              </span>
-            </span>
-            <span className="desktop-alumni-field">{person.cohort}</span>
-            <span className="desktop-alumni-field">{person.school}</span>
-            <span className="desktop-alumni-field">{person.industry}</span>
-            <span className="desktop-alumni-field">{person.business}</span>
-            <span className="desktop-alumni-field">{person.city}</span>
-            <span className="status-chip">{person.status}</span>
-            <span className="mobile-alumni-meta">{person.industry} · {person.city}</span>
-            <span className="mobile-alumni-business">{person.business}</span>
-            <span className="mobile-alumni-cohort">{person.cohort}</span>
-          </button>
-        ))}
-        {alumni.length === 0 && <div className="empty-state">No alumni match these filters yet.</div>}
+      <div className="biz-grid">
+        {businesses.map((business, index) => {
+          const owner = (membersByBusiness.get(business.id) ?? []).find((member) => member.isOwner);
+          const teamSize = membersByBusiness.get(business.id)?.length ?? 0;
+          return (
+            <button className="glass-panel biz-card" key={business.id} onClick={() => onOpenBusiness(business)}>
+              <div className="biz-card-head">
+                <span className={`mini-avatar ${index % 3 === 1 ? "coral" : index % 3 === 2 ? "green" : "blue"}`}>
+                  {initials(business.name)}
+                </span>
+                <div>
+                  <strong>{business.name}</strong>
+                  <small>{business.category} · {business.city}</small>
+                </div>
+                <TierBadge tier={business.tier} />
+              </div>
+              <p className="biz-desc">{business.description}</p>
+              <div className="biz-services">
+                {splitList(business.servicesOffered).slice(0, 4).map((service) => (
+                  <span className="service-chip" key={service}>
+                    {service}
+                  </span>
+                ))}
+              </div>
+              <div className="biz-referral">
+                <span className="section-label">Referrals wanted</span>
+                <p>{business.referralsWanted || "Open to all introductions."}</p>
+              </div>
+              <div className="biz-card-foot">
+                <span>{owner ? owner.name : "Member"}</span>
+                <span>{teamSize} member{teamSize === 1 ? "" : "s"}</span>
+              </div>
+            </button>
+          );
+        })}
+        {businesses.length === 0 && <div className="empty-state">No member businesses match these filters yet.</div>}
       </div>
     </section>
+  );
+}
+
+function BusinessModal({
+  business,
+  members,
+  onClose
+}: {
+  business: Business;
+  members: Member[];
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="business-name">
+        <button className="modal-close" onClick={onClose} aria-label="Close business profile">
+          Close
+        </button>
+        <div className="modal-head">
+          <div className="avatar large">{initials(business.name)}</div>
+          <div>
+            <p className="section-label">Member business</p>
+            <h3 id="business-name">{business.name}</h3>
+            <p>{business.category} · {business.city}</p>
+          </div>
+          <TierBadge tier={business.tier} />
+        </div>
+
+        <p className="post-copy">{business.description}</p>
+
+        <div className="biz-detail-grid">
+          <div>
+            <span className="section-label">Services offered</span>
+            <div className="biz-services">
+              {splitList(business.servicesOffered).map((service) => (
+                <span className="service-chip" key={service}>
+                  {service}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div>
+            <span className="section-label">Referrals wanted</span>
+            <p>{business.referralsWanted || "Open to all introductions."}</p>
+          </div>
+          <div>
+            <span className="section-label">Contact</span>
+            <p>
+              {business.website && (
+                <>
+                  {business.website}
+                  <br />
+                </>
+              )}
+              {business.address}
+              {business.address && business.city ? ", " : ""}
+              {business.city}
+            </p>
+          </div>
+        </div>
+
+        <div className="member-list">
+          <span className="section-label">Team ({members.length})</span>
+          {members.map((member) => (
+            <div className="member-row" key={member.id}>
+              <div className="mini-avatar blue">{initials(member.name)}</div>
+              <div className="member-row-main">
+                <strong>
+                  {member.name}
+                  {member.isOwner && <span className="owner-badge">Owner</span>}
+                </strong>
+                <small>{member.title}</small>
+                {member.bio && <p>{member.bio}</p>}
+              </div>
+              <div className="member-row-contact">
+                <a href={`mailto:${member.email}`}>{member.email}</a>
+                <span>{member.phone}</span>
+              </div>
+            </div>
+          ))}
+          {members.length === 0 && <p>No members listed yet.</p>}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1134,8 +1291,8 @@ function LearnView() {
     <section className="learning-grid">
       <article className="glass-panel learn-feature">
         <p className="section-label">Continue learning</p>
-        <h3>Build Your First Real Business Plan</h3>
-        <p>A clean module path from idea validation to projections, built from the SBRA workshop flow.</p>
+        <h3>Master the Referral Exchange</h3>
+        <p>A short path from giving your first referral to closing the loop, built from the SBRA program.</p>
         <button className="primary-button">Resume Module</button>
       </article>
       <div className="module-list">
@@ -1207,23 +1364,45 @@ function SupportView({
   );
 }
 
-function ProfileView({ profile, onEdit }: { profile: AlumniProfile; onEdit: (person: AlumniProfile) => void }) {
+function ProfileView({
+  member,
+  business,
+  onEdit
+}: {
+  member?: Member;
+  business?: Business;
+  onEdit: (member: Member) => void;
+}) {
+  if (!member) {
+    return (
+      <section className="glass-panel profile-card standalone-profile">
+        <p className="section-label">My profile</p>
+        <h3>No profile yet</h3>
+      </section>
+    );
+  }
+
   return (
     <section className="glass-panel profile-card standalone-profile">
       <div className="profile-hero gradient-a" />
-      <div className="avatar floating">{initials(profile.name)}</div>
-      <p className="section-label">Alumni profile</p>
-      <h3>{profile.name}</h3>
+      <div className="avatar floating">{initials(member.name)}</div>
+      <p className="section-label">My profile</p>
+      <h3>{member.name}</h3>
       <p>
-        {profile.cohort} - {profile.school} - {profile.industry}
+        {member.title}
+        {business ? ` · ${business.name}` : ""}
       </p>
       <div className="tag-row">
-        <span>{profile.status}</span>
-        <span>{profile.city}</span>
-        <span>{profile.openToMentor ? "Open to mentor" : "Building now"}</span>
+        {member.isOwner && <span>Owner</span>}
+        {business && <span>{business.category}</span>}
+        {business && <span>{tierLabels[business.tier]}</span>}
       </div>
-      <p>{profile.skills}</p>
-      <button className="primary-button profile-edit" onClick={() => onEdit(profile)}>
+      <p>{member.bio}</p>
+      <div className="profile-contact">
+        <span>{member.email}</span>
+        <span>{member.phone}</span>
+      </div>
+      <button className="primary-button profile-edit" onClick={() => onEdit(member)}>
         Edit Profile
       </button>
     </section>
@@ -1231,30 +1410,45 @@ function ProfileView({ profile, onEdit }: { profile: AlumniProfile; onEdit: (per
 }
 
 function AdminView({
-  alumniCount,
+  businessCount,
+  memberCount,
+  categories,
+  businesses,
   importNote,
   adminNote,
   onAdminAction,
   onImport
 }: {
-  alumniCount: number;
+  businessCount: number;
+  memberCount: number;
+  categories: string[];
+  businesses: Business[];
   importNote: string;
   adminNote: string;
   onAdminAction: (note: string) => void;
   onImport: (file: File | undefined) => void;
 }) {
+  const topCategories = categories
+    .map((category) => ({
+      category,
+      count: businesses.filter((business) => business.category === category).length
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 4);
+  const maxCount = Math.max(1, ...topCategories.map((entry) => entry.count));
+
   return (
     <section>
       <div className="metric-grid">
         <article className="glass-panel metric">
-          <span>Total alumni</span>
-          <strong>{alumniCount}</strong>
-          <p>Roster records ready</p>
+          <span>Member businesses</span>
+          <strong>{businessCount}</strong>
+          <p>Directory records</p>
         </article>
         <article className="glass-panel metric">
-          <span>Active this month</span>
-          <strong>71%</strong>
-          <p>176 alumni engaged</p>
+          <span>People</span>
+          <strong>{memberCount}</strong>
+          <p>Member logins</p>
         </article>
         <article className="glass-panel metric">
           <span>Support resolved</span>
@@ -1262,8 +1456,8 @@ function AdminView({
           <p>8 open requests</p>
         </article>
         <article className="glass-panel metric">
-          <span>Businesses launched</span>
-          <strong>29</strong>
+          <span>Referrals this month</span>
+          <strong>63</strong>
           <p>Tracked outcomes</p>
         </article>
       </div>
@@ -1273,17 +1467,17 @@ function AdminView({
           <p className="section-label">Access controlled</p>
           <h3>Admin Data Import</h3>
           <p className="admin-copy">
-            Only Admin users can import rosters, approve accounts, edit alumni records, moderate posts, and export reports.
-            Alumni users never see this navigation.
+            Only Admin and staff users can import rosters, approve accounts, assign membership tiers, moderate posts, and
+            export reports. Members never see this navigation.
           </p>
           <div className="role-grid">
             <div>
-              <strong>Admin</strong>
-              <span>Import, edit, reports, moderation</span>
+              <strong>Admin / Staff</strong>
+              <span>Import, tiers, reports, moderation</span>
             </div>
             <div>
-              <strong>Alumni</strong>
-              <span>Directory, groups, support, learning</span>
+              <strong>Member</strong>
+              <span>Directory, referrals, events, support</span>
             </div>
           </div>
           <label className="import-button">
@@ -1295,14 +1489,14 @@ function AdminView({
         </section>
 
         <section className="glass-panel report-card">
-          <p className="section-label">Engagement by cohort</p>
-          {[["2025", "88%"], ["2024", "74%"], ["2023", "61%"], ["2022", "46%"]].map(([year, value]) => (
-            <div className="bar-row" key={year}>
-              <span>{year}</span>
+          <p className="section-label">Businesses by category</p>
+          {topCategories.map(({ category, count }) => (
+            <div className="bar-row" key={category}>
+              <span>{category}</span>
               <div>
-                <i style={{ width: value }} />
+                <i style={{ width: `${Math.round((count / maxCount) * 100)}%` }} />
               </div>
-              <strong>{value}</strong>
+              <strong>{count}</strong>
             </div>
           ))}
         </section>
@@ -1310,19 +1504,17 @@ function AdminView({
         <section className="glass-panel report-card">
           <p className="section-label">Admin tools</p>
           {[
-            ["Approve new alumni accounts", "A", "Account queue opened: 6 pending alumni need verification."],
-            ["Review imported alumni data", "R", "Roster review opened: validate columns before writing to Firebase."],
-            ["Export sponsor impact report", "E", "Impact report queued with engagement, launches, and support outcomes."],
-            ["Manage resources and events", "M", "Resource manager opened: modules and events will be editable in Phase 2."],
+            ["Approve new member accounts", "A", "Account queue opened: pending members need verification."],
+            ["Assign membership tiers", "T", "Tier manager opened: set solo / small / growth / enterprise per business."],
+            ["Review imported roster data", "R", "Roster review opened: validate columns before saving."],
+            ["Export referral impact report", "E", "Impact report queued with referrals, closed value, and engagement."],
             ["Review flagged content", "F", "Moderation queue opened: no high-priority flags in this seed demo."]
-          ].map(([label, icon, note]) => {
-            return (
-              <button className="admin-action" key={label as string} onClick={() => onAdminAction(note as string)}>
-                <span className="nav-icon">{icon as string}</span>
-                {label as string}
-              </button>
-            );
-          })}
+          ].map(([label, icon, note]) => (
+            <button className="admin-action" key={label as string} onClick={() => onAdminAction(note as string)}>
+              <span className="nav-icon">{icon as string}</span>
+              {label as string}
+            </button>
+          ))}
           <div className="import-note admin-tool-note">{adminNote}</div>
         </section>
       </div>
@@ -1330,14 +1522,16 @@ function AdminView({
   );
 }
 
-function ProfileModal({
+function MemberModal({
   draft,
+  business,
   onChange,
   onClose,
   onSave
 }: {
-  draft: AlumniProfile;
-  onChange: (profile: AlumniProfile) => void;
+  draft: Member;
+  business?: Business;
+  onChange: (member: Member) => void;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -1350,19 +1544,17 @@ function ProfileModal({
         <div className="modal-head">
           <div className="avatar large">{initials(draft.name)}</div>
           <div>
-            <p className="section-label">Alumni profile</p>
+            <p className="section-label">My profile</p>
             <h3 id="modal-name">{draft.name}</h3>
-            <p>
-              {draft.cohort} - {draft.school}
-            </p>
+            <p>{business ? business.name : draft.title}</p>
           </div>
         </div>
 
         <form className="profile-form">
-          {profileFields.map((field) => (
-            <label key={field} className={field === "business" || field === "skills" ? "wide" : ""}>
-              {field === "business" ? "Business / idea" : field}
-              {field === "skills" ? (
+          {memberFields.map((field) => (
+            <label key={field} className={field === "bio" ? "wide" : ""}>
+              {field}
+              {field === "bio" ? (
                 <textarea value={draft[field]} onChange={(event) => onChange({ ...draft, [field]: event.target.value })} />
               ) : (
                 <input value={draft[field]} onChange={(event) => onChange({ ...draft, [field]: event.target.value })} />
@@ -1376,7 +1568,7 @@ function ProfileModal({
             Cancel
           </button>
           <button className="primary-button" onClick={onSave}>
-            Save Changes
+            Save Profile
           </button>
         </div>
       </section>

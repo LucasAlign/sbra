@@ -11,14 +11,14 @@
 // real implementations. The UI keeps importing from `@/lib/data` unchanged.
 
 import type {
-  AlumniProfile,
   CommunityPost,
+  Member,
   PostAttachment,
   SupportRequest,
   UserRole
 } from "@/lib/types";
 
-export type LiveUserProfile = AlumniProfile & {
+export type LiveUserProfile = Member & {
   uid: string;
   role: UserRole;
 };
@@ -51,7 +51,7 @@ export async function loadOrCreateUserProfile(
   return null;
 }
 
-export async function saveUserProfile(_profile: AlumniProfile): Promise<void> {
+export async function saveUserProfile(_profile: Member): Promise<void> {
   // no-op in seed mode
 }
 

@@ -1,38 +1,60 @@
-import type { AlumniProfile } from "@/lib/types";
+import type { Business, Member } from "@/lib/types";
 
 type ImportedRow = Record<string, string | number | boolean | null | undefined>;
 
 const normalize = (value: unknown) => String(value ?? "").trim();
 
-export function rowToAlumni(row: ImportedRow, index: number): AlumniProfile {
-  const name = normalize(row.name) || normalize(row.fullName) || "Imported Alumni";
-  const cohort = normalize(row.cohort) || normalize(row.year) || normalize(row.graduationYear);
+const slugify = (value: string, fallback: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "") || fallback;
 
-  return {
-    id: `imported-${Date.now()}-${index}`,
+export type ImportedMember = { business: Business; member: Member };
+
+// Maps a roster row into a Business + its owner Member.
+export function rowToMember(row: ImportedRow, index: number): ImportedMember {
+  const name = normalize(row.name) || normalize(row.fullName) || "Imported Member";
+  const businessName = normalize(row.business) || normalize(row.company) || `${name}'s Business`;
+  const suffix = `${Date.now()}-${index}`;
+  const businessId = `imported-biz-${slugify(businessName, suffix)}-${index}`;
+
+  const business: Business = {
+    id: businessId,
+    name: businessName,
+    category: normalize(row.category) || normalize(row.industry) || "Uncategorized",
+    description: normalize(row.description) || normalize(row.notes),
+    servicesOffered: normalize(row.services) || normalize(row.servicesOffered),
+    referralsWanted: normalize(row.referralsWanted) || normalize(row.idealReferral),
+    website: normalize(row.website),
+    address: normalize(row.address),
+    city: normalize(row.city) || normalize(row.location),
+    tier: "solo"
+  };
+
+  const member: Member = {
+    id: `imported-${suffix}`,
+    businessId,
     name,
-    cohort,
-    school: normalize(row.school),
-    industry: normalize(row.industry) || normalize(row.interest),
+    title: normalize(row.title) || "Owner",
     email: normalize(row.email),
     phone: normalize(row.phone),
-    city: normalize(row.city) || normalize(row.location),
-    business: normalize(row.business) || normalize(row.idea),
-    status: normalize(row.status) || "Imported",
-    skills: normalize(row.skills) || normalize(row.notes),
-    openToMentor: normalize(row.openToMentor).toLowerCase() === "true"
+    bio: normalize(row.bio) || normalize(row.notes),
+    isOwner: true
   };
+
+  return { business, member };
 }
 
-export async function parseRosterFile(file: File): Promise<AlumniProfile[]> {
+export async function parseRosterFile(file: File): Promise<ImportedMember[]> {
   const extension = file.name.split(".").pop()?.toLowerCase();
 
   if (extension === "csv") {
-    return parseCsv(await file.text()).map(rowToAlumni);
+    return parseCsv(await file.text()).map(rowToMember);
   }
 
   if (extension === "xlsx" || extension === "xls") {
-    throw new Error("Excel files are accepted by the UI, but Phase 1 needs the generated backend parser before saving them.");
+    throw new Error("Excel files are accepted by the UI, but a backend parser is needed before saving them.");
   }
 
   throw new Error("Please upload a CSV, XLS, or XLSX roster file.");

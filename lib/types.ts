@@ -1,30 +1,49 @@
-export type UserRole = "alumni" | "admin";
+export type UserRole = "member" | "staff" | "admin";
 
 export type ViewKey = "community" | "directory" | "learn" | "support" | "profile" | "admin";
 
-export type AlumniProfile = {
+export type MembershipTier = "solo" | "small" | "growth" | "enterprise";
+
+export const tierLabels: Record<MembershipTier, string> = {
+  solo: "Solopreneur",
+  small: "Small team",
+  growth: "Growth",
+  enterprise: "Enterprise"
+};
+
+// A member business — the unit SBRA sells membership to, and the directory entry.
+export type Business = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  servicesOffered: string; // comma-separated for the seed/MVP
+  referralsWanted: string; // the member's ideal referral / target customer
+  website: string;
+  address: string;
+  city: string;
+  tier: MembershipTier;
+};
+
+// A person with a login, belonging to exactly one Business (many-to-one).
+export type Member = {
   id: string;
   uid?: string;
   role?: UserRole;
+  businessId: string;
   name: string;
-  cohort: string;
-  school: string;
-  industry: string;
+  title: string; // role at the business, e.g. "Owner", "Operations Lead"
   email: string;
   phone: string;
-  city: string;
-  business: string;
-  status: string;
-  skills: string;
-  openToMentor: boolean;
+  bio: string;
+  isOwner: boolean;
 };
 
 export type CommunityPost = {
   id: string;
   authorId?: string;
   author: string;
-  cohort: string;
-  business: string;
+  businessName: string;
   timeAgo: string;
   category: string;
   tone: "coral" | "green" | "blue" | "violet";
