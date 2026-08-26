@@ -1,5 +1,5 @@
-import { AluminateApp } from "@/components/aluminate-app";
+import { SBRAApp } from "@/components/sbra-app";
 
 export default function Home() {
-  return <AluminateApp />;
+  return <SBRAApp />;
 }

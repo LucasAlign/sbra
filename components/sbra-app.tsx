@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
   createLivePost,
   createLiveSupportRequest,
@@ -13,7 +12,7 @@ import {
   watchPosts,
   watchSupportRequests,
   type LiveUserProfile
-} from "@/lib/firebase-data";
+} from "@/lib/data";
 import { parseRosterFile } from "@/lib/importers";
 import {
   alumniSeed,
@@ -25,6 +24,15 @@ import {
   viewTitles
 } from "@/lib/seed-data";
 import type { AlumniProfile, CommunityPost, PostAttachment, SupportRequest, UserRole, ViewKey } from "@/lib/types";
+
+// Firebase removed (seed-first, decision #6). These stubs preserve the call
+// sites; they never run while getLiveServices() returns null. When the backend
+// is wired, real auth replaces them.
+const onAuthStateChanged = (
+  _auth: unknown,
+  _next: (user: unknown) => void
+): (() => void) => () => {};
+const signOut = async (_auth: unknown): Promise<void> => {};
 
 type ProfileTextField = Exclude<keyof AlumniProfile, "id" | "openToMentor">;
 type DraftPostAttachment = PostAttachment & { file?: File };
@@ -59,7 +67,7 @@ const navItems: Array<{ key: ViewKey; label: string; count: string; icon: ViewKe
   { key: "admin", label: "Admin", count: "Live", icon: "admin", adminOnly: true }
 ];
 
-export function AluminateApp() {
+export function SBRAApp() {
   const liveServices = useMemo(() => getLiveServices(), []);
   const firebaseEnabled = Boolean(liveServices);
   const [role, setRole] = useState<UserRole | null>(null);
@@ -465,9 +473,9 @@ export function AluminateApp() {
       <main className="login-screen">
         <section className="glass-panel login-card">
           <LogoBlock large />
-          <p className="eyebrow">Emerging Entrepreneurs Academy</p>
-          <h1>Aluminate</h1>
-          <p className="login-copy">Loading your Aluminate session...</p>
+          <p className="eyebrow">Small Business Resource Association</p>
+          <h1>SBRA</h1>
+          <p className="login-copy">Loading your SBRA session...</p>
         </section>
       </main>
     );
@@ -478,8 +486,8 @@ export function AluminateApp() {
       <main className="login-screen">
         <section className="glass-panel login-card">
           <LogoBlock large />
-          <p className="eyebrow">Emerging Entrepreneurs Academy</p>
-          <h1>Aluminate</h1>
+          <p className="eyebrow">Small Business Resource Association</p>
+          <h1>SBRA</h1>
           <p className="login-copy">{liveNote}</p>
           <form className="login-form" onSubmit={(event) => void loginWithEmailPassword(event)}>
             <div className="role-toggle" aria-label="Choose sign-in role">
@@ -529,8 +537,8 @@ export function AluminateApp() {
         <div className="brand">
           <LogoBlock />
           <div>
-            <p className="eyebrow">Emerging Entrepreneurs Academy</p>
-            <h1>Aluminate</h1>
+            <p className="eyebrow">Small Business Resource Association</p>
+            <h1>SBRA</h1>
           </div>
         </div>
 
@@ -603,7 +611,7 @@ export function AluminateApp() {
           {globalSearchOpen && (
             <div className="top-popover search-popover">
               <input
-                aria-label="Search Aluminate"
+                aria-label="Search SBRA"
                 autoFocus
                 placeholder="Search people, posts, support, modules..."
                 value={globalSearch}
@@ -741,8 +749,8 @@ export function AluminateApp() {
 
 function LogoBlock({ large = false }: { large?: boolean }) {
   return (
-    <div className={large ? "brand-logo large-logo" : "brand-logo"}>
-      <img src="/assets/eea-logo.png" alt="Emerging Entrepreneurs Academy logo" />
+    <div className={large ? "brand-logo large-logo" : "brand-logo"} aria-label="SBRA">
+      <span className="brand-wordmark">SBRA</span>
     </div>
   );
 }
@@ -1127,7 +1135,7 @@ function LearnView() {
       <article className="glass-panel learn-feature">
         <p className="section-label">Continue learning</p>
         <h3>Build Your First Real Business Plan</h3>
-        <p>A clean module path from idea validation to projections, built from the EEA workshop flow.</p>
+        <p>A clean module path from idea validation to projections, built from the SBRA workshop flow.</p>
         <button className="primary-button">Resume Module</button>
       </article>
       <div className="module-list">
@@ -1175,7 +1183,7 @@ function SupportView({
         <textarea
           className="support-detail"
           aria-label="Support request detail"
-          placeholder="Add the context EEA staff should know..."
+          placeholder="Add the context SBRA staff should know..."
           value={detail}
           onChange={(event) => onDetail(event.target.value)}
         />
