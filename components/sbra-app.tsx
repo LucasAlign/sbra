@@ -23,6 +23,9 @@ import {
   watchSupportRequests,
   type LiveUserProfile
 } from "@/lib/data";
+import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
+import * as backendActions from "@/app/actions";
+import { isBackendEnabled } from "@/lib/backend";
 import { parseRosterFile } from "@/lib/importers";
 import {
   businessSeed,
@@ -146,6 +149,8 @@ function splitList(value: string) {
 export function SBRAApp() {
   const liveServices = useMemo(() => getLiveServices(), []);
   const backendEnabled = Boolean(liveServices);
+  const dbEnabled = useMemo(() => isBackendEnabled(), []);
+  const { data: session } = useSession();
   const [role, setRole] = useState<UserRole | null>(null);
   const [liveProfile, setLiveProfile] = useState<LiveUserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(backendEnabled);
@@ -296,6 +301,40 @@ export function SBRAApp() {
       stopComments?.();
     };
   }, [liveServices, role]);
+
+  // When the real backend is enabled (NEXT_PUBLIC_BACKEND_ENABLED=1 + DATABASE_URL),
+  // replace the seed collections with live data from Postgres on mount.
+  useEffect(() => {
+    if (!dbEnabled) return;
+    let active = true;
+    void backendActions.bootstrap().then((data) => {
+      if (!active || !data) return;
+      setBusinesses(data.businesses);
+      setMembers(data.members);
+      setReferrals(data.referrals);
+      setEvents(data.events);
+      setRsvps(data.rsvps);
+      setPosts(data.posts);
+      setComments(data.comments);
+      setReactions(data.reactions);
+    });
+    return () => {
+      active = false;
+    };
+  }, [dbEnabled]);
+
+  // In backend/auth mode, a signed-in Auth.js session enters the app and is
+  // matched to a member by email (open self-signup lands as a generic member).
+  useEffect(() => {
+    if (!dbEnabled || role || !session?.user?.email) return;
+    const email = session.user.email.toLowerCase();
+    const matched = members.find((member) => member.email.toLowerCase() === email);
+    if (matched) {
+      setLiveProfile({ ...matched, uid: matched.id, role: "member" });
+    }
+    setRole("member");
+    setActiveView("community");
+  }, [dbEnabled, session, role, members]);
 
   const visibleNav = navItems.filter((item) => !item.adminOnly || role === "admin");
 
@@ -480,6 +519,9 @@ export function SBRAApp() {
       await signOut(liveServices.auth);
       setLiveNote("Signed out.");
     }
+    if (dbEnabled && session?.user) {
+      await authSignOut({ redirect: false });
+    }
     setRole(null);
     setLiveProfile(null);
   }
@@ -507,6 +549,7 @@ export function SBRAApp() {
   async function saveMember() {
     if (!draftMember) return;
     setMembers((records) => records.map((person) => (person.id === draftMember.id ? draftMember : person)));
+    if (dbEnabled) void backendActions.persistMember(draftMember);
     if (liveProfile && draftMember.id === liveProfile.id) {
       const updatedProfile = { ...liveProfile, ...draftMember };
       setLiveProfile(updatedProfile);
@@ -559,6 +602,7 @@ export function SBRAApp() {
       comments: 0
     };
     setPosts((records) => [newPost, ...records]);
+    if (dbEnabled) void backendActions.persistPost(newPost);
     setPostDraft("");
     setPostCategory("General");
     setPostAttachments([]);
@@ -572,6 +616,7 @@ export function SBRAApp() {
       void toggleLiveReaction(postId, memberId, "celebrate");
       return;
     }
+    if (dbEnabled) void backendActions.toggleReaction(postId, memberId);
     setReactions((records) => {
       const existing = records.find(
         (reaction) => reaction.postId === postId && reaction.memberId === memberId && reaction.type === "celebrate"
@@ -604,6 +649,7 @@ export function SBRAApp() {
         createdAt: Date.now()
       };
       setComments((records) => [...records, newComment]);
+      if (dbEnabled) void backendActions.persistComment(newComment);
     }
     setCommentDrafts((drafts) => ({ ...drafts, [postId]: "" }));
   }
@@ -691,6 +737,7 @@ export function SBRAApp() {
       ...base
     };
     setReferrals((records) => [newReferral, ...records]);
+    if (dbEnabled) void backendActions.insertReferral(newReferral);
     setReferralComposerOpen(false);
   }
 
@@ -705,6 +752,7 @@ export function SBRAApp() {
       }
     }
     setReferrals((records) => records.map((referral) => (referral.id === id ? { ...referral, ...changes } : referral)));
+    if (dbEnabled) void backendActions.updateReferral(id, changes);
   }
 
   function markReferralContacted(referral: Referral) {
@@ -743,6 +791,7 @@ export function SBRAApp() {
       }
       return [...records, { eventId, memberId, status, checkedIn: false, respondedAt: Date.now() }];
     });
+    if (dbEnabled) void backendActions.setRsvp(eventId, memberId, status);
   }
 
   function toggleCheckIn(eventId: string) {
@@ -764,6 +813,7 @@ export function SBRAApp() {
           : rsvp
       );
     });
+    if (dbEnabled) void backendActions.setCheckIn(eventId, memberId, nextChecked);
   }
 
   async function submitEvent() {
@@ -800,10 +850,18 @@ export function SBRAApp() {
     const newEvent: SbraEvent = { id: `evt-${Date.now()}`, ...base };
     setEvents((records) => [newEvent, ...records]);
     // creator auto-RSVPs as going
-    setRsvps((records) => [
-      ...records,
-      { eventId: newEvent.id, memberId: currentMember.id, status: "going", checkedIn: false, respondedAt: Date.now() }
-    ]);
+    const creatorRsvp: Rsvp = {
+      eventId: newEvent.id,
+      memberId: currentMember.id,
+      status: "going",
+      checkedIn: false,
+      respondedAt: Date.now()
+    };
+    setRsvps((records) => [...records, creatorRsvp]);
+    if (dbEnabled) {
+      void backendActions.persistEvent(newEvent);
+      void backendActions.setRsvp(newEvent.id, currentMember.id, "going");
+    }
     setEventComposerOpen(false);
     setEventDraft(emptyEventDraft);
   }
@@ -832,6 +890,7 @@ export function SBRAApp() {
       const imported = await parseRosterFile(file);
       setBusinesses((records) => [...imported.map((row) => row.business), ...records]);
       setMembers((records) => [...imported.map((row) => row.member), ...records]);
+      if (dbEnabled) void backendActions.persistImportedMembers(imported);
       setImportNote(`Imported ${imported.length} member${imported.length === 1 ? "" : "s"} from ${file.name}.`);
       setActiveView("directory");
     } catch (error) {
@@ -893,12 +952,20 @@ export function SBRAApp() {
               Sign In
             </button>
           </form>
-          {backendEnabled && (
+          {dbEnabled ? (
             <div className="login-actions compact">
-              <button className="secondary-button" onClick={() => void loginAs(loginRole)}>
+              <button className="secondary-button" onClick={() => void authSignIn("google")}>
                 Continue with Google
               </button>
             </div>
+          ) : (
+            backendEnabled && (
+              <div className="login-actions compact">
+                <button className="secondary-button" onClick={() => void loginAs(loginRole)}>
+                  Continue with Google
+                </button>
+              </div>
+            )
           )}
         </section>
       </main>

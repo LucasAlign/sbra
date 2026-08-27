@@ -28,9 +28,21 @@ npm run dev
 
 Open http://localhost:3000. On Windows PowerShell use `npm.cmd install` / `npm.cmd run dev` if `npm.ps1` is blocked.
 
+## Activating the backend (the swap)
+
+The app runs on seed data by default. To switch to real persistence (Postgres) + auth (Auth.js / Google), all localized to `lib/db/*`, `app/actions.ts`, and `auth.ts`:
+
+1. Provision Postgres and set `DATABASE_URL` (on Replit: add a Postgres DB — it sets this automatically).
+2. `npm run db:push` — creates the tables from `lib/db/schema.ts`.
+3. Visit `/api/seed` once — loads the seed data into Postgres.
+4. Set `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (Google OAuth credentials).
+5. Set `NEXT_PUBLIC_BACKEND_ENABLED=1` and restart.
+
+The UI is unchanged — it reads from Postgres via server actions (`app/actions.ts`) and members sign in with Google.
+
 ## Deploy
 
-The app is intended to be **imported into Replit** (Postgres + hosting) once features are built and the backend is wired.
+The app is intended to be **imported into Replit** (Postgres + hosting). It runs immediately in seed mode with zero config; follow the swap steps above to enable persistence.
 
 ## Status
 
