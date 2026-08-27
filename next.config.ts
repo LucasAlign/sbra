@@ -5,9 +5,22 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: path.join(__dirname),
   // Next 15 blocks dev requests from origins other than the dev server's own.
-  // Replit serves the preview through a *.replit.dev / *.repl.co proxy, so allow
-  // those origins or the preview pane errors on cross-origin dev asset requests.
-  allowedDevOrigins: ["*.replit.dev", "*.repl.co", "*.riker.replit.dev", "*.picard.replit.dev"]
+  // Replit serves the preview through a <hash>.<cluster>.replit.dev proxy, and
+  // Next's wildcard matches a single label — so we must allow the cluster-level
+  // subdomain (e.g. *.janeway.replit.dev), not just *.replit.dev, or the preview
+  // gets its /_next/* JS/CSS chunks blocked.
+  allowedDevOrigins: [
+    "*.replit.dev",
+    "*.janeway.replit.dev",
+    "*.picard.replit.dev",
+    "*.riker.replit.dev",
+    "*.kirk.replit.dev",
+    "*.worf.replit.dev",
+    "*.spock.replit.dev",
+    "*.sisko.replit.dev",
+    "*.repl.co",
+    "*.replit.app"
+  ]
 };
 
 export default nextConfig;
