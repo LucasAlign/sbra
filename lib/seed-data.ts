@@ -1,4 +1,6 @@
-import type { Business, CommunityPost, Member, Module, SupportRequest } from "@/lib/types";
+import type { Business, CommunityPost, Member, Module, Referral, SupportRequest } from "@/lib/types";
+
+const DAY = 24 * 60 * 60 * 1000;
 
 // SBRA member businesses (the directory) — Greater Reading / Berks County, PA.
 export const businessSeed: Business[] = [
@@ -271,6 +273,59 @@ export const communityPosts: CommunityPost[] = [
   }
 ];
 
+// Referrals between members. Giver/receiver ids reference memberSeed above.
+export const referralSeed: Referral[] = [
+  {
+    id: "ref-jada-ari",
+    kind: "lead",
+    giverId: "jada-lee",
+    receiverId: "ari-rivera",
+    prospectName: "Berks Young Professionals",
+    prospectContact: "events@berksyp.org",
+    need: "Needs 60 branded shirts for their summer networking series.",
+    status: "closed_won",
+    closedValue: 1450,
+    thankYou: "Thank you Jada! This closed at $1,450 — my biggest order yet.",
+    createdAt: Date.now() - 9 * DAY,
+    closedAt: Date.now() - 2 * DAY
+  },
+  {
+    id: "ref-noah-tom",
+    kind: "lead",
+    giverId: "noah-patel",
+    receiverId: "tom-alvarez",
+    prospectName: "Marlowe HVAC",
+    prospectContact: "owner@marlowehvac.com",
+    need: "Growing HVAC company that's behind on bookkeeping before tax season.",
+    status: "contacted",
+    createdAt: Date.now() - 4 * DAY
+  },
+  {
+    id: "ref-grace-maya",
+    kind: "intro",
+    giverId: "grace-whitfield",
+    receiverId: "maya-chen",
+    introducedMemberId: "sofia-martinez",
+    need: "Sofia is rebranding and mentioned she needs a new website — you two should connect.",
+    status: "given",
+    createdAt: Date.now() - 1 * DAY
+  },
+  {
+    id: "ref-tom-grace",
+    kind: "lead",
+    giverId: "tom-alvarez",
+    receiverId: "grace-whitfield",
+    prospectName: "Keystone Web Studio",
+    prospectContact: "maya@keystonewebstudio.com",
+    need: "Small team that just grew and may be underinsured — worth a policy review.",
+    status: "closed_won",
+    closedValue: 780,
+    thankYou: "Appreciate it Tom — wrote a new business policy for them.",
+    createdAt: Date.now() - 15 * DAY,
+    closedAt: Date.now() - 6 * DAY
+  }
+];
+
 export const supportCategories = [
   "Referral introduction",
   "Bookkeeping or legal",
@@ -307,6 +362,7 @@ export const supportRequests: SupportRequest[] = [
 export const viewTitles = {
   community: "Community Home",
   directory: "Member Directory",
+  referrals: "Referrals",
   learn: "Learning Hub",
   support: "Support Center",
   profile: "My Profile",

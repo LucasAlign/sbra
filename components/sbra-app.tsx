@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   createLivePost,
+  createLiveReferral,
   createLiveSupportRequest,
   getLiveServices,
   loadOrCreateUserProfile,
   saveUserProfile,
   signInWithEmailPassword,
   signInForRole,
+  updateLiveReferral,
   watchPosts,
+  watchReferrals,
   watchSupportRequests,
   type LiveUserProfile
 } from "@/lib/data";
@@ -20,17 +23,22 @@ import {
   initials,
   learningModules,
   memberSeed,
+  referralSeed,
   supportCategories,
   supportRequests,
   viewTitles
 } from "@/lib/seed-data";
 import {
+  referralStatusLabels,
   tierLabels,
   type Business,
   type CommunityPost,
   type Member,
   type MembershipTier,
   type PostAttachment,
+  type Referral,
+  type ReferralKind,
+  type ReferralStatus,
   type SupportRequest,
   type UserRole,
   type ViewKey
@@ -48,6 +56,24 @@ const signOut = async (_auth: unknown): Promise<void> => {};
 type MemberTextField = "name" | "title" | "email" | "phone" | "bio";
 type DraftPostAttachment = PostAttachment & { file?: File };
 
+type ReferralDraft = {
+  kind: ReferralKind;
+  receiverId: string;
+  introducedMemberId: string;
+  prospectName: string;
+  prospectContact: string;
+  need: string;
+};
+
+const emptyReferralDraft: ReferralDraft = {
+  kind: "lead",
+  receiverId: "",
+  introducedMemberId: "",
+  prospectName: "",
+  prospectContact: "",
+  need: ""
+};
+
 type GlobalSearchResult = {
   id: string;
   label: string;
@@ -61,6 +87,7 @@ const memberFields: MemberTextField[] = ["name", "title", "email", "phone", "bio
 const navItems: Array<{ key: ViewKey; label: string; count: string; icon: ViewKey; adminOnly?: boolean }> = [
   { key: "community", label: "Home", count: "12", icon: "community" },
   { key: "directory", label: "Directory", count: "Members", icon: "directory" },
+  { key: "referrals", label: "Referrals", count: "Core", icon: "referrals" },
   { key: "learn", label: "Learn", count: "3", icon: "learn" },
   { key: "support", label: "Support", count: "4", icon: "support" },
   { key: "profile", label: "Profile", count: "You", icon: "profile" },
@@ -93,6 +120,10 @@ export function SBRAApp() {
   const [businesses, setBusinesses] = useState<Business[]>(businessSeed);
   const [posts, setPosts] = useState(communityPosts);
   const [requests, setRequests] = useState(supportRequests);
+  const [referrals, setReferrals] = useState<Referral[]>(referralSeed);
+  const [referralComposerOpen, setReferralComposerOpen] = useState(false);
+  const [referralDraft, setReferralDraft] = useState<ReferralDraft>(emptyReferralDraft);
+  const [closingReferral, setClosingReferral] = useState<Referral | null>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [activeBusiness, setActiveBusiness] = useState<Business | null>(null);
@@ -125,6 +156,12 @@ export function SBRAApp() {
       list.push(member);
       map.set(member.businessId, list);
     });
+    return map;
+  }, [members]);
+
+  const memberById = useMemo(() => {
+    const map = new Map<string, Member>();
+    members.forEach((member) => map.set(member.id, member));
     return map;
   }, [members]);
 
@@ -187,10 +224,15 @@ export function SBRAApp() {
       (liveRequests) => setRequests(liveRequests),
       (error) => setLiveNote(`Support requests are still using local data: ${error.message}`)
     );
+    const stopReferrals = watchReferrals(
+      (liveReferrals) => setReferrals(liveReferrals),
+      (error) => setLiveNote(`Referrals are still using local data: ${error.message}`)
+    );
 
     return () => {
       stopPosts?.();
       stopRequests?.();
+      stopReferrals?.();
     };
   }, [liveServices, role]);
 
@@ -497,6 +539,79 @@ export function SBRAApp() {
     setSupportDetail("");
   }
 
+  function openReferralComposer() {
+    setReferralDraft(emptyReferralDraft);
+    setReferralComposerOpen(true);
+  }
+
+  async function submitReferral() {
+    if (!currentMember) return;
+    const draft = referralDraft;
+    if (!draft.receiverId || !draft.need.trim()) return;
+    if (draft.kind === "intro" && !draft.introducedMemberId) return;
+
+    const base = {
+      kind: draft.kind,
+      giverId: currentMember.id,
+      receiverId: draft.receiverId,
+      need: draft.need.trim(),
+      ...(draft.kind === "intro"
+        ? { introducedMemberId: draft.introducedMemberId }
+        : { prospectName: draft.prospectName.trim(), prospectContact: draft.prospectContact.trim() })
+    };
+
+    if (liveServices && liveProfile) {
+      try {
+        await createLiveReferral(base);
+        setReferralComposerOpen(false);
+        setLiveNote("Referral sent.");
+      } catch (error) {
+        setLiveNote(error instanceof Error ? error.message : "Unable to send this referral.");
+      }
+      return;
+    }
+
+    const newReferral: Referral = {
+      id: `ref-${Date.now()}`,
+      status: "given",
+      createdAt: Date.now(),
+      ...base
+    };
+    setReferrals((records) => [newReferral, ...records]);
+    setReferralComposerOpen(false);
+  }
+
+  async function patchReferral(id: string, changes: Partial<Referral>) {
+    if (liveServices && liveProfile) {
+      try {
+        await updateLiveReferral(id, changes);
+        return;
+      } catch (error) {
+        setLiveNote(error instanceof Error ? error.message : "Unable to update this referral.");
+        return;
+      }
+    }
+    setReferrals((records) => records.map((referral) => (referral.id === id ? { ...referral, ...changes } : referral)));
+  }
+
+  function markReferralContacted(referral: Referral) {
+    void patchReferral(referral.id, { status: "contacted" });
+  }
+
+  function markReferralLost(referral: Referral) {
+    void patchReferral(referral.id, { status: "closed_lost", closedAt: Date.now() });
+  }
+
+  function closeReferralWon(referral: Referral, closedValue: number, thankYou: string) {
+    void patchReferral(referral.id, {
+      status: "closed_won",
+      closedValue,
+      thankYou: thankYou.trim() || undefined,
+      closedAt: Date.now()
+    });
+    setClosingReferral(null);
+  }
+
   function openSearchResult(result: GlobalSearchResult) {
     setActiveView(result.view);
     setGlobalSearchOpen(false);
@@ -755,6 +870,18 @@ export function SBRAApp() {
             onOpenBusiness={openBusiness}
           />
         )}
+        {activeView === "referrals" && (
+          <ReferralsView
+            referrals={referrals}
+            memberById={memberById}
+            businessById={businessById}
+            currentMemberId={currentMember?.id ?? ""}
+            onGive={openReferralComposer}
+            onMarkContacted={markReferralContacted}
+            onMarkLost={markReferralLost}
+            onOpenClose={setClosingReferral}
+          />
+        )}
         {activeView === "learn" && <LearnView />}
         {activeView === "support" && (
           <SupportView
@@ -814,6 +941,27 @@ export function SBRAApp() {
           onChange={setDraftMember}
           onClose={() => setActiveMember(null)}
           onSave={saveMember}
+        />
+      )}
+
+      {referralComposerOpen && currentMember && (
+        <GiveReferralModal
+          draft={referralDraft}
+          members={members}
+          businessById={businessById}
+          currentMemberId={currentMember.id}
+          onChange={setReferralDraft}
+          onClose={() => setReferralComposerOpen(false)}
+          onSubmit={submitReferral}
+        />
+      )}
+
+      {closingReferral && (
+        <CloseReferralModal
+          referral={closingReferral}
+          memberById={memberById}
+          onClose={() => setClosingReferral(null)}
+          onConfirm={closeReferralWon}
         />
       )}
     </div>
@@ -882,6 +1030,17 @@ function NavIcon({ icon }: { icon: ViewKey }) {
       <svg {...common}>
         <path d="M8 7a4 4 0 1 0 8 0 4 4 0 0 0-8 0Z" />
         <path d="M4 21a8 8 0 0 1 16 0" />
+      </svg>
+    );
+  }
+
+  if (icon === "referrals") {
+    return (
+      <svg {...common}>
+        <path d="M4 8h13" />
+        <path d="m14 5 3 3-3 3" />
+        <path d="M20 16H7" />
+        <path d="m10 13-3 3 3 3" />
       </svg>
     );
   }
@@ -1569,6 +1728,387 @@ function MemberModal({
           </button>
           <button className="primary-button" onClick={onSave}>
             Save Profile
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function referralAge(createdAt: number) {
+  const days = Math.max(0, Math.round((Date.now() - createdAt) / 86400000));
+  if (days === 0) return "today";
+  return `${days}d ago`;
+}
+
+function memberLine(member: Member | undefined, businessById: Map<string, Business>) {
+  if (!member) return "Unknown member";
+  const business = businessById.get(member.businessId);
+  return business ? `${member.name} · ${business.name}` : member.name;
+}
+
+function ReferralsView({
+  referrals,
+  memberById,
+  businessById,
+  currentMemberId,
+  onGive,
+  onMarkContacted,
+  onMarkLost,
+  onOpenClose
+}: {
+  referrals: Referral[];
+  memberById: Map<string, Member>;
+  businessById: Map<string, Business>;
+  currentMemberId: string;
+  onGive: () => void;
+  onMarkContacted: (referral: Referral) => void;
+  onMarkLost: (referral: Referral) => void;
+  onOpenClose: (referral: Referral) => void;
+}) {
+  const given = referrals.filter((referral) => referral.giverId === currentMemberId);
+  const received = referrals.filter((referral) => referral.receiverId === currentMemberId);
+  const closedWonGiven = given.filter((referral) => referral.status === "closed_won");
+  const creditedValue = closedWonGiven.reduce((total, referral) => total + (referral.closedValue ?? 0), 0);
+
+  return (
+    <section className="referrals-layout">
+      <div className="glass-panel referral-header">
+        <div>
+          <p className="section-label">Referral exchange</p>
+          <h3>Give and track referrals</h3>
+          <p className="referral-sub">Closed business is credited to whoever gave the referral — SBRA&apos;s closed loop.</p>
+        </div>
+        <button className="primary-button" onClick={onGive}>
+          <span className="button-icon">+</span>
+          Give a Referral
+        </button>
+      </div>
+
+      <div className="metric-grid">
+        <article className="glass-panel metric">
+          <span>Given</span>
+          <strong>{given.length}</strong>
+          <p>Referrals you sent</p>
+        </article>
+        <article className="glass-panel metric">
+          <span>Received</span>
+          <strong>{received.length}</strong>
+          <p>Referrals to you</p>
+        </article>
+        <article className="glass-panel metric">
+          <span>Closed won</span>
+          <strong>{closedWonGiven.length}</strong>
+          <p>Your referrals that closed</p>
+        </article>
+        <article className="glass-panel metric">
+          <span>Credited to you</span>
+          <strong>${creditedValue.toLocaleString()}</strong>
+          <p>Closed business you drove</p>
+        </article>
+      </div>
+
+      <div className="referral-columns">
+        <section className="referral-column">
+          <p className="section-label">Given by you ({given.length})</p>
+          {given.map((referral) => (
+            <ReferralCard
+              key={referral.id}
+              referral={referral}
+              perspective="given"
+              memberById={memberById}
+              businessById={businessById}
+              onMarkContacted={onMarkContacted}
+              onMarkLost={onMarkLost}
+              onOpenClose={onOpenClose}
+            />
+          ))}
+          {given.length === 0 && <div className="empty-state">You haven&apos;t given a referral yet.</div>}
+        </section>
+
+        <section className="referral-column">
+          <p className="section-label">Received by you ({received.length})</p>
+          {received.map((referral) => (
+            <ReferralCard
+              key={referral.id}
+              referral={referral}
+              perspective="received"
+              memberById={memberById}
+              businessById={businessById}
+              onMarkContacted={onMarkContacted}
+              onMarkLost={onMarkLost}
+              onOpenClose={onOpenClose}
+            />
+          ))}
+          {received.length === 0 && <div className="empty-state">No referrals sent to you yet.</div>}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function ReferralCard({
+  referral,
+  perspective,
+  memberById,
+  businessById,
+  onMarkContacted,
+  onMarkLost,
+  onOpenClose
+}: {
+  referral: Referral;
+  perspective: "given" | "received";
+  memberById: Map<string, Member>;
+  businessById: Map<string, Business>;
+  onMarkContacted: (referral: Referral) => void;
+  onMarkLost: (referral: Referral) => void;
+  onOpenClose: (referral: Referral) => void;
+}) {
+  const giver = memberById.get(referral.giverId);
+  const receiver = memberById.get(referral.receiverId);
+  const introduced = referral.introducedMemberId ? memberById.get(referral.introducedMemberId) : undefined;
+  const isClosed = referral.status === "closed_won" || referral.status === "closed_lost";
+  const counterpart = perspective === "given" ? receiver : giver;
+
+  return (
+    <article className={`glass-panel referral-card status-${referral.status}`}>
+      <div className="referral-card-head">
+        <span className={`ref-kind ${referral.kind}`}>{referral.kind === "lead" ? "Lead" : "Intro"}</span>
+        <span className={`status-chip ref-status ${referral.status}`}>{referralStatusLabels[referral.status]}</span>
+        <span className="referral-age">{referralAge(referral.createdAt)}</span>
+      </div>
+
+      <p className="referral-direction">
+        {perspective === "given" ? "To " : "From "}
+        <strong>{memberLine(counterpart, businessById)}</strong>
+      </p>
+
+      {referral.kind === "lead" ? (
+        <p className="referral-prospect">
+          <span className="section-label">Prospect</span>
+          {referral.prospectName || "—"}
+          {referral.prospectContact ? ` · ${referral.prospectContact}` : ""}
+        </p>
+      ) : (
+        <p className="referral-prospect">
+          <span className="section-label">Introduce</span>
+          {memberLine(introduced, businessById)}
+        </p>
+      )}
+
+      <p className="referral-need">{referral.need}</p>
+
+      {referral.status === "closed_won" && (
+        <div className="referral-closed">
+          <strong>Closed ${Number(referral.closedValue ?? 0).toLocaleString()}</strong>
+          {referral.thankYou && <span>&ldquo;{referral.thankYou}&rdquo;</span>}
+        </div>
+      )}
+      {referral.status === "closed_lost" && <div className="referral-closed lost">Closed — did not convert</div>}
+
+      {perspective === "received" && !isClosed && (
+        <div className="referral-actions">
+          {referral.status === "given" && (
+            <button className="secondary-button" onClick={() => onMarkContacted(referral)}>
+              Mark contacted
+            </button>
+          )}
+          <button className="primary-button" onClick={() => onOpenClose(referral)}>
+            Close — won
+          </button>
+          <button className="secondary-button" onClick={() => onMarkLost(referral)}>
+            Close — lost
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function GiveReferralModal({
+  draft,
+  members,
+  currentMemberId,
+  businessById,
+  onChange,
+  onClose,
+  onSubmit
+}: {
+  draft: ReferralDraft;
+  members: Member[];
+  currentMemberId: string;
+  businessById: Map<string, Business>;
+  onChange: (draft: ReferralDraft) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const others = members.filter((member) => member.id !== currentMemberId);
+  const introOptions = others.filter((member) => member.id !== draft.receiverId);
+  const canSubmit =
+    Boolean(draft.receiverId) &&
+    draft.need.trim().length > 0 &&
+    (draft.kind === "lead" || Boolean(draft.introducedMemberId));
+
+  return (
+    <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="give-referral">
+        <button className="modal-close" onClick={onClose} aria-label="Close referral form">
+          Close
+        </button>
+        <div className="modal-head">
+          <div className="avatar large">+</div>
+          <div>
+            <p className="section-label">New referral</p>
+            <h3 id="give-referral">Give a referral</h3>
+            <p>Send a lead or make an introduction.</p>
+          </div>
+        </div>
+
+        <div className="role-toggle referral-kind-toggle" aria-label="Referral kind">
+          <button
+            type="button"
+            className={draft.kind === "lead" ? "active" : ""}
+            onClick={() => onChange({ ...draft, kind: "lead" })}
+          >
+            Lead (external prospect)
+          </button>
+          <button
+            type="button"
+            className={draft.kind === "intro" ? "active" : ""}
+            onClick={() => onChange({ ...draft, kind: "intro" })}
+          >
+            Intro (member to member)
+          </button>
+        </div>
+
+        <form className="profile-form referral-form" onSubmit={(event) => event.preventDefault()}>
+          <label className="wide">
+            Refer to
+            <select value={draft.receiverId} onChange={(event) => onChange({ ...draft, receiverId: event.target.value })}>
+              <option value="">Choose a member…</option>
+              {others.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {memberLine(member, businessById)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {draft.kind === "lead" ? (
+            <>
+              <label>
+                Prospect name
+                <input
+                  value={draft.prospectName}
+                  onChange={(event) => onChange({ ...draft, prospectName: event.target.value })}
+                />
+              </label>
+              <label>
+                Prospect contact
+                <input
+                  value={draft.prospectContact}
+                  onChange={(event) => onChange({ ...draft, prospectContact: event.target.value })}
+                />
+              </label>
+              <label className="wide">
+                What they need
+                <textarea value={draft.need} onChange={(event) => onChange({ ...draft, need: event.target.value })} />
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="wide">
+                Member to introduce
+                <select
+                  value={draft.introducedMemberId}
+                  onChange={(event) => onChange({ ...draft, introducedMemberId: event.target.value })}
+                >
+                  <option value="">Choose a member…</option>
+                  {introOptions.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {memberLine(member, businessById)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="wide">
+                Why connect them
+                <textarea value={draft.need} onChange={(event) => onChange({ ...draft, need: event.target.value })} />
+              </label>
+            </>
+          )}
+        </form>
+
+        <div className="modal-actions">
+          <button className="secondary-button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-button" disabled={!canSubmit} onClick={onSubmit}>
+            Send Referral
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CloseReferralModal({
+  referral,
+  memberById,
+  onClose,
+  onConfirm
+}: {
+  referral: Referral;
+  memberById: Map<string, Member>;
+  onClose: () => void;
+  onConfirm: (referral: Referral, closedValue: number, thankYou: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [thankYou, setThankYou] = useState("");
+  const giver = memberById.get(referral.giverId);
+
+  return (
+    <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="glass-panel profile-modal close-referral-modal" role="dialog" aria-modal="true">
+        <button className="modal-close" onClick={onClose} aria-label="Close">
+          Close
+        </button>
+        <div className="modal-head">
+          <div className="avatar large">$</div>
+          <div>
+            <p className="section-label">Close the loop</p>
+            <h3>Mark referral as won</h3>
+            <p>Credit the closed business to {giver ? giver.name : "the giver"}.</p>
+          </div>
+        </div>
+
+        <form className="profile-form" onSubmit={(event) => event.preventDefault()}>
+          <label>
+            Closed value ($)
+            <input
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+            />
+          </label>
+          <label className="wide">
+            Thank-you note
+            <textarea
+              placeholder={`Thank ${giver ? giver.name.split(" ")[0] : "them"} for the referral…`}
+              value={thankYou}
+              onChange={(event) => setThankYou(event.target.value)}
+            />
+          </label>
+        </form>
+
+        <div className="modal-actions">
+          <button className="secondary-button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-button" onClick={() => onConfirm(referral, Number(value) || 0, thankYou)}>
+            Confirm Won
           </button>
         </div>
       </section>

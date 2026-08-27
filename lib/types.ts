@@ -1,6 +1,43 @@
 export type UserRole = "member" | "staff" | "admin";
 
-export type ViewKey = "community" | "directory" | "learn" | "support" | "profile" | "admin";
+export type ViewKey =
+  | "community"
+  | "directory"
+  | "referrals"
+  | "learn"
+  | "support"
+  | "profile"
+  | "admin";
+
+export type ReferralKind = "lead" | "intro";
+
+export type ReferralStatus = "given" | "contacted" | "closed_won" | "closed_lost";
+
+export const referralStatusLabels: Record<ReferralStatus, string> = {
+  given: "Given",
+  contacted: "Contacted",
+  closed_won: "Closed — won",
+  closed_lost: "Closed — lost"
+};
+
+// Value passed between members. A "lead" hands over an external prospect; an
+// "intro" connects the receiver with another member. Closed business ($ value)
+// is credited to the giver — SBRA's closed-loop tracking.
+export type Referral = {
+  id: string;
+  kind: ReferralKind;
+  giverId: string; // Member id
+  receiverId: string; // Member id
+  introducedMemberId?: string; // for kind === "intro"
+  prospectName?: string; // for kind === "lead"
+  prospectContact?: string; // for kind === "lead"
+  need: string;
+  status: ReferralStatus;
+  closedValue?: number; // $ credited to the giver when closed_won
+  thankYou?: string; // note from receiver to giver
+  createdAt: number;
+  closedAt?: number;
+};
 
 export type MembershipTier = "solo" | "small" | "growth" | "enterprise";
 

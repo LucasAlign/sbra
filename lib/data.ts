@@ -14,6 +14,8 @@ import type {
   CommunityPost,
   Member,
   PostAttachment,
+  Referral,
+  ReferralKind,
   SupportRequest,
   UserRole
 } from "@/lib/types";
@@ -82,6 +84,32 @@ export async function createLiveSupportRequest(_input: {
   detail: string;
   profile: LiveUserProfile;
 }): Promise<SupportRequest | null> {
+  return null;
+}
+
+export function watchReferrals(
+  _onReferrals: (referrals: Referral[]) => void,
+  _onError: (error: DataError) => void
+): () => void {
+  return () => {};
+}
+
+export async function createLiveReferral(_input: {
+  kind: ReferralKind;
+  giverId: string;
+  receiverId: string;
+  introducedMemberId?: string;
+  prospectName?: string;
+  prospectContact?: string;
+  need: string;
+}): Promise<Referral | null> {
+  return null;
+}
+
+export async function updateLiveReferral(
+  _id: string,
+  _changes: Partial<Referral>
+): Promise<Referral | null> {
   return null;
 }
 

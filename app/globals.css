@@ -1978,3 +1978,184 @@ button {
     align-items: flex-start;
   }
 }
+
+/* ---- Referral exchange ---- */
+.referrals-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.referral-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-radius: 24px;
+  padding: 20px;
+}
+
+.referral-header h3 {
+  margin: 2px 0;
+  font-size: 22px;
+}
+
+.referral-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.referral-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.referral-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.referral-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 18px;
+  padding: 16px;
+  border-left: 4px solid var(--line);
+}
+
+.referral-card.status-closed_won {
+  border-left-color: #1f9d55;
+}
+
+.referral-card.status-closed_lost {
+  border-left-color: var(--muted);
+}
+
+.referral-card.status-given {
+  border-left-color: var(--gold);
+}
+
+.referral-card.status-contacted {
+  border-left-color: var(--blue);
+}
+
+.referral-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ref-kind {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: rgba(0, 17, 103, 0.1);
+  color: var(--blue);
+}
+
+.ref-kind.intro {
+  background: rgba(247, 215, 68, 0.35);
+  color: #5a4b00;
+}
+
+.ref-status {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ref-status.closed_won {
+  background: rgba(31, 157, 85, 0.16);
+  color: #157347;
+}
+
+.ref-status.closed_lost {
+  background: rgba(107, 111, 138, 0.16);
+  color: var(--muted);
+}
+
+.referral-age {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.referral-direction {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.referral-direction strong {
+  color: var(--ink);
+}
+
+.referral-prospect {
+  margin: 0;
+  font-size: 14px;
+}
+
+.referral-prospect .section-label {
+  margin: 0 6px 0 0;
+  display: inline;
+}
+
+.referral-need {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.referral-closed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(31, 157, 85, 0.1);
+  font-size: 14px;
+}
+
+.referral-closed.lost {
+  background: rgba(107, 111, 138, 0.1);
+  color: var(--muted);
+}
+
+.referral-closed span {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.referral-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.referral-actions .primary-button,
+.referral-actions .secondary-button {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.referral-kind-toggle {
+  margin-bottom: 14px;
+}
+
+.referral-form select,
+.close-referral-modal input,
+.close-referral-modal textarea {
+  width: 100%;
+}
+
+.primary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
