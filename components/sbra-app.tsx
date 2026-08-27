@@ -23,6 +23,7 @@ import {
   watchSupportRequests,
   type LiveUserProfile
 } from "@/lib/data";
+import type { Session } from "next-auth";
 import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
 import * as backendActions from "@/app/actions";
 import { isBackendEnabled } from "@/lib/backend";
@@ -189,7 +190,9 @@ export function SBRAApp() {
   const liveServices = useMemo(() => getLiveServices(), []);
   const backendEnabled = Boolean(liveServices);
   const dbEnabled = useMemo(() => isBackendEnabled(), []);
-  const { data: session } = useSession();
+  // Session is fed in by <SessionBridge>, mounted only in backend mode so that
+  // useSession() (and its /api/auth/session fetch) never runs in seed mode.
+  const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<UserRole | null>(null);
   const [liveProfile, setLiveProfile] = useState<LiveUserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(backendEnabled);
@@ -1011,6 +1014,7 @@ export function SBRAApp() {
   if (!role) {
     return (
       <main className="login-screen">
+        {dbEnabled && <SessionBridge onSession={setSession} />}
         <section className="glass-panel login-card">
           <LogoBlock large />
           <p className="eyebrow">Small Business Resource Association</p>
@@ -1091,6 +1095,7 @@ export function SBRAApp() {
 
   return (
     <div className="app-shell">
+      {dbEnabled && <SessionBridge onSession={setSession} />}
       <aside className="glass-panel sidebar">
         <div className="brand">
           <LogoBlock />
@@ -2872,6 +2877,17 @@ function CreateEventModal({
       </section>
     </div>
   );
+}
+
+// Calls useSession() and relays the session up to SBRAApp. Rendered only in
+// backend mode, so useSession() is always inside a SessionProvider and never
+// runs (nor fetches /api/auth/session) in seed mode.
+function SessionBridge({ onSession }: { onSession: (session: Session | null) => void }) {
+  const { data } = useSession();
+  useEffect(() => {
+    onSession(data ?? null);
+  }, [data, onSession]);
+  return null;
 }
 
 function OnboardingWizard({
