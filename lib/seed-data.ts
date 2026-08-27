@@ -1,8 +1,10 @@
 import type {
   Business,
+  Comment,
   CommunityPost,
   Member,
   Module,
+  Reaction,
   Referral,
   Rsvp,
   SbraEvent,
@@ -422,6 +424,41 @@ export const rsvpSeed: Rsvp[] = [
   { eventId: "evt-mingle", memberId: "sofia-martinez", status: "going", checkedIn: false, respondedAt: Date.now() - 3 * DAY },
   { eventId: "evt-mingle", memberId: "grace-whitfield", status: "going", checkedIn: false, respondedAt: Date.now() - 2 * HOUR },
   { eventId: "evt-ribbon", memberId: "ari-rivera", status: "going", checkedIn: false, respondedAt: Date.now() - 4 * DAY }
+];
+
+// Seed comments so post threads aren't empty when opened.
+export const commentSeed: Comment[] = [
+  {
+    id: "cmt-1",
+    postId: "ari-popup",
+    authorId: "jada-lee",
+    authorName: "Jada Lee",
+    body: "So happy this worked out! Told you they'd love your merch.",
+    createdAt: Date.now() - 1 * HOUR
+  },
+  {
+    id: "cmt-2",
+    postId: "ari-popup",
+    authorId: "sofia-martinez",
+    authorName: "Sofia Martinez",
+    body: "Congrats Ari! Let's talk about branded merch for my studio events.",
+    createdAt: Date.now() - 30 * 60 * 1000
+  },
+  {
+    id: "cmt-3",
+    postId: "tom-huddle",
+    authorId: "noah-patel",
+    authorName: "Noah Patel",
+    body: "Signing up — my books are a mess before Q4.",
+    createdAt: Date.now() - 20 * 60 * 1000
+  }
+];
+
+// A couple of seed reactions from other members (current user's are added live).
+export const reactionSeed: Reaction[] = [
+  { id: "rx-1", postId: "ari-popup", memberId: "jada-lee", type: "celebrate" },
+  { id: "rx-2", postId: "ari-popup", memberId: "grace-whitfield", type: "celebrate" },
+  { id: "rx-3", postId: "sofia-mingle", memberId: "ari-rivera", type: "support" }
 ];
 
 export const supportCategories = [

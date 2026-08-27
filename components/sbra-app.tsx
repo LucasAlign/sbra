@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
+  createLiveComment,
   createLiveEvent,
   createLivePost,
   createLiveReferral,
@@ -13,7 +14,9 @@ import {
   setLiveRsvp,
   signInWithEmailPassword,
   signInForRole,
+  toggleLiveReaction,
   updateLiveReferral,
+  watchComments,
   watchEvents,
   watchPosts,
   watchReferrals,
@@ -23,11 +26,13 @@ import {
 import { parseRosterFile } from "@/lib/importers";
 import {
   businessSeed,
+  commentSeed,
   communityPosts,
   eventSeed,
   initials,
   learningModules,
   memberSeed,
+  reactionSeed,
   referralSeed,
   rsvpSeed,
   supportCategories,
@@ -36,14 +41,17 @@ import {
 } from "@/lib/seed-data";
 import {
   eventTypeLabels,
+  postCategories,
   referralStatusLabels,
   tierLabels,
   type Business,
+  type Comment,
   type CommunityPost,
   type EventType,
   type Member,
   type MembershipTier,
   type PostAttachment,
+  type Reaction,
   type Referral,
   type ReferralKind,
   type ReferralStatus,
@@ -169,7 +177,12 @@ export function SBRAApp() {
   const [draftMember, setDraftMember] = useState<Member | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [postDraft, setPostDraft] = useState("");
+  const [postCategory, setPostCategory] = useState<string>("General");
   const [postAttachments, setPostAttachments] = useState<DraftPostAttachment[]>([]);
+  const [comments, setComments] = useState<Comment[]>(commentSeed);
+  const [reactions, setReactions] = useState<Reaction[]>(reactionSeed);
+  const [openComments, setOpenComments] = useState<string[]>([]);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -270,12 +283,17 @@ export function SBRAApp() {
       (liveEvents) => setEvents(liveEvents),
       (error) => setLiveNote(`Events are still using local data: ${error.message}`)
     );
+    const stopComments = watchComments(
+      (liveComments) => setComments(liveComments),
+      (error) => setLiveNote(`Comments are still using local data: ${error.message}`)
+    );
 
     return () => {
       stopPosts?.();
       stopRequests?.();
       stopReferrals?.();
       stopEvents?.();
+      stopComments?.();
     };
   }, [liveServices, role]);
 
@@ -520,13 +538,21 @@ export function SBRAApp() {
       return;
     }
 
+    const toneByCategory: Record<string, CommunityPost["tone"]> = {
+      Win: "coral",
+      Announcement: "violet",
+      "The Pitch": "violet",
+      Question: "blue",
+      Podcast: "green",
+      General: "green"
+    };
     const newPost: CommunityPost = {
       id: `post-${Date.now()}`,
       author: currentMember?.name ?? "SBRA Member",
       businessName: currentBusiness?.name ?? "",
       timeAgo: "Just now",
-      category: body.endsWith("?") ? "Member Ask" : "Update",
-      tone: body.endsWith("?") ? "violet" : "green",
+      category: postCategory,
+      tone: toneByCategory[postCategory] ?? "green",
       body: body || "Shared new files with the community.",
       attachments: postAttachments,
       reactions: 0,
@@ -534,8 +560,52 @@ export function SBRAApp() {
     };
     setPosts((records) => [newPost, ...records]);
     setPostDraft("");
+    setPostCategory("General");
     setPostAttachments([]);
     setComposerOpen(false);
+  }
+
+  function toggleReaction(postId: string) {
+    if (!currentMember) return;
+    const memberId = currentMember.id;
+    if (liveServices && liveProfile) {
+      void toggleLiveReaction(postId, memberId, "celebrate");
+      return;
+    }
+    setReactions((records) => {
+      const existing = records.find(
+        (reaction) => reaction.postId === postId && reaction.memberId === memberId && reaction.type === "celebrate"
+      );
+      if (existing) {
+        return records.filter((reaction) => reaction.id !== existing.id);
+      }
+      return [...records, { id: `rx-${Date.now()}`, postId, memberId, type: "celebrate" }];
+    });
+  }
+
+  function toggleCommentThread(postId: string) {
+    setOpenComments((open) => (open.includes(postId) ? open.filter((id) => id !== postId) : [...open, postId]));
+  }
+
+  function addComment(postId: string) {
+    if (!currentMember) return;
+    const body = (commentDrafts[postId] ?? "").trim();
+    if (!body) return;
+    const authorName = currentMember.name;
+    if (liveServices && liveProfile) {
+      void createLiveComment({ postId, authorId: currentMember.id, authorName, body });
+    } else {
+      const newComment: Comment = {
+        id: `cmt-${Date.now()}`,
+        postId,
+        authorId: currentMember.id,
+        authorName,
+        body,
+        createdAt: Date.now()
+      };
+      setComments((records) => [...records, newComment]);
+    }
+    setCommentDrafts((drafts) => ({ ...drafts, [postId]: "" }));
   }
 
   function addPostFiles(fileList: FileList | null) {
@@ -973,15 +1043,26 @@ export function SBRAApp() {
         {activeView === "community" && (
           <CommunityView
             posts={posts}
+            reactions={reactions}
+            comments={comments}
+            currentMemberId={currentMember?.id ?? ""}
+            openComments={openComments}
+            commentDrafts={commentDrafts}
             authorInitials={currentMember ? initials(currentMember.name) : "SB"}
             composerOpen={composerOpen}
             postDraft={postDraft}
+            postCategory={postCategory}
             attachments={postAttachments}
             onOpenComposer={() => setComposerOpen(true)}
             onPostDraft={setPostDraft}
+            onPostCategory={setPostCategory}
             onAddFiles={addPostFiles}
             onRemoveAttachment={removePostAttachment}
             onCreatePost={createPost}
+            onToggleReaction={toggleReaction}
+            onToggleCommentThread={toggleCommentThread}
+            onCommentDraft={(postId, value) => setCommentDrafts((drafts) => ({ ...drafts, [postId]: value }))}
+            onAddComment={addComment}
             onCancelPost={() => {
               setComposerOpen(false);
               setPostDraft("");
@@ -1285,27 +1366,49 @@ function UtilityIcon({ icon }: { icon: "bell" | "settings" | "paperclip" }) {
 
 function CommunityView({
   posts,
+  reactions,
+  comments,
+  currentMemberId,
+  openComments,
+  commentDrafts,
   authorInitials,
   composerOpen,
   postDraft,
+  postCategory,
   attachments,
   onOpenComposer,
   onPostDraft,
+  onPostCategory,
   onAddFiles,
   onRemoveAttachment,
   onCreatePost,
+  onToggleReaction,
+  onToggleCommentThread,
+  onCommentDraft,
+  onAddComment,
   onCancelPost
 }: {
   posts: CommunityPost[];
+  reactions: Reaction[];
+  comments: Comment[];
+  currentMemberId: string;
+  openComments: string[];
+  commentDrafts: Record<string, string>;
   authorInitials: string;
   composerOpen: boolean;
   postDraft: string;
+  postCategory: string;
   attachments: PostAttachment[];
   onOpenComposer: () => void;
   onPostDraft: (value: string) => void;
+  onPostCategory: (value: string) => void;
   onAddFiles: (files: FileList | null) => void;
   onRemoveAttachment: (id: string) => void;
   onCreatePost: () => void;
+  onToggleReaction: (postId: string) => void;
+  onToggleCommentThread: (postId: string) => void;
+  onCommentDraft: (postId: string, value: string) => void;
+  onAddComment: (postId: string) => void;
   onCancelPost: () => void;
 }) {
   return (
@@ -1334,6 +1437,21 @@ function CommunityView({
                   ))}
                 </div>
               )}
+              <div className="composer-category">
+                <span className="section-label">Category</span>
+                <div className="category-chips">
+                  {postCategories.map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      className={postCategory === category ? "category-chip active" : "category-chip"}
+                      onClick={() => onPostCategory(category)}
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="composer-actions">
                 <label className="secondary-button file-button">
                   <UtilityIcon icon="paperclip" />
@@ -1363,40 +1481,86 @@ function CommunityView({
           )}
         </div>
 
-        {posts.map((post) => (
-          <article className="glass-panel post-card" key={post.id}>
-            <div className="post-head">
-              <div className={`avatar ${post.tone}`}>{initials(post.author)}</div>
-              <div>
-                <h3>{post.author}</h3>
-                <p>
-                  {post.businessName ? `${post.businessName} · ` : ""}
-                  {post.timeAgo}
-                </p>
+        {posts.map((post) => {
+          const postReactions = reactions.filter((reaction) => reaction.postId === post.id);
+          const reactionCount = post.reactions + postReactions.length;
+          const iReacted = postReactions.some(
+            (reaction) => reaction.memberId === currentMemberId && reaction.type === "celebrate"
+          );
+          const postComments = comments
+            .filter((comment) => comment.postId === post.id)
+            .sort((a, b) => a.createdAt - b.createdAt);
+          const commentCount = post.comments + postComments.length;
+          const threadOpen = openComments.includes(post.id);
+          return (
+            <article className="glass-panel post-card" key={post.id}>
+              <div className="post-head">
+                <div className={`avatar ${post.tone}`}>{initials(post.author)}</div>
+                <div>
+                  <h3>{post.author}</h3>
+                  <p>
+                    {post.businessName ? `${post.businessName} · ` : ""}
+                    {post.timeAgo}
+                  </p>
+                </div>
+                <span className={`pill ${post.tone === "violet" ? "violet" : ""}`}>{post.category}</span>
               </div>
-              <span className={`pill ${post.tone === "violet" ? "violet" : ""}`}>{post.category}</span>
-            </div>
-            <p className="post-copy">{post.body}</p>
-            {post.attachments && post.attachments.length > 0 && (
-              <div className={post.attachments.some((attachment) => attachment.kind === "image") ? "post-attachments media-grid" : "post-attachments"}>
-                {post.attachments.map((attachment) => (
-                  <AttachmentPreview attachment={attachment} key={attachment.id} />
-                ))}
+              <p className="post-copy">{post.body}</p>
+              {post.attachments && post.attachments.length > 0 && (
+                <div className={post.attachments.some((attachment) => attachment.kind === "image") ? "post-attachments media-grid" : "post-attachments"}>
+                  {post.attachments.map((attachment) => (
+                    <AttachmentPreview attachment={attachment} key={attachment.id} />
+                  ))}
+                </div>
+              )}
+              {post.note && (
+                <div className="reply-box">
+                  <strong>SBRA note</strong>
+                  <span>{post.note}</span>
+                </div>
+              )}
+              <div className="post-actions">
+                <button className={iReacted ? "post-action active" : "post-action"} onClick={() => onToggleReaction(post.id)}>
+                  {iReacted ? "★ Celebrated" : "Celebrate"} {reactionCount > 0 ? reactionCount : ""}
+                </button>
+                <button className={threadOpen ? "post-action active" : "post-action"} onClick={() => onToggleCommentThread(post.id)}>
+                  Comment {commentCount > 0 ? commentCount : ""}
+                </button>
+                <button className="post-action">{post.category.includes("Question") ? "Give Referral" : "Save"}</button>
               </div>
-            )}
-            {post.note && (
-              <div className="reply-box">
-                <strong>SBRA note</strong>
-                <span>{post.note}</span>
-              </div>
-            )}
-            <div className="post-actions">
-              <button>Celebrate {post.reactions > 0 ? post.reactions : ""}</button>
-              <button>Comment {post.comments > 0 ? post.comments : ""}</button>
-              <button>{post.category.includes("Ask") ? "Give Referral" : "Save"}</button>
-            </div>
-          </article>
-        ))}
+              {threadOpen && (
+                <div className="comment-thread">
+                  {postComments.map((comment) => (
+                    <div className="comment-row" key={comment.id}>
+                      <div className="mini-avatar blue">{initials(comment.authorName)}</div>
+                      <div className="comment-body">
+                        <strong>{comment.authorName}</strong>
+                        <p>{comment.body}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="comment-composer">
+                    <input
+                      aria-label="Add a comment"
+                      placeholder="Add a comment…"
+                      value={commentDrafts[post.id] ?? ""}
+                      onChange={(event) => onCommentDraft(post.id, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          onAddComment(post.id);
+                        }
+                      }}
+                    />
+                    <button className="primary-button" onClick={() => onAddComment(post.id)}>
+                      Reply
+                    </button>
+                  </div>
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
 
       <aside className="right-rail">

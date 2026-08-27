@@ -11,9 +11,12 @@
 // real implementations. The UI keeps importing from `@/lib/data` unchanged.
 
 import type {
+  Comment,
   CommunityPost,
   Member,
   PostAttachment,
+  Reaction,
+  ReactionType,
   Referral,
   ReferralKind,
   Rsvp,
@@ -140,6 +143,30 @@ export async function setLiveCheckIn(
   _memberId: string,
   _checkedIn: boolean
 ): Promise<Rsvp | null> {
+  return null;
+}
+
+export function watchComments(
+  _onComments: (comments: Comment[]) => void,
+  _onError: (error: DataError) => void
+): () => void {
+  return () => {};
+}
+
+export async function createLiveComment(_input: {
+  postId: string;
+  authorId: string;
+  authorName: string;
+  body: string;
+}): Promise<Comment | null> {
+  return null;
+}
+
+export async function toggleLiveReaction(
+  _postId: string,
+  _memberId: string,
+  _type: ReactionType
+): Promise<Reaction | null> {
   return null;
 }
 

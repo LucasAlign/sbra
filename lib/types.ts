@@ -139,6 +139,26 @@ export type CommunityPost = {
   createdAt?: number;
 };
 
+export type ReactionType = "celebrate" | "support" | "insightful";
+
+export type Reaction = {
+  id: string;
+  postId: string;
+  memberId: string;
+  type: ReactionType;
+};
+
+export type Comment = {
+  id: string;
+  postId: string;
+  authorId: string;
+  authorName: string;
+  body: string;
+  createdAt: number;
+};
+
+export const postCategories = ["Win", "Announcement", "The Pitch", "Question", "Podcast", "General"] as const;
+
 export type PostAttachment = {
   id: string;
   name: string;

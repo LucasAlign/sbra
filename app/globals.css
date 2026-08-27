@@ -2316,3 +2316,88 @@ button {
   color: #157347;
   background: rgba(31, 157, 85, 0.14);
 }
+
+/* ---- Community feed: categories, reactions, comments ---- */
+.composer-category {
+  margin: 8px 0 4px;
+}
+
+.category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.category-chip {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.category-chip.active {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--blue), var(--violet));
+}
+
+.post-action.active {
+  color: var(--coral);
+  font-weight: 800;
+}
+
+.comment-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.comment-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.comment-body {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(0, 17, 103, 0.05);
+}
+
+.comment-body strong {
+  font-size: 13px;
+}
+
+.comment-body p {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.comment-composer {
+  display: flex;
+  gap: 8px;
+}
+
+.comment-composer input {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+  outline: none;
+}
+
+.comment-composer .primary-button {
+  min-height: 40px;
+  padding: 0 16px;
+}
