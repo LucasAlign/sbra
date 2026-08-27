@@ -4,10 +4,57 @@ export type ViewKey =
   | "community"
   | "directory"
   | "referrals"
+  | "events"
   | "learn"
   | "support"
   | "profile"
   | "admin";
+
+export type EventType =
+  | "breakfast_club"
+  | "mingle"
+  | "ribbon_cutting"
+  | "workshop"
+  | "seminar"
+  | "pitch"
+  | "huddle";
+
+export const eventTypeLabels: Record<EventType, string> = {
+  breakfast_club: "Breakfast Referral Club",
+  mingle: "Mingle",
+  ribbon_cutting: "Ribbon-cutting",
+  workshop: "Workshop",
+  seminar: "Seminar",
+  pitch: "The Pitch",
+  huddle: "Huddle"
+};
+
+// A scheduled SBRA gathering. Named SbraEvent to avoid shadowing the DOM Event.
+export type SbraEvent = {
+  id: string;
+  title: string;
+  type: EventType;
+  description: string;
+  startsAt: number;
+  endsAt?: number;
+  recurrence: "none" | "weekly" | "monthly";
+  venueName: string;
+  venueAddress: string;
+  hostMemberId?: string; // rotating host (Mingles)
+  cost: number; // 0 = free
+  capacity?: number;
+  createdById: string;
+};
+
+export type RsvpStatus = "going" | "maybe" | "declined";
+
+export type Rsvp = {
+  eventId: string;
+  memberId: string;
+  status: RsvpStatus;
+  checkedIn: boolean;
+  respondedAt: number;
+};
 
 export type ReferralKind = "lead" | "intro";
 

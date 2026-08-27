@@ -2159,3 +2159,160 @@ button {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ---- Events & Mingles ---- */
+.events-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.events-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 20px;
+  padding: 18px;
+  border-top: 4px solid var(--blue);
+}
+
+.event-card.type-mingle {
+  border-top-color: var(--gold);
+}
+
+.event-card.type-ribbon_cutting {
+  border-top-color: var(--coral);
+}
+
+.event-card.type-workshop {
+  border-top-color: #2a3a8c;
+}
+
+.event-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-type-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(0, 17, 103, 0.1);
+  color: var(--blue);
+}
+
+.event-type-badge.mingle {
+  background: rgba(247, 215, 68, 0.35);
+  color: #5a4b00;
+}
+
+.event-type-badge.ribbon_cutting {
+  background: rgba(184, 26, 31, 0.14);
+  color: var(--coral);
+}
+
+.event-recurrence {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--muted);
+}
+
+.event-cost {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.event-title {
+  margin: 2px 0 0;
+  font-size: 18px;
+}
+
+.event-when {
+  margin: 0;
+  font-weight: 600;
+  color: var(--blue);
+  font-size: 14px;
+}
+
+.event-venue {
+  display: flex;
+  flex-direction: column;
+  margin: 4px 0 0;
+  font-size: 14px;
+}
+
+.event-venue span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.event-host {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.event-desc {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.event-meta {
+  display: flex;
+  gap: 14px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.event-meta strong {
+  color: var(--ink);
+}
+
+.event-rsvp {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.rsvp-button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rsvp-button.active {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--blue), var(--violet));
+}
+
+.checkin-button {
+  margin-top: 8px;
+  min-height: 38px;
+}
+
+.checkin-button.checked {
+  color: #157347;
+  background: rgba(31, 157, 85, 0.14);
+}

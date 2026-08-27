@@ -1,6 +1,26 @@
-import type { Business, CommunityPost, Member, Module, Referral, SupportRequest } from "@/lib/types";
+import type {
+  Business,
+  CommunityPost,
+  Member,
+  Module,
+  Referral,
+  Rsvp,
+  SbraEvent,
+  SupportRequest
+} from "@/lib/types";
 
 const DAY = 24 * 60 * 60 * 1000;
+const HOUR = 60 * 60 * 1000;
+
+// Next Friday 7:30 AM, and helpers for seed event times.
+function nextWeekday(targetDow: number, hour: number, minute = 0) {
+  const now = new Date();
+  const result = new Date(now);
+  const delta = (targetDow - now.getDay() + 7) % 7 || 7;
+  result.setDate(now.getDate() + delta);
+  result.setHours(hour, minute, 0, 0);
+  return result.getTime();
+}
 
 // SBRA member businesses (the directory) — Greater Reading / Berks County, PA.
 export const businessSeed: Business[] = [
@@ -326,6 +346,84 @@ export const referralSeed: Referral[] = [
   }
 ];
 
+// SBRA events. Times are generated relative to "now" so the seed always looks upcoming.
+export const eventSeed: SbraEvent[] = [
+  {
+    id: "evt-breakfast",
+    title: "Breakfast Referral Club",
+    type: "breakfast_club",
+    description:
+      "Our signature Friday morning referral exchange. Feature speaker: Tom Alvarez on the three numbers every owner should check weekly. Members pay only for their meal.",
+    startsAt: nextWeekday(5, 7, 30),
+    endsAt: nextWeekday(5, 9, 0),
+    recurrence: "weekly",
+    venueName: "B2 Bistro & Bar",
+    venueAddress: "701 Penn Ave, West Reading, PA",
+    hostMemberId: "tom-alvarez",
+    cost: 0,
+    capacity: 30,
+    createdById: "tom-alvarez"
+  },
+  {
+    id: "evt-mingle",
+    title: "September Mingle at Polished Studio",
+    type: "mingle",
+    description:
+      "Member-hosted evening Mingle. Tour Sofia's studio, grab a mini-manicure, and trade referrals over drinks. Hosted by a member — apply to host a future one!",
+    startsAt: nextWeekday(2, 17, 30) + 21 * DAY,
+    endsAt: nextWeekday(2, 19, 30) + 21 * DAY,
+    recurrence: "monthly",
+    venueName: "Polished Mobile Nail Studio",
+    venueAddress: "77 Kutztown Rd, Laureldale, PA",
+    hostMemberId: "sofia-martinez",
+    cost: 0,
+    capacity: 40,
+    createdById: "sofia-martinez"
+  },
+  {
+    id: "evt-ribbon",
+    title: "Ribbon-Cutting: Berks Apparel Co.",
+    type: "ribbon_cutting",
+    description:
+      "Celebrate Ari's new storefront with a ribbon-cutting and open house. Light refreshments provided. Bring a friend who might need custom apparel.",
+    startsAt: nextWeekday(4, 16, 0) + 7 * DAY,
+    endsAt: nextWeekday(4, 17, 30) + 7 * DAY,
+    recurrence: "none",
+    venueName: "Berks Apparel Co.",
+    venueAddress: "48 N 5th St, Reading, PA",
+    hostMemberId: "ari-rivera",
+    cost: 0,
+    capacity: 60,
+    createdById: "ari-rivera"
+  },
+  {
+    id: "evt-workshop",
+    title: "Workshop: Master the Referral Exchange",
+    type: "workshop",
+    description:
+      "Free bimonthly workshop on giving great referrals and closing the loop. Hands-on: build your 30-second intro and your ideal-referral profile.",
+    startsAt: nextWeekday(3, 12, 0) + 10 * DAY,
+    endsAt: nextWeekday(3, 13, 30) + 10 * DAY,
+    recurrence: "none",
+    venueName: "SBRA Resource Center",
+    venueAddress: "2609 Keiser Blvd, Wyomissing, PA",
+    cost: 0,
+    capacity: 25,
+    createdById: "grace-whitfield"
+  }
+];
+
+// Seed RSVPs so the events show activity.
+export const rsvpSeed: Rsvp[] = [
+  { eventId: "evt-breakfast", memberId: "tom-alvarez", status: "going", checkedIn: false, respondedAt: Date.now() - 2 * DAY },
+  { eventId: "evt-breakfast", memberId: "noah-patel", status: "going", checkedIn: false, respondedAt: Date.now() - 1 * DAY },
+  { eventId: "evt-breakfast", memberId: "ari-rivera", status: "going", checkedIn: false, respondedAt: Date.now() - 1 * DAY },
+  { eventId: "evt-breakfast", memberId: "jada-lee", status: "maybe", checkedIn: false, respondedAt: Date.now() - 1 * DAY },
+  { eventId: "evt-mingle", memberId: "sofia-martinez", status: "going", checkedIn: false, respondedAt: Date.now() - 3 * DAY },
+  { eventId: "evt-mingle", memberId: "grace-whitfield", status: "going", checkedIn: false, respondedAt: Date.now() - 2 * HOUR },
+  { eventId: "evt-ribbon", memberId: "ari-rivera", status: "going", checkedIn: false, respondedAt: Date.now() - 4 * DAY }
+];
+
 export const supportCategories = [
   "Referral introduction",
   "Bookkeeping or legal",
@@ -363,6 +461,7 @@ export const viewTitles = {
   community: "Community Home",
   directory: "Member Directory",
   referrals: "Referrals",
+  events: "Events & Mingles",
   learn: "Learning Hub",
   support: "Support Center",
   profile: "My Profile",

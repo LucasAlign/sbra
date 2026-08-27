@@ -16,6 +16,9 @@ import type {
   PostAttachment,
   Referral,
   ReferralKind,
+  Rsvp,
+  RsvpStatus,
+  SbraEvent,
   SupportRequest,
   UserRole
 } from "@/lib/types";
@@ -110,6 +113,33 @@ export async function updateLiveReferral(
   _id: string,
   _changes: Partial<Referral>
 ): Promise<Referral | null> {
+  return null;
+}
+
+export function watchEvents(
+  _onEvents: (events: SbraEvent[]) => void,
+  _onError: (error: DataError) => void
+): () => void {
+  return () => {};
+}
+
+export async function createLiveEvent(_input: Omit<SbraEvent, "id">): Promise<SbraEvent | null> {
+  return null;
+}
+
+export async function setLiveRsvp(
+  _eventId: string,
+  _memberId: string,
+  _status: RsvpStatus
+): Promise<Rsvp | null> {
+  return null;
+}
+
+export async function setLiveCheckIn(
+  _eventId: string,
+  _memberId: string,
+  _checkedIn: boolean
+): Promise<Rsvp | null> {
   return null;
 }
 

@@ -2,15 +2,19 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
+  createLiveEvent,
   createLivePost,
   createLiveReferral,
   createLiveSupportRequest,
   getLiveServices,
   loadOrCreateUserProfile,
   saveUserProfile,
+  setLiveCheckIn,
+  setLiveRsvp,
   signInWithEmailPassword,
   signInForRole,
   updateLiveReferral,
+  watchEvents,
   watchPosts,
   watchReferrals,
   watchSupportRequests,
@@ -20,25 +24,32 @@ import { parseRosterFile } from "@/lib/importers";
 import {
   businessSeed,
   communityPosts,
+  eventSeed,
   initials,
   learningModules,
   memberSeed,
   referralSeed,
+  rsvpSeed,
   supportCategories,
   supportRequests,
   viewTitles
 } from "@/lib/seed-data";
 import {
+  eventTypeLabels,
   referralStatusLabels,
   tierLabels,
   type Business,
   type CommunityPost,
+  type EventType,
   type Member,
   type MembershipTier,
   type PostAttachment,
   type Referral,
   type ReferralKind,
   type ReferralStatus,
+  type Rsvp,
+  type RsvpStatus,
+  type SbraEvent,
   type SupportRequest,
   type UserRole,
   type ViewKey
@@ -74,6 +85,28 @@ const emptyReferralDraft: ReferralDraft = {
   need: ""
 };
 
+type EventDraft = {
+  title: string;
+  type: EventType;
+  description: string;
+  startsAt: string; // datetime-local value
+  venueName: string;
+  venueAddress: string;
+  cost: string;
+  capacity: string;
+};
+
+const emptyEventDraft: EventDraft = {
+  title: "",
+  type: "mingle",
+  description: "",
+  startsAt: "",
+  venueName: "",
+  venueAddress: "",
+  cost: "0",
+  capacity: ""
+};
+
 type GlobalSearchResult = {
   id: string;
   label: string;
@@ -88,6 +121,7 @@ const navItems: Array<{ key: ViewKey; label: string; count: string; icon: ViewKe
   { key: "community", label: "Home", count: "12", icon: "community" },
   { key: "directory", label: "Directory", count: "Members", icon: "directory" },
   { key: "referrals", label: "Referrals", count: "Core", icon: "referrals" },
+  { key: "events", label: "Events", count: "Mingles", icon: "events" },
   { key: "learn", label: "Learn", count: "3", icon: "learn" },
   { key: "support", label: "Support", count: "4", icon: "support" },
   { key: "profile", label: "Profile", count: "You", icon: "profile" },
@@ -124,6 +158,10 @@ export function SBRAApp() {
   const [referralComposerOpen, setReferralComposerOpen] = useState(false);
   const [referralDraft, setReferralDraft] = useState<ReferralDraft>(emptyReferralDraft);
   const [closingReferral, setClosingReferral] = useState<Referral | null>(null);
+  const [events, setEvents] = useState<SbraEvent[]>(eventSeed);
+  const [rsvps, setRsvps] = useState<Rsvp[]>(rsvpSeed);
+  const [eventComposerOpen, setEventComposerOpen] = useState(false);
+  const [eventDraft, setEventDraft] = useState<EventDraft>(emptyEventDraft);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [activeBusiness, setActiveBusiness] = useState<Business | null>(null);
@@ -228,11 +266,16 @@ export function SBRAApp() {
       (liveReferrals) => setReferrals(liveReferrals),
       (error) => setLiveNote(`Referrals are still using local data: ${error.message}`)
     );
+    const stopEvents = watchEvents(
+      (liveEvents) => setEvents(liveEvents),
+      (error) => setLiveNote(`Events are still using local data: ${error.message}`)
+    );
 
     return () => {
       stopPosts?.();
       stopRequests?.();
       stopReferrals?.();
+      stopEvents?.();
     };
   }, [liveServices, role]);
 
@@ -612,6 +655,94 @@ export function SBRAApp() {
     setClosingReferral(null);
   }
 
+  function setEventRsvp(eventId: string, status: RsvpStatus) {
+    if (!currentMember) return;
+    const memberId = currentMember.id;
+    if (liveServices && liveProfile) {
+      void setLiveRsvp(eventId, memberId, status);
+      return;
+    }
+    setRsvps((records) => {
+      const existing = records.find((rsvp) => rsvp.eventId === eventId && rsvp.memberId === memberId);
+      if (existing) {
+        return records.map((rsvp) =>
+          rsvp.eventId === eventId && rsvp.memberId === memberId
+            ? { ...rsvp, status, respondedAt: Date.now(), checkedIn: status === "going" ? rsvp.checkedIn : false }
+            : rsvp
+        );
+      }
+      return [...records, { eventId, memberId, status, checkedIn: false, respondedAt: Date.now() }];
+    });
+  }
+
+  function toggleCheckIn(eventId: string) {
+    if (!currentMember) return;
+    const memberId = currentMember.id;
+    const existing = rsvps.find((rsvp) => rsvp.eventId === eventId && rsvp.memberId === memberId);
+    const nextChecked = !(existing?.checkedIn ?? false);
+    if (liveServices && liveProfile) {
+      void setLiveCheckIn(eventId, memberId, nextChecked);
+      return;
+    }
+    setRsvps((records) => {
+      if (!existing) {
+        return [...records, { eventId, memberId, status: "going", checkedIn: true, respondedAt: Date.now() }];
+      }
+      return records.map((rsvp) =>
+        rsvp.eventId === eventId && rsvp.memberId === memberId
+          ? { ...rsvp, checkedIn: nextChecked, status: "going" }
+          : rsvp
+      );
+    });
+  }
+
+  async function submitEvent() {
+    if (!currentMember) return;
+    const draft = eventDraft;
+    if (!draft.title.trim() || !draft.startsAt || !draft.venueName.trim()) return;
+
+    const startsAt = new Date(draft.startsAt).getTime();
+    const base = {
+      title: draft.title.trim(),
+      type: draft.type,
+      description: draft.description.trim(),
+      startsAt,
+      recurrence: "none" as const,
+      venueName: draft.venueName.trim(),
+      venueAddress: draft.venueAddress.trim(),
+      hostMemberId: currentMember.id,
+      cost: Number(draft.cost) || 0,
+      capacity: draft.capacity ? Number(draft.capacity) : undefined,
+      createdById: currentMember.id
+    };
+
+    if (liveServices && liveProfile) {
+      try {
+        await createLiveEvent(base);
+        setEventComposerOpen(false);
+        setLiveNote("Event created.");
+      } catch (error) {
+        setLiveNote(error instanceof Error ? error.message : "Unable to create this event.");
+      }
+      return;
+    }
+
+    const newEvent: SbraEvent = { id: `evt-${Date.now()}`, ...base };
+    setEvents((records) => [newEvent, ...records]);
+    // creator auto-RSVPs as going
+    setRsvps((records) => [
+      ...records,
+      { eventId: newEvent.id, memberId: currentMember.id, status: "going", checkedIn: false, respondedAt: Date.now() }
+    ]);
+    setEventComposerOpen(false);
+    setEventDraft(emptyEventDraft);
+  }
+
+  function openEventComposer() {
+    setEventDraft(emptyEventDraft);
+    setEventComposerOpen(true);
+  }
+
   function openSearchResult(result: GlobalSearchResult) {
     setActiveView(result.view);
     setGlobalSearchOpen(false);
@@ -882,6 +1013,17 @@ export function SBRAApp() {
             onOpenClose={setClosingReferral}
           />
         )}
+        {activeView === "events" && (
+          <EventsView
+            events={events}
+            rsvps={rsvps}
+            memberById={memberById}
+            currentMemberId={currentMember?.id ?? ""}
+            onCreate={openEventComposer}
+            onRsvp={setEventRsvp}
+            onToggleCheckIn={toggleCheckIn}
+          />
+        )}
         {activeView === "learn" && <LearnView />}
         {activeView === "support" && (
           <SupportView
@@ -964,6 +1106,15 @@ export function SBRAApp() {
           onConfirm={closeReferralWon}
         />
       )}
+
+      {eventComposerOpen && currentMember && (
+        <CreateEventModal
+          draft={eventDraft}
+          onChange={setEventDraft}
+          onClose={() => setEventComposerOpen(false)}
+          onSubmit={submitEvent}
+        />
+      )}
     </div>
   );
 }
@@ -1041,6 +1192,17 @@ function NavIcon({ icon }: { icon: ViewKey }) {
         <path d="m14 5 3 3-3 3" />
         <path d="M20 16H7" />
         <path d="m10 13-3 3 3 3" />
+      </svg>
+    );
+  }
+
+  if (icon === "events") {
+    return (
+      <svg {...common}>
+        <rect x="3" y="4" width="18" height="17" rx="2" />
+        <path d="M3 9h18" />
+        <path d="M8 2v4" />
+        <path d="M16 2v4" />
       </svg>
     );
   }
@@ -2109,6 +2271,254 @@ function CloseReferralModal({
           </button>
           <button className="primary-button" onClick={() => onConfirm(referral, Number(value) || 0, thankYou)}>
             Confirm Won
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function formatEventTime(startsAt: number, endsAt?: number) {
+  const start = new Date(startsAt);
+  const datePart = start.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric"
+  });
+  const startTime = start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const endTime = endsAt
+    ? new Date(endsAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    : null;
+  return `${datePart} · ${startTime}${endTime ? ` – ${endTime}` : ""}`;
+}
+
+function EventsView({
+  events,
+  rsvps,
+  memberById,
+  currentMemberId,
+  onCreate,
+  onRsvp,
+  onToggleCheckIn
+}: {
+  events: SbraEvent[];
+  rsvps: Rsvp[];
+  memberById: Map<string, Member>;
+  currentMemberId: string;
+  onCreate: () => void;
+  onRsvp: (eventId: string, status: RsvpStatus) => void;
+  onToggleCheckIn: (eventId: string) => void;
+}) {
+  const sorted = [...events].sort((a, b) => a.startsAt - b.startsAt);
+
+  return (
+    <section className="events-layout">
+      <div className="glass-panel referral-header">
+        <div>
+          <p className="section-label">Events &amp; Mingles</p>
+          <h3>Show up and connect</h3>
+          <p className="referral-sub">Breakfast Referral Club, Mingles, ribbon-cuttings, and workshops.</p>
+        </div>
+        <button className="primary-button" onClick={onCreate}>
+          <span className="button-icon">+</span>
+          Create Event
+        </button>
+      </div>
+
+      <div className="events-grid">
+        {sorted.map((event) => {
+          const eventRsvps = rsvps.filter((rsvp) => rsvp.eventId === event.id);
+          const myRsvp = eventRsvps.find((rsvp) => rsvp.memberId === currentMemberId);
+          return (
+            <EventCard
+              key={event.id}
+              event={event}
+              eventRsvps={eventRsvps}
+              myRsvp={myRsvp}
+              host={event.hostMemberId ? memberById.get(event.hostMemberId) : undefined}
+              onRsvp={onRsvp}
+              onToggleCheckIn={onToggleCheckIn}
+            />
+          );
+        })}
+        {events.length === 0 && <div className="empty-state">No upcoming events yet.</div>}
+      </div>
+    </section>
+  );
+}
+
+function EventCard({
+  event,
+  eventRsvps,
+  myRsvp,
+  host,
+  onRsvp,
+  onToggleCheckIn
+}: {
+  event: SbraEvent;
+  eventRsvps: Rsvp[];
+  myRsvp?: Rsvp;
+  host?: Member;
+  onRsvp: (eventId: string, status: RsvpStatus) => void;
+  onToggleCheckIn: (eventId: string) => void;
+}) {
+  const goingCount = eventRsvps.filter((rsvp) => rsvp.status === "going").length;
+  const maybeCount = eventRsvps.filter((rsvp) => rsvp.status === "maybe").length;
+  const statuses: RsvpStatus[] = ["going", "maybe", "declined"];
+  const statusText: Record<RsvpStatus, string> = { going: "Going", maybe: "Maybe", declined: "Can't go" };
+
+  return (
+    <article className={`glass-panel event-card type-${event.type}`}>
+      <div className="event-card-head">
+        <span className={`event-type-badge ${event.type}`}>{eventTypeLabels[event.type]}</span>
+        {event.recurrence !== "none" && <span className="event-recurrence">{event.recurrence}</span>}
+        <span className="event-cost">{event.cost > 0 ? `$${event.cost}` : "Free"}</span>
+      </div>
+
+      <h3 className="event-title">{event.title}</h3>
+      <p className="event-when">{formatEventTime(event.startsAt, event.endsAt)}</p>
+
+      <p className="event-venue">
+        <strong>{event.venueName}</strong>
+        {event.venueAddress ? <span>{event.venueAddress}</span> : null}
+      </p>
+
+      {host && <p className="event-host">Hosted by {host.name}</p>}
+      <p className="event-desc">{event.description}</p>
+
+      <div className="event-meta">
+        <span>
+          <strong>{goingCount}</strong> going
+        </span>
+        <span>
+          <strong>{maybeCount}</strong> maybe
+        </span>
+        {event.capacity ? <span>Cap {event.capacity}</span> : null}
+      </div>
+
+      <div className="event-rsvp">
+        {statuses.map((status) => (
+          <button
+            key={status}
+            className={myRsvp?.status === status ? "rsvp-button active" : "rsvp-button"}
+            onClick={() => onRsvp(event.id, status)}
+          >
+            {statusText[status]}
+          </button>
+        ))}
+      </div>
+
+      {myRsvp?.status === "going" && (
+        <button
+          className={myRsvp.checkedIn ? "secondary-button checkin-button checked" : "secondary-button checkin-button"}
+          onClick={() => onToggleCheckIn(event.id)}
+        >
+          {myRsvp.checkedIn ? "✓ Checked in" : "Check in"}
+        </button>
+      )}
+    </article>
+  );
+}
+
+function CreateEventModal({
+  draft,
+  onChange,
+  onClose,
+  onSubmit
+}: {
+  draft: EventDraft;
+  onChange: (draft: EventDraft) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const canSubmit = draft.title.trim().length > 0 && Boolean(draft.startsAt) && draft.venueName.trim().length > 0;
+  const eventTypes = Object.keys(eventTypeLabels) as EventType[];
+
+  return (
+    <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="create-event">
+        <button className="modal-close" onClick={onClose} aria-label="Close event form">
+          Close
+        </button>
+        <div className="modal-head">
+          <div className="avatar large">+</div>
+          <div>
+            <p className="section-label">New event</p>
+            <h3 id="create-event">Create an event</h3>
+            <p>Host a Mingle, workshop, or gathering.</p>
+          </div>
+        </div>
+
+        <form className="profile-form" onSubmit={(event) => event.preventDefault()}>
+          <label className="wide">
+            Title
+            <input value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} />
+          </label>
+          <label>
+            Type
+            <select
+              value={draft.type}
+              onChange={(event) => onChange({ ...draft, type: event.target.value as EventType })}
+            >
+              {eventTypes.map((type) => (
+                <option key={type} value={type}>
+                  {eventTypeLabels[type]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Date &amp; time
+            <input
+              type="datetime-local"
+              value={draft.startsAt}
+              onChange={(event) => onChange({ ...draft, startsAt: event.target.value })}
+            />
+          </label>
+          <label>
+            Venue name
+            <input value={draft.venueName} onChange={(event) => onChange({ ...draft, venueName: event.target.value })} />
+          </label>
+          <label>
+            Venue address
+            <input
+              value={draft.venueAddress}
+              onChange={(event) => onChange({ ...draft, venueAddress: event.target.value })}
+            />
+          </label>
+          <label>
+            Cost ($, 0 = free)
+            <input
+              type="number"
+              min="0"
+              value={draft.cost}
+              onChange={(event) => onChange({ ...draft, cost: event.target.value })}
+            />
+          </label>
+          <label>
+            Capacity
+            <input
+              type="number"
+              min="0"
+              value={draft.capacity}
+              onChange={(event) => onChange({ ...draft, capacity: event.target.value })}
+            />
+          </label>
+          <label className="wide">
+            Description
+            <textarea
+              value={draft.description}
+              onChange={(event) => onChange({ ...draft, description: event.target.value })}
+            />
+          </label>
+        </form>
+
+        <div className="modal-actions">
+          <button className="secondary-button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-button" disabled={!canSubmit} onClick={onSubmit}>
+            Create Event
           </button>
         </div>
       </section>
