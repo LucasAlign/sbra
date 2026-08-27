@@ -178,6 +178,19 @@ export async function persistMember(member: Member): Promise<void> {
     .where(eq(schema.members.id, member.id));
 }
 
+export async function insertMember(member: Member): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  await db.insert(schema.members).values(member);
+}
+
+export async function insertBusinessWithOwner(business: Business, member: Member): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  await db.insert(schema.businesses).values({ ...business, createdAt: Date.now() });
+  await db.insert(schema.members).values(member);
+}
+
 export async function persistImportedMembers(
   rows: { business: Business; member: Member }[]
 ): Promise<void> {

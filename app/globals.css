@@ -2401,3 +2401,33 @@ button {
   min-height: 40px;
   padding: 0 16px;
 }
+
+/* ---- Onboarding / self-signup ---- */
+.login-signup {
+  margin: 14px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.link-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--blue);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.onboarding-modal .modal-actions {
+  justify-content: space-between;
+}
+
+.onboarding-toggle {
+  margin-bottom: 14px;
+}
+
+.onboarding-note {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}

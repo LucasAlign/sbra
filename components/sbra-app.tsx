@@ -118,6 +118,45 @@ const emptyEventDraft: EventDraft = {
   capacity: ""
 };
 
+type OnboardingDraft = {
+  name: string;
+  email: string;
+  title: string;
+  phone: string;
+  bio: string;
+  mode: "create" | "join";
+  businessName: string;
+  category: string;
+  city: string;
+  servicesOffered: string;
+  referralsWanted: string;
+  joinBusinessId: string;
+};
+
+const emptyOnboardingDraft: OnboardingDraft = {
+  name: "",
+  email: "",
+  title: "Owner",
+  phone: "",
+  bio: "",
+  mode: "create",
+  businessName: "",
+  category: "",
+  city: "",
+  servicesOffered: "",
+  referralsWanted: "",
+  joinBusinessId: ""
+};
+
+function slugify(value: string) {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || "biz"
+  );
+}
+
 type GlobalSearchResult = {
   id: string;
   label: string;
@@ -175,6 +214,8 @@ export function SBRAApp() {
   const [rsvps, setRsvps] = useState<Rsvp[]>(rsvpSeed);
   const [eventComposerOpen, setEventComposerOpen] = useState(false);
   const [eventDraft, setEventDraft] = useState<EventDraft>(emptyEventDraft);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [onboardingDraft, setOnboardingDraft] = useState<OnboardingDraft>(emptyOnboardingDraft);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [activeBusiness, setActiveBusiness] = useState<Business | null>(null);
@@ -871,6 +912,60 @@ export function SBRAApp() {
     setEventComposerOpen(true);
   }
 
+  function finishOnboarding() {
+    const draft = onboardingDraft;
+    if (!draft.name.trim() || !draft.email.trim()) return;
+    if (draft.mode === "create" && !draft.businessName.trim()) return;
+    if (draft.mode === "join" && !draft.joinBusinessId) return;
+
+    const memberId = `member-${Date.now()}`;
+    let businessId: string;
+    let newBusiness: Business | null = null;
+
+    if (draft.mode === "create") {
+      businessId = `biz-${slugify(draft.businessName)}-${Date.now()}`;
+      newBusiness = {
+        id: businessId,
+        name: draft.businessName.trim(),
+        category: draft.category.trim() || "Uncategorized",
+        description: "",
+        servicesOffered: draft.servicesOffered.trim(),
+        referralsWanted: draft.referralsWanted.trim(),
+        website: "",
+        address: "",
+        city: draft.city.trim(),
+        tier: "solo"
+      };
+    } else {
+      businessId = draft.joinBusinessId;
+    }
+
+    const newMember: Member = {
+      id: memberId,
+      businessId,
+      name: draft.name.trim(),
+      title: draft.title.trim() || (draft.mode === "create" ? "Owner" : "Team member"),
+      email: draft.email.trim(),
+      phone: draft.phone.trim(),
+      bio: draft.bio.trim(),
+      isOwner: draft.mode === "create",
+      role: "member"
+    };
+
+    if (newBusiness) setBusinesses((records) => [newBusiness as Business, ...records]);
+    setMembers((records) => [newMember, ...records]);
+    setLiveProfile({ ...newMember, uid: memberId, role: "member" });
+    setRole("member");
+    setActiveView("community");
+    setOnboardingOpen(false);
+    setOnboardingDraft(emptyOnboardingDraft);
+
+    if (dbEnabled) {
+      if (newBusiness) void backendActions.insertBusinessWithOwner(newBusiness, newMember);
+      else void backendActions.insertMember(newMember);
+    }
+  }
+
   function openSearchResult(result: GlobalSearchResult) {
     setActiveView(result.view);
     setGlobalSearchOpen(false);
@@ -967,7 +1062,29 @@ export function SBRAApp() {
               </div>
             )
           )}
+          <p className="login-signup">
+            New to SBRA?{" "}
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setOnboardingDraft(emptyOnboardingDraft);
+                setOnboardingOpen(true);
+              }}
+            >
+              Create your member profile
+            </button>
+          </p>
         </section>
+        {onboardingOpen && (
+          <OnboardingWizard
+            draft={onboardingDraft}
+            businesses={businesses}
+            onChange={setOnboardingDraft}
+            onClose={() => setOnboardingOpen(false)}
+            onFinish={finishOnboarding}
+          />
+        )}
       </main>
     );
   }
@@ -2751,6 +2868,147 @@ function CreateEventModal({
           <button className="primary-button" disabled={!canSubmit} onClick={onSubmit}>
             Create Event
           </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function OnboardingWizard({
+  draft,
+  businesses,
+  onChange,
+  onClose,
+  onFinish
+}: {
+  draft: OnboardingDraft;
+  businesses: Business[];
+  onChange: (draft: OnboardingDraft) => void;
+  onClose: () => void;
+  onFinish: () => void;
+}) {
+  const [step, setStep] = useState(1);
+  const canContinue = draft.name.trim().length > 0 && draft.email.trim().length > 0;
+  const canFinish =
+    canContinue &&
+    ((draft.mode === "create" && draft.businessName.trim().length > 0) ||
+      (draft.mode === "join" && Boolean(draft.joinBusinessId)));
+
+  return (
+    <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="glass-panel profile-modal onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onboarding">
+        <button className="modal-close" onClick={onClose} aria-label="Close">
+          Close
+        </button>
+        <div className="modal-head">
+          <div className="avatar large">SB</div>
+          <div>
+            <p className="section-label">Join SBRA · Step {step} of 2</p>
+            <h3 id="onboarding">{step === 1 ? "About you" : "Your business"}</h3>
+            <p>Be Better. Grow Faster.</p>
+          </div>
+        </div>
+
+        {step === 1 ? (
+          <form className="profile-form" onSubmit={(event) => event.preventDefault()}>
+            <label>
+              Full name
+              <input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
+            </label>
+            <label>
+              Email
+              <input type="email" value={draft.email} onChange={(event) => onChange({ ...draft, email: event.target.value })} />
+            </label>
+            <label>
+              Your title
+              <input value={draft.title} onChange={(event) => onChange({ ...draft, title: event.target.value })} />
+            </label>
+            <label>
+              Phone
+              <input value={draft.phone} onChange={(event) => onChange({ ...draft, phone: event.target.value })} />
+            </label>
+            <label className="wide">
+              Short bio
+              <textarea value={draft.bio} onChange={(event) => onChange({ ...draft, bio: event.target.value })} />
+            </label>
+          </form>
+        ) : (
+          <>
+            <div className="role-toggle onboarding-toggle" aria-label="Business option">
+              <button
+                type="button"
+                className={draft.mode === "create" ? "active" : ""}
+                onClick={() => onChange({ ...draft, mode: "create" })}
+              >
+                Create a new business
+              </button>
+              <button
+                type="button"
+                className={draft.mode === "join" ? "active" : ""}
+                onClick={() => onChange({ ...draft, mode: "join" })}
+              >
+                Join an existing business
+              </button>
+            </div>
+
+            {draft.mode === "create" ? (
+              <form className="profile-form" onSubmit={(event) => event.preventDefault()}>
+                <label className="wide">
+                  Business name
+                  <input value={draft.businessName} onChange={(event) => onChange({ ...draft, businessName: event.target.value })} />
+                </label>
+                <label>
+                  Category
+                  <input value={draft.category} onChange={(event) => onChange({ ...draft, category: event.target.value })} />
+                </label>
+                <label>
+                  City
+                  <input value={draft.city} onChange={(event) => onChange({ ...draft, city: event.target.value })} />
+                </label>
+                <label className="wide">
+                  Services offered (comma-separated)
+                  <input value={draft.servicesOffered} onChange={(event) => onChange({ ...draft, servicesOffered: event.target.value })} />
+                </label>
+                <label className="wide">
+                  Referrals wanted
+                  <textarea value={draft.referralsWanted} onChange={(event) => onChange({ ...draft, referralsWanted: event.target.value })} />
+                </label>
+                <p className="onboarding-note">You'll be the owner. Your membership tier is set by SBRA staff.</p>
+              </form>
+            ) : (
+              <form className="profile-form" onSubmit={(event) => event.preventDefault()}>
+                <label className="wide">
+                  Choose your business
+                  <select value={draft.joinBusinessId} onChange={(event) => onChange({ ...draft, joinBusinessId: event.target.value })}>
+                    <option value="">Select a member business…</option>
+                    {businesses.map((business) => (
+                      <option key={business.id} value={business.id}>
+                        {business.name} · {business.city}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="onboarding-note">You'll join as a team member. The owner can update your role.</p>
+              </form>
+            )}
+          </>
+        )}
+
+        <div className="modal-actions">
+          {step === 2 && (
+            <button className="secondary-button" onClick={() => setStep(1)}>
+              Back
+            </button>
+          )}
+          {step === 1 ? (
+            <button className="primary-button" disabled={!canContinue} onClick={() => setStep(2)}>
+              Continue
+            </button>
+          ) : (
+            <button className="primary-button" disabled={!canFinish} onClick={onFinish}>
+              Join SBRA
+            </button>
+          )}
         </div>
       </section>
     </div>
