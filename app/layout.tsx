@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Providers } from "./providers";
 import "./globals.css";
@@ -6,7 +6,15 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "SBRA — Be Better. Grow Faster.",
   description:
-    "The Small Business Resource Association member network — connect, exchange referrals, and grow together."
+    "The Small Business Resource Association member network — connect, exchange referrals, and grow together.",
+  icons: {
+    icon: "/sbra-mark.png",
+    apple: "/sbra-mark.png"
+  }
+};
+
+export const viewport: Viewport = {
+  themeColor: "#001167"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

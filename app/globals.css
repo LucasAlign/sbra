@@ -36,11 +36,6 @@ body {
 
 h1,
 h2,
-.brand-wordmark {
-  font-family: var(--font-display);
-  letter-spacing: 0.01em;
-}
-
 button,
 input,
 select,
@@ -161,6 +156,7 @@ button {
   margin-bottom: 30px;
 }
 
+/* Compact brand tile: SBRA "A" mark on a light rounded panel. */
 .brand-logo {
   display: grid;
   place-items: center;
@@ -170,27 +166,34 @@ button {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 16px 32px rgba(0, 65, 108, 0.16);
 }
 
+.brand-logo-mark {
+  width: 44px;
+  height: auto;
+  display: block;
+}
+
+/* Large brand lockup: full horizontal SBRA wordmark, no tile. */
 .large-logo {
   margin: 0 auto 16px;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
 }
 
-.brand-logo {
-  background: linear-gradient(135deg, var(--blue), #2a3a8c);
-}
-
-.brand-logo .brand-wordmark {
-  color: #fff;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.large-logo .brand-wordmark {
-  font-size: 26px;
+.brand-logo-wordmark {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  height: auto;
 }
 
 .brand h1,

@@ -1434,9 +1434,30 @@ export function SBRAApp() {
 }
 
 function LogoBlock({ large = false }: { large?: boolean }) {
+  if (large) {
+    // Login / hero: full horizontal SBRA wordmark.
+    return (
+      <div className="brand-logo large-logo">
+        <img
+          className="brand-logo-wordmark"
+          src="/sbra-logo.png"
+          alt="Small Business Resource Association"
+          width={313}
+          height={40}
+        />
+      </div>
+    );
+  }
+  // Compact (sidebar/header): the SBRA "A" mark in a rounded tile.
   return (
-    <div className={large ? "brand-logo large-logo" : "brand-logo"} aria-label="SBRA">
-      <span className="brand-wordmark">SBRA</span>
+    <div className="brand-logo">
+      <img
+        className="brand-logo-mark"
+        src="/sbra-mark.png"
+        alt="SBRA"
+        width={180}
+        height={128}
+      />
     </div>
   );
 }
