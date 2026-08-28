@@ -9,19 +9,15 @@ NEXT_TELEMETRY_DISABLED = "1"
 [nix]
 channel = "stable-24_05"
 
-# Map Next's dev/start port (3000) to the public preview URL (:80).
 [[ports]]
 localPort = 3000
 externalPort = 80
 
-# Production deploy: build then serve with `next start`.
 [deployment]
 deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
 run = ["npm", "run", "start"]
 
-# Give the Run button an explicit workflow so newer Replit UIs (which prefer
-# workflows over the bare top-level `run`) always have a command to execute.
 [workflows]
 runButton = "Dev"
 
