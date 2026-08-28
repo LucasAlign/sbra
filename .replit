@@ -1,5 +1,10 @@
 run = "npm run dev"
 entrypoint = "app/page.tsx"
+modules = ["nodejs-20"]
 
 [env]
 NEXT_TELEMETRY_DISABLED = "1"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
