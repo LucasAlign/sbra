@@ -76,6 +76,16 @@ const onAuthStateChanged = (
 ): (() => void) => () => {};
 const signOut = async (_auth: unknown): Promise<void> => {};
 
+// Demo login credentials for seed mode (no backend). These are the only
+// accepted email/password pairs when running on seed data — one member, one
+// admin — and are surfaced on the login screen so anyone can try the demo.
+// They carry no security: seed mode has no real backend or private data.
+type DemoAccount = { email: string; password: string; role: UserRole; label: string };
+const DEMO_ACCOUNTS: DemoAccount[] = [
+  { email: "member@sbra.demo", password: "sbrademo", role: "member", label: "Member" },
+  { email: "admin@sbra.demo", password: "sbrademo", role: "admin", label: "Admin" }
+];
+
 type MemberTextField = "name" | "title" | "email" | "phone" | "bio";
 type DraftPostAttachment = PostAttachment & { file?: File };
 
@@ -528,8 +538,20 @@ export function SBRAApp() {
     event.preventDefault();
 
     if (!liveServices) {
-      setRole(loginRole);
+      // Seed mode: validate against the fixed demo accounts. The matched
+      // account's role wins (so the admin credential always lands in admin),
+      // independent of the Member/Admin toggle.
+      const email = loginEmail.trim().toLowerCase();
+      const account = DEMO_ACCOUNTS.find(
+        (candidate) => candidate.email === email && candidate.password === loginPassword
+      );
+      if (!account) {
+        setLiveNote("Invalid demo credentials. Use one of the demo logins below.");
+        return;
+      }
+      setRole(account.role);
       setActiveView("community");
+      setLoginPassword("");
       return;
     }
 
@@ -1065,6 +1087,28 @@ export function SBRAApp() {
                 </button>
               </div>
             )
+          )}
+          {!dbEnabled && !backendEnabled && (
+            <div className="demo-credentials">
+              <p className="demo-credentials-title">Demo logins</p>
+              {DEMO_ACCOUNTS.map((account) => (
+                <button
+                  key={account.email}
+                  type="button"
+                  className="demo-credential-chip"
+                  onClick={() => {
+                    setLoginRole(account.role);
+                    setLoginEmail(account.email);
+                    setLoginPassword(account.password);
+                  }}
+                >
+                  <span className="demo-credential-label">{account.label}</span>
+                  <span className="demo-credential-detail">
+                    {account.email} · {account.password}
+                  </span>
+                </button>
+              ))}
+            </div>
           )}
           <p className="login-signup">
             New to SBRA?{" "}
