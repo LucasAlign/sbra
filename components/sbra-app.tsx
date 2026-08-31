@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   createLiveComment,
   createLiveEvent,
@@ -88,6 +88,18 @@ const DEMO_ACCOUNTS: DemoAccount[] = [
 
 type MemberTextField = "name" | "title" | "email" | "phone" | "bio";
 type DraftPostAttachment = PostAttachment & { file?: File };
+
+const demoAdminMember: Member = {
+  id: "demo-admin",
+  role: "admin",
+  businessId: "sbra-administration",
+  name: "Jordan Lee",
+  title: "SBRA Administrator",
+  email: "admin@sbra.demo",
+  phone: "",
+  bio: "Manages SBRA membership, reporting, and community operations.",
+  isOwner: false
+};
 
 type ReferralDraft = {
   kind: ReferralKind;
@@ -215,6 +227,9 @@ export function SBRAApp() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginRole, setLoginRole] = useState<UserRole>("member");
   const [activeView, setActiveView] = useState<ViewKey>("community");
+  // Keeps the active destination scrolled into view within the horizontally
+  // scrollable mobile nav bar, so the selected tab is always visible.
+  const activeNavRef = useRef<HTMLButtonElement | null>(null);
   const [members, setMembers] = useState<Member[]>(memberSeed);
   const [businesses, setBusinesses] = useState<Business[]>(businessSeed);
   const [posts, setPosts] = useState(communityPosts);
@@ -275,8 +290,12 @@ export function SBRAApp() {
     return map;
   }, [members]);
 
-  const currentMember = liveProfile ?? members[0];
+  const currentMember = liveProfile ?? (role === "admin" ? demoAdminMember : members[0]);
   const currentBusiness = currentMember ? businessById.get(currentMember.businessId) : undefined;
+
+  useEffect(() => {
+    activeNavRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [activeView, role]);
 
   useEffect(() => {
     if (!liveServices) {
@@ -1043,7 +1062,7 @@ export function SBRAApp() {
           <h1>SBRA</h1>
           <p className="tagline">Be Better. Grow Faster.</p>
           <p className="login-copy">{liveNote}</p>
-          <form className="login-form" onSubmit={(event) => void loginWithEmailPassword(event)}>
+          <div className="login-form">
             <div className="role-toggle" aria-label="Choose sign-in role">
               <button type="button" className={loginRole === "member" ? "active" : ""} onClick={() => setLoginRole("member")}>
                 Member
@@ -1052,41 +1071,52 @@ export function SBRAApp() {
                 Admin
               </button>
             </div>
-            <input
-              aria-label="Email"
-              autoComplete="email"
-              inputMode="email"
-              placeholder="Email"
-              type="email"
-              value={loginEmail}
-              onChange={(event) => setLoginEmail(event.target.value)}
-            />
-            <input
-              aria-label="Password"
-              autoComplete="current-password"
-              placeholder="Password"
-              type="password"
-              value={loginPassword}
-              onChange={(event) => setLoginPassword(event.target.value)}
-            />
-            <button className="primary-button" type="submit">
-              Sign In
-            </button>
-          </form>
-          {dbEnabled ? (
+            {backendEnabled ? (
+              <form className="login-form nested" onSubmit={(event) => void loginWithEmailPassword(event)}>
+                <input
+                  aria-label="Email"
+                  autoComplete="email"
+                  inputMode="email"
+                  placeholder="Email"
+                  type="email"
+                  value={loginEmail}
+                  onChange={(event) => setLoginEmail(event.target.value)}
+                />
+                <input
+                  aria-label="Password"
+                  autoComplete="current-password"
+                  placeholder="Password"
+                  type="password"
+                  value={loginPassword}
+                  onChange={(event) => setLoginPassword(event.target.value)}
+                />
+                <button className="primary-button" type="submit">
+                  Sign In
+                </button>
+              </form>
+            ) : dbEnabled ? (
+              <button className="primary-button" type="button" onClick={() => void authSignIn("google")}>
+                Continue with Google
+              </button>
+            ) : (
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => {
+                  setRole(loginRole);
+                  setActiveView(loginRole === "admin" ? "admin" : "community");
+                }}
+              >
+                Enter {loginRole === "admin" ? "admin" : "member"} demo
+              </button>
+            )}
+          </div>
+          {backendEnabled && (
             <div className="login-actions compact">
-              <button className="secondary-button" onClick={() => void authSignIn("google")}>
+              <button className="secondary-button" onClick={() => void loginAs(loginRole)}>
                 Continue with Google
               </button>
             </div>
-          ) : (
-            backendEnabled && (
-              <div className="login-actions compact">
-                <button className="secondary-button" onClick={() => void loginAs(loginRole)}>
-                  Continue with Google
-                </button>
-              </div>
-            )
           )}
           {!dbEnabled && !backendEnabled && (
             <div className="demo-credentials">
@@ -1370,6 +1400,7 @@ export function SBRAApp() {
         {visibleNav.map((item) => (
           <button
             key={item.key}
+            ref={activeView === item.key ? activeNavRef : null}
             className={activeView === item.key ? "active" : ""}
             onClick={() => changeView(item.key)}
             aria-label={item.label}
@@ -1723,7 +1754,11 @@ function CommunityView({
                 <button className="secondary-button" onClick={onCancelPost}>
                   Cancel
                 </button>
-                <button className="primary-button" onClick={onCreatePost}>
+                <button
+                  className="primary-button"
+                  onClick={onCreatePost}
+                  disabled={postDraft.trim().length === 0 && attachments.length === 0}
+                >
                   Post
                 </button>
               </div>
@@ -2249,9 +2284,16 @@ function AdminView({
             ["Export referral impact report", "E", "Impact report queued with referrals, closed value, and engagement."],
             ["Review flagged content", "F", "Moderation queue opened: no high-priority flags in this seed demo."]
           ].map(([label, icon, note]) => (
-            <button className="admin-action" key={label as string} onClick={() => onAdminAction(note as string)}>
+            <button
+              className="admin-action"
+              key={label as string}
+              disabled
+              title="Coming soon"
+              onClick={() => onAdminAction(note as string)}
+            >
               <span className="nav-icon">{icon as string}</span>
               {label as string}
+              <span className="coming-soon-badge">Coming soon</span>
             </button>
           ))}
           <div className="import-note admin-tool-note">{adminNote}</div>
