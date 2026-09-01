@@ -201,6 +201,8 @@ const navItems: Array<{ key: ViewKey; label: string; count: string; icon: ViewKe
   { key: "admin", label: "Admin", count: "Live", icon: "admin", adminOnly: true }
 ];
 
+const primaryNavKeys: ViewKey[] = ["community", "directory", "referrals", "events"];
+
 function splitList(value: string) {
   return value
     .split(",")
@@ -261,6 +263,7 @@ export function SBRAApp() {
   const [globalSearch, setGlobalSearch] = useState("");
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [supportCategory, setSupportCategory] = useState(supportCategories[0]);
   const [supportDetail, setSupportDetail] = useState("");
   const [adminNote, setAdminNote] = useState("Choose an admin tool to preview the next operational workflow.");
@@ -410,6 +413,8 @@ export function SBRAApp() {
   }, [dbEnabled, session, role, members]);
 
   const visibleNav = navItems.filter((item) => !item.adminOnly || role === "admin");
+  const primaryNav = visibleNav.filter((item) => primaryNavKeys.includes(item.key));
+  const moreNav = visibleNav.filter((item) => !primaryNavKeys.includes(item.key));
 
   const categories = useMemo(
     () => Array.from(new Set(businesses.map((business) => business.category))).sort(),
@@ -1039,6 +1044,11 @@ export function SBRAApp() {
 
   const roleLabel = role === "admin" ? "Admin" : "Member";
 
+  function selectNav(view: ViewKey) {
+    changeView(view);
+    setMoreOpen(false);
+  }
+
   if (authLoading) {
     return (
       <main className="login-screen">
@@ -1180,9 +1190,13 @@ export function SBRAApp() {
         </div>
 
         <nav className="nav-list" aria-label="Primary">
-          {visibleNav.map((item) => (
-            <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => changeView(item.key)} />
+          {primaryNav.map((item) => (
+            <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />
           ))}
+          <button className={moreOpen || moreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
+            <span className="nav-icon">•••</span><span><strong>More</strong><small>Learn, support &amp; profile</small></span>
+          </button>
+          {moreOpen && <div className="more-menu">{moreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
         </nav>
 
         <section className="theme-card">
@@ -1331,6 +1345,9 @@ export function SBRAApp() {
               setPostDraft("");
               setPostAttachments([]);
             }}
+            onFindMember={() => selectNav("directory")}
+            onGiveReferral={openReferralComposer}
+            onViewEvents={() => selectNav("events")}
           />
         )}
         {activeView === "directory" && (
@@ -1363,9 +1380,18 @@ export function SBRAApp() {
             rsvps={rsvps}
             memberById={memberById}
             currentMemberId={currentMember?.id ?? ""}
-            onCreate={openEventComposer}
+            onCreate={() => {
+              if (role === "admin") {
+                openEventComposer();
+              } else {
+                setSupportCategory("Event proposal");
+                setSupportDetail("I would like to propose an event. Suggested topic, date, location, and audience: ");
+                selectNav("support");
+              }
+            }}
             onRsvp={setEventRsvp}
             onToggleCheckIn={toggleCheckIn}
+            canCreate={role === "admin"}
           />
         )}
         {activeView === "learn" && <LearnView />}
@@ -1397,12 +1423,12 @@ export function SBRAApp() {
       </main>
 
       <nav className="glass-panel mobile-nav" aria-label="Mobile primary">
-        {visibleNav.map((item) => (
+        {primaryNav.map((item) => (
           <button
             key={item.key}
             ref={activeView === item.key ? activeNavRef : null}
             className={activeView === item.key ? "active" : ""}
-            onClick={() => changeView(item.key)}
+            onClick={() => selectNav(item.key)}
             aria-label={item.label}
           >
             <span className="mobile-icon">
@@ -1411,7 +1437,11 @@ export function SBRAApp() {
             <span>{item.label}</span>
           </button>
         ))}
+        <button className={moreNav.some((item) => item.key === activeView) ? "active" : ""} onClick={() => setMoreOpen((open) => !open)} aria-label="More">
+          <span className="mobile-icon">•••</span><span>More</span>
+        </button>
       </nav>
+      {moreOpen && <div className="mobile-more-menu glass-panel">{moreNav.map((item) => <button key={item.key} className={activeView === item.key ? "active" : ""} onClick={() => selectNav(item.key)}><NavIcon icon={item.icon} /><span>{item.label}</span></button>)}</div>}
 
       {activeBusiness && (
         <BusinessModal
@@ -1671,7 +1701,10 @@ function CommunityView({
   onToggleCommentThread,
   onCommentDraft,
   onAddComment,
-  onCancelPost
+  onCancelPost,
+  onFindMember,
+  onGiveReferral,
+  onViewEvents
 }: {
   posts: CommunityPost[];
   reactions: Reaction[];
@@ -1695,8 +1728,17 @@ function CommunityView({
   onCommentDraft: (postId: string, value: string) => void;
   onAddComment: (postId: string) => void;
   onCancelPost: () => void;
+  onFindMember: () => void;
+  onGiveReferral: () => void;
+  onViewEvents: () => void;
 }) {
   return (
+    <>
+    <section className="quick-actions" aria-label="Quick actions">
+      <button className="glass-panel quick-action" onClick={onFindMember}><span className="quick-action-icon">⌕</span><span><strong>Find a member</strong><small>Search businesses and services</small></span></button>
+      <button className="glass-panel quick-action" onClick={onGiveReferral}><span className="quick-action-icon">↗</span><span><strong>Give a referral</strong><small>Connect a lead with a member</small></span></button>
+      <button className="glass-panel quick-action" onClick={onViewEvents}><span className="quick-action-icon">◇</span><span><strong>View events</strong><small>RSVP to upcoming gatherings</small></span></button>
+    </section>
     <section className="content-grid">
       <div className="feed-column">
         <div className="glass-panel composer">
@@ -1878,6 +1920,7 @@ function CommunityView({
         </section>
       </aside>
     </section>
+    </>
   );
 }
 
@@ -1953,7 +1996,7 @@ function DirectoryView({
               </div>
               <p className="biz-desc">{business.description}</p>
               <div className="biz-services">
-                {splitList(business.servicesOffered).slice(0, 4).map((service) => (
+                {splitList(business.servicesOffered).slice(0, 3).map((service) => (
                   <span className="service-chip" key={service}>
                     {service}
                   </span>
@@ -1965,7 +2008,7 @@ function DirectoryView({
               </div>
               <div className="biz-card-foot">
                 <span>{owner ? owner.name : "Member"}</span>
-                <span>{teamSize} member{teamSize === 1 ? "" : "s"}</span>
+                <strong>View profile →</strong>
               </div>
             </button>
           );
@@ -2061,18 +2104,22 @@ function BusinessModal({
 }
 
 function LearnView() {
+  const [completed, setCompleted] = useState<Array<string | number>>([]);
+  const progress = Math.round((completed.length / learningModules.length) * 100);
   return (
     <section className="learning-grid">
       <article className="glass-panel learn-feature">
         <p className="section-label">Continue learning</p>
         <h3>Master the Referral Exchange</h3>
         <p>A short path from giving your first referral to closing the loop, built from the SBRA program.</p>
-        <button className="primary-button">Resume Module</button>
+        <div className="learning-progress"><span style={{ width: `${progress}%` }} /></div>
+        <p className="progress-copy">{completed.length} of {learningModules.length} complete</p>
+        <button className="primary-button" onClick={() => setCompleted((items) => items.length === learningModules.length ? [] : [...items, learningModules.find((module) => !items.includes(module.number))!.number])}>{completed.length === learningModules.length ? "Restart learning path" : "Complete next module"}</button>
       </article>
       <div className="module-list">
         {learningModules.map((module) => (
-          <article className="glass-panel module" key={module.number}>
-            <span>{module.number}</span>
+          <article className={completed.includes(module.number) ? "glass-panel module complete" : "glass-panel module"} key={module.number}>
+            <span>{completed.includes(module.number) ? "✓" : module.number}</span>
             <div>
               <h3>{module.title}</h3>
               <p>{module.description}</p>
@@ -2103,8 +2150,10 @@ function SupportView({
     <section className="support-layout">
       <section className="glass-panel support-card">
         <p className="section-label">Request support</p>
-        <h3>What do you need help with?</h3>
+        <h3>Contact the SBRA team</h3>
+        <p className="support-intro">Choose a topic and briefly describe what you need. Staff will follow up through your member email.</p>
         <div className="support-buttons">
+          {!supportCategories.includes(selectedCategory) && <button className="active">{selectedCategory}</button>}
           {supportCategories.map((item) => (
             <button className={item === selectedCategory ? "active" : ""} key={item} onClick={() => onCategory(item)}>
               {item}
@@ -2114,12 +2163,12 @@ function SupportView({
         <textarea
           className="support-detail"
           aria-label="Support request detail"
-          placeholder="Add the context SBRA staff should know..."
+          placeholder="Tell us what happened, what you expected, and any deadline we should know about..."
           value={detail}
           onChange={(event) => onDetail(event.target.value)}
         />
         <button className="primary-button request-submit" onClick={onCreateRequest}>
-          Submit Request
+          Send to SBRA staff
         </button>
       </section>
       <section className="glass-panel support-card">
@@ -2156,6 +2205,10 @@ function ProfileView({
     );
   }
 
+  const profileFields = [member.name, member.title, member.email, member.phone, member.bio, business?.servicesOffered, business?.referralsWanted];
+  const completeFields = profileFields.filter((field) => Boolean(field?.trim())).length;
+  const completion = Math.round((completeFields / profileFields.length) * 100);
+
   return (
     <section className="glass-panel profile-card standalone-profile">
       <div className="profile-hero gradient-a" />
@@ -2172,6 +2225,11 @@ function ProfileView({
         {business && <span>{tierLabels[business.tier]}</span>}
       </div>
       <p>{member.bio}</p>
+      <div className="profile-completion">
+        <div><strong>Profile strength</strong><span>{completion}% complete</span></div>
+        <div className="learning-progress"><span style={{ width: `${completion}%` }} /></div>
+        {completion < 100 && <p>Add your phone, bio, services, and ideal referrals so members know when to contact you.</p>}
+      </div>
       <div className="profile-contact">
         <span>{member.email}</span>
         <span>{member.phone}</span>
@@ -2398,12 +2456,12 @@ function ReferralsView({
       <div className="glass-panel referral-header">
         <div>
           <p className="section-label">Referral exchange</p>
-          <h3>Give and track referrals</h3>
-          <p className="referral-sub">Closed business is credited to whoever gave the referral — SBRA&apos;s closed loop.</p>
+          <h3>Connect people and track the result</h3>
+          <p className="referral-sub">Send a lead to another member. When it becomes business, record the result so the person who made the connection gets credit.</p>
         </div>
         <button className="primary-button" onClick={onGive}>
           <span className="button-icon">+</span>
-          Give a Referral
+          Send a referral
         </button>
       </div>
 
@@ -2424,9 +2482,9 @@ function ReferralsView({
           <p>Your referrals that closed</p>
         </article>
         <article className="glass-panel metric">
-          <span>Credited to you</span>
+          <span>Business generated</span>
           <strong>${creditedValue.toLocaleString()}</strong>
-          <p>Closed business you drove</p>
+          <p>Value from referrals you sent</p>
         </article>
       </div>
 
@@ -2759,7 +2817,8 @@ function EventsView({
   currentMemberId,
   onCreate,
   onRsvp,
-  onToggleCheckIn
+  onToggleCheckIn,
+  canCreate
 }: {
   events: SbraEvent[];
   rsvps: Rsvp[];
@@ -2768,6 +2827,7 @@ function EventsView({
   onCreate: () => void;
   onRsvp: (eventId: string, status: RsvpStatus) => void;
   onToggleCheckIn: (eventId: string) => void;
+  canCreate: boolean;
 }) {
   const sorted = [...events].sort((a, b) => a.startsAt - b.startsAt);
 
@@ -2781,7 +2841,7 @@ function EventsView({
         </div>
         <button className="primary-button" onClick={onCreate}>
           <span className="button-icon">+</span>
-          Create Event
+          {canCreate ? "Create event" : "Propose an event"}
         </button>
       </div>
 
