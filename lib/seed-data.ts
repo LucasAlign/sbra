@@ -233,10 +233,9 @@ export const communityPosts: CommunityPost[] = [
     category: "Referral Win",
     tone: "coral",
     body:
-      "Closed the loop on the referral from Jada — catered event led to a 60-shirt merch order. Thank-you logged! This is exactly why I show up Friday mornings.",
+      "Sixty shirts, two ink colors, and one very happy events team. This order started with a five-minute conversation at Breakfast Club and a warm intro from Jada. That's community doing what it does best. 🙌",
     attachments: [
-      { id: "ari-booth", name: "Pop-up booth", kind: "image", label: "Booth setup" },
-      { id: "ari-products", name: "Merch rack", kind: "image", label: "Product rack" }
+      { id: "ari-order", name: "Ari reviewing the finished apparel order", kind: "image", url: "/feed/apparel-order.png" }
     ],
     reactions: 22,
     comments: 5
@@ -249,9 +248,9 @@ export const communityPosts: CommunityPost[] = [
     category: "The Pitch",
     tone: "violet",
     body:
-      "I'm the feature speaker at this Friday's Breakfast Referral Club — walking through the three numbers every owner should check weekly. Bring your questions.",
+      "Nothing beats a room full of owners willing to share what’s actually working. This Friday I’m walking through the three numbers I check every week—cash on hand, receivables, and margin. Coffee is on by 7:30. ☕",
     note: "Reserve your seat under Events. Members eat for the cost of the meal.",
-    attachments: [{ id: "tom-onepager", name: "cash-flow-one-pager.pdf", kind: "file" }],
+    attachments: [{ id: "tom-breakfast", name: "Members connecting at Breakfast Referral Club", kind: "image", url: "/feed/referral-breakfast.png" }],
     reactions: 14,
     comments: 8
   },
@@ -263,8 +262,8 @@ export const communityPosts: CommunityPost[] = [
     category: "Member Ask",
     tone: "green",
     body:
-      "Adding two crew members for summer commercial accounts. If you know reliable folks in Berks, send them my way — happy to return the referral.",
-    attachments: [{ id: "noah-checklist", name: "crew-training-checklist.docx", kind: "file" }],
+      "First phase wrapped at our newest commercial property. Native grasses are in, the crew beat the heat, and the whole entrance already feels different. We’re adding two field positions for the summer—good people know good people, so send them my way. 🌱",
+    attachments: [{ id: "noah-project", name: "GreenEdge crew installing a commercial landscape", kind: "image", url: "/feed/landscape-project.png" }],
     reactions: 19,
     comments: 6
   },
@@ -276,8 +275,8 @@ export const communityPosts: CommunityPost[] = [
     category: "Mingle",
     tone: "blue",
     body:
-      "Hosting next month's Mingle at my studio! Come see the space, grab a mini-manicure, and let's trade some referrals. Applying to host was easy — recommend it.",
-    attachments: [{ id: "sofia-space", name: "Studio space", kind: "image", label: "Studio" }],
+      "Still smiling after last night’s studio mingle. New introductions, three collaborations already in the works, and not a single awkward networking moment. Thank you to everyone who made the room feel full. ✨",
+    attachments: [{ id: "sofia-mingle", name: "Members talking at the Polished studio mingle", kind: "image", url: "/feed/studio-mingle.png" }],
     reactions: 31,
     comments: 9
   },

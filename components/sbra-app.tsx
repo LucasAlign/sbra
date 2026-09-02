@@ -203,6 +203,63 @@ const navItems: Array<{ key: ViewKey; label: string; count: string; icon: ViewKe
 
 const primaryNavKeys: ViewKey[] = ["community", "directory", "referrals", "events"];
 
+const mockAds = [
+  {
+    sponsor: "Harbor & Pine Insurance",
+    headline: "Coverage that keeps up with a growing business.",
+    copy: "Practical guidance for SBRA members, from first hire to second location.",
+    action: "Explore member coverage",
+    mark: "HP",
+    tone: "navy"
+  },
+  {
+    sponsor: "Common Ground Workspace",
+    headline: "A better room for your next big conversation.",
+    copy: "Meeting rooms and flexible offices, with preferred rates for local businesses.",
+    action: "View local spaces",
+    mark: "CG",
+    tone: "sage"
+  },
+  {
+    sponsor: "Northstar Books",
+    headline: "Know your numbers. Keep your weekends.",
+    copy: "Monthly bookkeeping built for owners who would rather be building.",
+    action: "See how it works",
+    mark: "NB",
+    tone: "gold"
+  },
+  {
+    sponsor: "Brightline Studio",
+    headline: "Make the first impression feel like you.",
+    copy: "Thoughtful brand and web design for established local companies.",
+    action: "Meet the studio",
+    mark: "BS",
+    tone: "coral"
+  },
+  {
+    sponsor: "Foundry Community Bank",
+    headline: "Local decisions for your next move.",
+    copy: "Business banking with people who understand the neighborhood you serve.",
+    action: "Talk with a banker",
+    mark: "FC",
+    tone: "blue"
+  }
+] as const;
+
+// Illustrative demo savings from member pricing, included events, and learning.
+// Referral revenue remains sourced from closed referral records below.
+const memberSavings: Record<string, { amount: number; detail: string }> = {
+  "maya-chen": { amount: 860, detail: "Workshops + member services" },
+  "devin-brooks": { amount: 340, detail: "Events + learning" },
+  "ari-rivera": { amount: 720, detail: "Vendor discounts + events" },
+  "jada-lee": { amount: 1180, detail: "Member pricing + workshops" },
+  "noah-patel": { amount: 1540, detail: "Training + vendor discounts" },
+  "marisol-ortiz": { amount: 410, detail: "Learning + events" },
+  "sofia-martinez": { amount: 630, detail: "Events + member services" },
+  "grace-whitfield": { amount: 1320, detail: "Programs + member pricing" },
+  "tom-alvarez": { amount: 940, detail: "Workshops + events" }
+};
+
 function splitList(value: string) {
   return value
     .split(",")
@@ -1317,6 +1374,8 @@ export function SBRAApp() {
           )}
         </header>
 
+        <AdBanner ads={mockAds} />
+
         {activeView === "community" && (
           <CommunityView
             posts={posts}
@@ -1491,6 +1550,55 @@ export function SBRAApp() {
         />
       )}
     </div>
+  );
+}
+
+function AdBanner({ ads }: { ads: typeof mockAds }) {
+  const [activeAd, setActiveAd] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (paused) return;
+    const timer = window.setInterval(() => {
+      setActiveAd((current) => (current + 1) % ads.length);
+    }, 12_000);
+    return () => window.clearInterval(timer);
+  }, [ads.length, paused]);
+
+  const ad = ads[activeAd];
+
+  return (
+    <aside
+      className={`sponsor-banner sponsor-${ad.tone}`}
+      aria-label={`Sponsored message from ${ad.sponsor}`}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false);
+      }}
+    >
+      <div className="sponsor-mark" aria-hidden="true">{ad.mark}</div>
+      <div className="sponsor-message" aria-live="polite">
+        <p><span>Sponsored</span>{ad.sponsor}</p>
+        <div className="sponsor-copy">
+          <strong>{ad.headline}</strong>
+          <small>{ad.copy}</small>
+        </div>
+      </div>
+      <span className="sponsor-action">{ad.action}<span aria-hidden="true">→</span></span>
+      <div className="sponsor-controls" aria-label="Choose advertisement">
+        {ads.map((item, index) => (
+          <button
+            key={item.sponsor}
+            className={index === activeAd ? "active" : ""}
+            onClick={() => setActiveAd(index)}
+            aria-label={`Show ad ${index + 1}: ${item.sponsor}`}
+            aria-current={index === activeAd ? "true" : undefined}
+          />
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -1739,6 +1847,15 @@ function CommunityView({
       <button className="glass-panel quick-action" onClick={onGiveReferral}><span className="quick-action-icon">↗</span><span><strong>Give a referral</strong><small>Connect a lead with a member</small></span></button>
       <button className="glass-panel quick-action" onClick={onViewEvents}><span className="quick-action-icon">◇</span><span><strong>View events</strong><small>RSVP to upcoming gatherings</small></span></button>
     </section>
+    <section className="glass-panel member-moments" aria-label="Member moments">
+      <div className="moments-label"><strong>Around SBRA</strong><span>Fresh from members</span></div>
+      {["Ari Rivera", "Tom Alvarez", "Noah Patel", "Sofia Martinez", "Grace Whitfield"].map((name, index) => (
+        <button className="moment" key={name} aria-label={`View ${name}'s member moment`}>
+          <span className={`moment-ring tone-${index}`}><span>{initials(name)}</span></span>
+          <small>{name.split(" ")[0]}</small>
+        </button>
+      ))}
+    </section>
     <section className="content-grid">
       <div className="feed-column">
         <div className="glass-panel composer">
@@ -1827,16 +1944,13 @@ function CommunityView({
             <article className="glass-panel post-card" key={post.id}>
               <div className="post-head">
                 <div className={`avatar ${post.tone}`}>{initials(post.author)}</div>
-                <div>
-                  <h3>{post.author}</h3>
-                  <p>
-                    {post.businessName ? `${post.businessName} · ` : ""}
-                    {post.timeAgo}
-                  </p>
+                <div className="post-author">
+                  <h3>{post.author}<span className="member-check" aria-label="Verified SBRA member">✓</span></h3>
+                  <p>{post.businessName}</p>
                 </div>
                 <span className={`pill ${post.tone === "violet" ? "violet" : ""}`}>{post.category}</span>
+                <button className="post-menu" aria-label={`More options for ${post.author}'s post`}>•••</button>
               </div>
-              <p className="post-copy">{post.body}</p>
               {post.attachments && post.attachments.length > 0 && (
                 <div className={post.attachments.some((attachment) => attachment.kind === "image") ? "post-attachments media-grid" : "post-attachments"}>
                   {post.attachments.map((attachment) => (
@@ -1844,21 +1958,28 @@ function CommunityView({
                   ))}
                 </div>
               )}
+              <div className="post-actions">
+                <button className={iReacted ? "post-action active" : "post-action"} onClick={() => onToggleReaction(post.id)} aria-label="Celebrate post">
+                  <span aria-hidden="true">{iReacted ? "♥" : "♡"}</span>
+                </button>
+                <button className={threadOpen ? "post-action active" : "post-action"} onClick={() => onToggleCommentThread(post.id)} aria-label="Comment on post">
+                  <span aria-hidden="true">◯</span>
+                </button>
+                <button className="post-action" aria-label="Share post"><span aria-hidden="true">↗</span></button>
+                <button className="post-action save-action" aria-label="Save post"><span aria-hidden="true">◇</span></button>
+              </div>
+              <p className="post-likes"><strong>{reactionCount.toLocaleString()} celebrations</strong></p>
+              <p className="post-copy"><strong>{post.author}</strong> {post.body}</p>
               {post.note && (
                 <div className="reply-box">
                   <strong>SBRA note</strong>
                   <span>{post.note}</span>
                 </div>
               )}
-              <div className="post-actions">
-                <button className={iReacted ? "post-action active" : "post-action"} onClick={() => onToggleReaction(post.id)}>
-                  {iReacted ? "★ Celebrated" : "Celebrate"} {reactionCount > 0 ? reactionCount : ""}
-                </button>
-                <button className={threadOpen ? "post-action active" : "post-action"} onClick={() => onToggleCommentThread(post.id)}>
-                  Comment {commentCount > 0 ? commentCount : ""}
-                </button>
-                <button className="post-action">{post.category.includes("Question") ? "Give Referral" : "Save"}</button>
-              </div>
+              <button className="view-comments" onClick={() => onToggleCommentThread(post.id)}>
+                {threadOpen ? "Hide comments" : `View all ${commentCount} comments`}
+              </button>
+              <time className="post-time">{post.timeAgo}</time>
               {threadOpen && (
                 <div className="comment-thread">
                   {postComments.map((comment) => (
@@ -2456,8 +2577,13 @@ function ReferralsView({
       <div className="glass-panel referral-header">
         <div>
           <p className="section-label">Referral exchange</p>
-          <h3>Connect people and track the result</h3>
-          <p className="referral-sub">Send a lead to another member. When it becomes business, record the result so the person who made the connection gets credit.</p>
+          <h3>Give a lead. Make an introduction. Close the loop.</h3>
+          <p className="referral-sub">Connect a real opportunity with the right SBRA member, then keep the status current so everyone can see the impact.</p>
+          <ol className="referral-how" aria-label="How the referral program works">
+            <li><span>1</span><p><strong>Send</strong><small>Share a qualified lead or warm member introduction.</small></p></li>
+            <li><span>2</span><p><strong>Follow up</strong><small>The receiving member contacts them and updates the status.</small></p></li>
+            <li><span>3</span><p><strong>Record the result</strong><small>Log wins and value so the connector gets credit.</small></p></li>
+          </ol>
         </div>
         <button className="primary-button" onClick={onGive}>
           <span className="button-icon">+</span>
@@ -2487,6 +2613,13 @@ function ReferralsView({
           <p>Value from referrals you sent</p>
         </article>
       </div>
+
+      <ReferralImpactBoard
+        referrals={referrals}
+        memberById={memberById}
+        businessById={businessById}
+        currentMemberId={currentMemberId}
+      />
 
       <div className="referral-columns">
         <section className="referral-column">
@@ -2523,6 +2656,93 @@ function ReferralsView({
           {received.length === 0 && <div className="empty-state">No referrals sent to you yet.</div>}
         </section>
       </div>
+    </section>
+  );
+}
+
+function ReferralImpactBoard({
+  referrals,
+  memberById,
+  businessById,
+  currentMemberId
+}: {
+  referrals: Referral[];
+  memberById: Map<string, Member>;
+  businessById: Map<string, Business>;
+  currentMemberId: string;
+}) {
+  const revenueByMember = new Map<string, number>();
+  referrals.forEach((referral) => {
+    if (referral.status === "closed_won") {
+      revenueByMember.set(
+        referral.receiverId,
+        (revenueByMember.get(referral.receiverId) ?? 0) + (referral.closedValue ?? 0)
+      );
+    }
+  });
+
+  const rows = Array.from(memberById.values())
+    .map((member) => {
+      const referralRevenue = revenueByMember.get(member.id) ?? 0;
+      const savings = memberSavings[member.id]?.amount ?? 0;
+      return {
+        member,
+        business: businessById.get(member.businessId),
+        referralRevenue,
+        savings,
+        savingsDetail: memberSavings[member.id]?.detail ?? "No savings logged yet",
+        totalImpact: referralRevenue + savings
+      };
+    })
+    .filter((row) => row.totalImpact > 0)
+    .sort((a, b) => b.totalImpact - a.totalImpact);
+
+  const referralTotal = rows.reduce((sum, row) => sum + row.referralRevenue, 0);
+  const savingsTotal = rows.reduce((sum, row) => sum + row.savings, 0);
+
+  return (
+    <section className="glass-panel impact-board" aria-labelledby="impact-board-title">
+      <div className="impact-board-head">
+        <div>
+          <p className="section-label">Member impact board</p>
+          <h3 id="impact-board-title">Value created across SBRA</h3>
+          <p>Closed referral revenue plus estimated savings from member benefits.</p>
+        </div>
+        <div className="impact-totals" aria-label="Community impact totals">
+          <span><small>Revenue generated</small><strong>${referralTotal.toLocaleString()}</strong></span>
+          <span><small>Member savings</small><strong>${savingsTotal.toLocaleString()}</strong></span>
+          <span className="impact-total"><small>Total impact</small><strong>${(referralTotal + savingsTotal).toLocaleString()}</strong></span>
+        </div>
+      </div>
+
+      <div className="impact-table" role="table" aria-label="Member revenue and savings leaderboard">
+        <div className="impact-table-header" role="row">
+          <span role="columnheader">Member</span>
+          <span role="columnheader">Referral revenue</span>
+          <span role="columnheader">Member savings</span>
+          <span role="columnheader">Total impact</span>
+        </div>
+        {rows.map((row, index) => (
+          <div
+            className={row.member.id === currentMemberId ? "impact-row current" : "impact-row"}
+            role="row"
+            key={row.member.id}
+          >
+            <div className="impact-member" role="cell">
+              <span className={`impact-rank rank-${Math.min(index + 1, 4)}`}>{index + 1}</span>
+              <span className="impact-avatar">{initials(row.member.name)}</span>
+              <span>
+                <strong>{row.member.name}{row.member.id === currentMemberId ? " (You)" : ""}</strong>
+                <small>{row.business?.name ?? "SBRA member"}</small>
+              </span>
+            </div>
+            <span className="impact-value" role="cell"><strong>${row.referralRevenue.toLocaleString()}</strong><small>Closed business</small></span>
+            <span className="impact-value" role="cell"><strong>${row.savings.toLocaleString()}</strong><small>{row.savingsDetail}</small></span>
+            <strong className="impact-grand-total" role="cell">${row.totalImpact.toLocaleString()}</strong>
+          </div>
+        ))}
+      </div>
+      <p className="impact-note">Demo estimates shown for member savings. In production, these can be calculated from redeemed discounts, included programs, and event benefits.</p>
     </section>
   );
 }
