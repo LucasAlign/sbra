@@ -28,6 +28,7 @@ import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-a
 import * as backendActions from "@/app/actions";
 import { isBackendEnabled } from "@/lib/backend";
 import { parseRosterFile } from "@/lib/importers";
+import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import {
   businessSeed,
   commentSeed,
@@ -286,6 +287,8 @@ export function SBRAApp() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginRole, setLoginRole] = useState<UserRole>("member");
   const [activeView, setActiveView] = useState<ViewKey>("community");
+  const [activeOrganizationId, setActiveOrganizationId] = useState("sbra");
+  const activeOrganization = getCommunityOrganization(activeOrganizationId);
   // Keeps the active destination scrolled into view within the horizontally
   // scrollable mobile nav bar, so the selected tab is always visible.
   const activeNavRef = useRef<HTMLButtonElement | null>(null);
@@ -1111,9 +1114,10 @@ export function SBRAApp() {
       <main className="login-screen">
         <section className="glass-panel login-card">
           <LogoBlock large />
-          <p className="eyebrow">Small Business Resource Association</p>
-          <h1>SBRA</h1>
-          <p className="login-copy">Loading your SBRA session...</p>
+          <p className="eyebrow">Berks County Collab</p>
+          <h1>Local networks. One community.</h1>
+          <p className="organization-credit">Founding network · SBRA</p>
+          <p className="login-copy">Loading your community...</p>
         </section>
       </main>
     );
@@ -1125,9 +1129,9 @@ export function SBRAApp() {
         {dbEnabled && <SessionBridge onSession={setSession} />}
         <section className="glass-panel login-card">
           <LogoBlock large />
-          <p className="eyebrow">Small Business Resource Association</p>
-          <h1>SBRA</h1>
-          <p className="tagline">Be Better. Grow Faster.</p>
+          <p className="eyebrow">Berks County Collab</p>
+          <h1>Your local business community, connected.</h1>
+          <p className="tagline">Powered by founding network SBRA · Be Better. Grow Faster.</p>
           <p className="login-copy">{liveNote}</p>
           <div className="login-form">
             <div className="role-toggle" aria-label="Choose sign-in role">
@@ -1208,7 +1212,7 @@ export function SBRAApp() {
             </div>
           )}
           <p className="login-signup">
-            New to SBRA?{" "}
+            New to {activeOrganization.shortName}?{" "}
             <button
               type="button"
               className="link-button"
@@ -1241,10 +1245,30 @@ export function SBRAApp() {
         <div className="brand">
           <LogoBlock />
           <div>
-            <p className="eyebrow">Small Business Resource Association</p>
-            <h1>SBRA</h1>
+            <p className="eyebrow">Berks County Collab</p>
+            <h1>{activeOrganization.shortName} Network</h1>
           </div>
         </div>
+
+        <label className="organization-switcher">
+          <span>Community</span>
+          <select
+            value={activeOrganizationId}
+            onChange={(event) => setActiveOrganizationId(event.target.value)}
+            aria-label="Choose community organization"
+          >
+            {communityOrganizations.map((organization) => (
+              <option
+                key={organization.id}
+                value={organization.id}
+                disabled={organization.status !== "active"}
+              >
+                {organization.shortName}{organization.status === "coming_soon" ? " — Coming soon" : ""}
+              </option>
+            ))}
+          </select>
+          <small>{activeOrganization.name}{activeOrganization.isFoundingPartner ? " · Founding partner" : ""}</small>
+        </label>
 
         <nav className="nav-list" aria-label="Primary">
           {primaryNav.map((item) => (
@@ -1278,7 +1302,7 @@ export function SBRAApp() {
       <main className="main-panel">
         <header className="glass-panel topbar">
           <div>
-            <p className="eyebrow">Welcome back, {currentMember?.name.split(" ")[0] || "there"}</p>
+            <p className="eyebrow">{activeOrganization.shortName} · Welcome back, {currentMember?.name.split(" ")[0] || "there"}</p>
             <h2>{viewTitles[activeView]}</h2>
           </div>
           <div className="top-actions">
@@ -1322,7 +1346,7 @@ export function SBRAApp() {
           {globalSearchOpen && (
             <div className="top-popover search-popover">
               <input
-                aria-label="Search SBRA"
+                aria-label="Search Berks County Collab"
                 autoFocus
                 placeholder="Search businesses, members, posts, support..."
                 value={globalSearch}

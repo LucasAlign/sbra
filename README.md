@@ -1,6 +1,8 @@
-# SBRA Member Network
+# Berks County Collab
 
-A social / networking platform for the **Small Business Resource Association (SBRA)** — *"Be Better. Grow Faster."* — adapted from the [aluminate](https://github.com/LucasAlign/aluminate) MVP.
+A shared digital home for Berks County business organizations. The **Small Business Resource Association (SBRA)** — *"Be Better. Grow Faster."* — is the founding network and retains its identity inside the broader Collab experience.
+
+The organization catalog lives in `lib/organizations.ts`. SBRA is active; the Berks County Latino Chamber of Commerce is represented as a coming-soon community so it can be activated when its roster and content are ready.
 
 It helps SBRA members connect and communicate around the four things SBRA is built on:
 

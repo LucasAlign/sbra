@@ -4,9 +4,9 @@ import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SBRA — Be Better. Grow Faster.",
+  title: "Berks County Collab — Local Networks, One Community",
   description:
-    "The Small Business Resource Association member network — connect, exchange referrals, and grow together.",
+    "A shared digital home for Berks County business organizations, founded with the Small Business Resource Association.",
   icons: {
     icon: "/sbra-mark.png",
     apple: "/sbra-mark.png"
