@@ -62,10 +62,20 @@ button {
 }
 
 .login-card {
-  width: min(440px, 100%);
+  position: relative;
+  width: min(480px, 100%);
+  overflow: hidden;
   border-radius: 30px;
-  padding: 28px;
+  padding: 38px 34px 30px;
   text-align: center;
+}
+
+.login-card::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 6px;
+  background: linear-gradient(90deg, var(--blue) 0 58%, var(--coral) 58% 82%, var(--gold) 82%);
+  content: "";
 }
 
 .login-card h1 {
@@ -75,16 +85,57 @@ button {
 }
 
 .login-card .brand-logo-wordmark {
-  max-width: 205px;
+  max-width: 168px;
+}
+
+.login-eyebrow {
+  margin: 0 0 8px;
+  color: var(--coral);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .18em;
+  text-transform: uppercase;
 }
 
 .login-title {
+  display: grid;
+  justify-items: center;
+  margin: 0;
   color: var(--blue);
   font-family: var(--font-display);
-  font-size: clamp(38px, 6vw, 50px) !important;
-  font-weight: 800;
-  line-height: 0.98;
-  letter-spacing: -0.035em !important;
+  font-size: clamp(43px, 7vw, 58px) !important;
+  font-weight: 400;
+  line-height: .94;
+  letter-spacing: -0.025em !important;
+  text-wrap: balance;
+}
+
+.login-title span,
+.login-title strong {
+  display: block;
+}
+
+.login-title strong {
+  position: relative;
+  width: fit-content;
+  margin-top: 5px;
+  color: var(--coral);
+  font-size: 1.18em;
+  font-weight: 400;
+}
+
+.login-title strong::after {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  left: -5px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--gold);
+  content: "";
+  opacity: .8;
+  transform: rotate(-1.5deg);
+  z-index: -1;
 }
 
 .login-heading {
@@ -94,6 +145,34 @@ button {
   font-size: 20px;
   font-weight: 650;
   line-height: 1.25;
+}
+
+.login-network {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 11px;
+  margin: 18px auto 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, .6);
+}
+
+.login-network > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.login-network .brand-logo {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding-left: 11px;
+  border-left: 1px solid var(--line);
 }
 
 .login-copy {

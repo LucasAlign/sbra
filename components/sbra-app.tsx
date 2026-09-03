@@ -1113,10 +1113,10 @@ export function SBRAApp() {
     return (
       <main className="login-screen">
         <section className="glass-panel login-card">
-          <LogoBlock large />
-          <h1 className="login-title">Berks County Collab</h1>
+          <p className="login-eyebrow">Welcome to</p>
+          <h1 className="login-title"><span>Berks County</span><strong>Collab</strong></h1>
           <h2 className="login-heading">Local networks. One community.</h2>
-          <p className="organization-credit">Founding network · SBRA</p>
+          <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
           <p className="login-copy">Loading your community...</p>
         </section>
       </main>
@@ -1128,10 +1128,11 @@ export function SBRAApp() {
       <main className="login-screen">
         {dbEnabled && <SessionBridge onSession={setSession} />}
         <section className="glass-panel login-card">
-          <LogoBlock large />
-          <h1 className="login-title">Berks County Collab</h1>
+          <p className="login-eyebrow">Welcome to</p>
+          <h1 className="login-title"><span>Berks County</span><strong>Collab</strong></h1>
           <h2 className="login-heading">Your local business community, connected.</h2>
-          <p className="tagline">Powered by founding network SBRA · Be Better. Grow Faster.</p>
+          <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
+          <p className="tagline">Be Better. Grow Faster.</p>
           <p className="login-copy">{liveNote}</p>
           <div className="login-form">
             <div className="role-toggle" aria-label="Choose sign-in role">
