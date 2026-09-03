@@ -1250,7 +1250,6 @@ export function SBRAApp() {
         <div className="brand">
           <LogoBlock />
           <div>
-            <p className="eyebrow">Berks County Collab</p>
             <h1>{activeOrganization.shortName} Network</h1>
           </div>
         </div>
