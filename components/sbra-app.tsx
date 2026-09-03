@@ -1403,6 +1403,9 @@ export function SBRAApp() {
         {activeView === "community" && (
           <CommunityView
             posts={posts}
+            referrals={referrals}
+            memberById={memberById}
+            businessById={businessById}
             reactions={reactions}
             comments={comments}
             currentMemberId={currentMember?.id ?? ""}
@@ -1813,6 +1816,9 @@ function UtilityIcon({ icon }: { icon: "bell" | "settings" | "paperclip" }) {
 
 function CommunityView({
   posts,
+  referrals,
+  memberById,
+  businessById,
   reactions,
   comments,
   currentMemberId,
@@ -1839,6 +1845,9 @@ function CommunityView({
   onViewEvents
 }: {
   posts: CommunityPost[];
+  referrals: Referral[];
+  memberById: Map<string, Member>;
+  businessById: Map<string, Business>;
   reactions: Reaction[];
   comments: Comment[];
   currentMemberId: string;
@@ -1864,6 +1873,22 @@ function CommunityView({
   onGiveReferral: () => void;
   onViewEvents: () => void;
 }) {
+  const referralLeaders = Array.from(memberById.values())
+    .map((member) => {
+      const sent = referrals.filter((referral) => referral.giverId === member.id);
+      const wins = sent.filter((referral) => referral.status === "closed_won");
+      return {
+        member,
+        business: businessById.get(member.businessId),
+        sent: sent.length,
+        wins: wins.length,
+        generated: wins.reduce((sum, referral) => sum + (referral.closedValue ?? 0), 0)
+      };
+    })
+    .filter((row) => row.sent > 0)
+    .sort((a, b) => b.sent - a.sent || b.generated - a.generated)
+    .slice(0, 5);
+
   return (
     <>
     <section className="quick-actions" aria-label="Quick actions">
@@ -1871,14 +1896,29 @@ function CommunityView({
       <button className="glass-panel quick-action" onClick={onGiveReferral}><span className="quick-action-icon">↗</span><span><strong>Give a referral</strong><small>Connect a lead with a member</small></span></button>
       <button className="glass-panel quick-action" onClick={onViewEvents}><span className="quick-action-icon">◇</span><span><strong>View events</strong><small>RSVP to upcoming gatherings</small></span></button>
     </section>
-    <section className="glass-panel member-moments" aria-label="Member moments">
-      <div className="moments-label"><strong>Around SBRA</strong><span>Fresh from members</span></div>
-      {["Ari Rivera", "Tom Alvarez", "Noah Patel", "Sofia Martinez", "Grace Whitfield"].map((name, index) => (
-        <button className="moment" key={name} aria-label={`View ${name}'s member moment`}>
-          <span className={`moment-ring tone-${index}`}><span>{initials(name)}</span></span>
-          <small>{name.split(" ")[0]}</small>
-        </button>
-      ))}
+    <section className="glass-panel feed-leaderboard" aria-labelledby="feed-leaderboard-title">
+      <div className="feed-leaderboard-head">
+        <div>
+          <p className="section-label">Referral leaderboard</p>
+          <h3 id="feed-leaderboard-title">Members making connections</h3>
+        </div>
+        <button className="link-button" onClick={onGiveReferral}>Give a referral →</button>
+      </div>
+      <div className="feed-leader-list">
+        {referralLeaders.map((row, index) => (
+          <div className="feed-leader" key={row.member.id}>
+            <span className={`leader-rank rank-${index + 1}`}>{index + 1}</span>
+            <span className="impact-avatar">{initials(row.member.name)}</span>
+            <span className="leader-person">
+              <strong>{row.member.name}</strong>
+              <small>{row.business?.name ?? "SBRA member"}</small>
+            </span>
+            <span className="leader-metric"><strong>{row.sent}</strong><small>Sent</small></span>
+            <span className="leader-metric"><strong>{row.wins}</strong><small>Won</small></span>
+            <span className="leader-value"><strong>${row.generated.toLocaleString()}</strong><small>Generated</small></span>
+          </div>
+        ))}
+      </div>
     </section>
     <section className="content-grid">
       <div className="feed-column">
@@ -2251,27 +2291,74 @@ function BusinessModal({
 function LearnView() {
   const [completed, setCompleted] = useState<Array<string | number>>([]);
   const progress = Math.round((completed.length / learningModules.length) * 100);
+  const podcasts = [
+    {
+      title: "Roadmap to Referrals",
+      creator: "Stacey Brown Randall",
+      description: "Practical ways to build a business that earns consistent, natural referrals.",
+      url: "https://podcasts.apple.com/us/podcast/roadmap-to-referrals/id1405302350",
+      tone: "blue"
+    },
+    {
+      title: "Business Networking & Referrals",
+      creator: "Faithann Basore",
+      description: "Approachable advice for better conversations, follow-up, and trusted connections.",
+      url: "https://podcasts.apple.com/us/podcast/business-networking-referrals-with-faithann-basore/id1780213594",
+      tone: "coral"
+    },
+    {
+      title: "LatinX Business",
+      creator: "Randy Gomez",
+      description: "Stories and useful business lessons from entrepreneurs in the Latino community.",
+      url: "https://podcasts.apple.com/us/podcast/latinx-business/id1539059232",
+      tone: "violet"
+    }
+  ];
   return (
-    <section className="learning-grid">
-      <article className="glass-panel learn-feature">
-        <p className="section-label">Continue learning</p>
-        <h3>Master the Referral Exchange</h3>
-        <p>A short path from giving your first referral to closing the loop, built from the SBRA program.</p>
-        <div className="learning-progress"><span style={{ width: `${progress}%` }} /></div>
-        <p className="progress-copy">{completed.length} of {learningModules.length} complete</p>
-        <button className="primary-button" onClick={() => setCompleted((items) => items.length === learningModules.length ? [] : [...items, learningModules.find((module) => !items.includes(module.number))!.number])}>{completed.length === learningModules.length ? "Restart learning path" : "Complete next module"}</button>
-      </article>
-      <div className="module-list">
-        {learningModules.map((module) => (
-          <article className={completed.includes(module.number) ? "glass-panel module complete" : "glass-panel module"} key={module.number}>
-            <span>{completed.includes(module.number) ? "✓" : module.number}</span>
-            <div>
-              <h3>{module.title}</h3>
-              <p>{module.description}</p>
-            </div>
-          </article>
-        ))}
+    <section className="learn-page">
+      <div className="learning-grid">
+        <article className="glass-panel learn-feature">
+          <p className="section-label">Continue learning</p>
+          <h3>Master the Referral Exchange</h3>
+          <p>A short path from giving your first referral to closing the loop, built from the SBRA program.</p>
+          <div className="learning-progress"><span style={{ width: `${progress}%` }} /></div>
+          <p className="progress-copy">{completed.length} of {learningModules.length} complete</p>
+          <button className="primary-button" onClick={() => setCompleted((items) => items.length === learningModules.length ? [] : [...items, learningModules.find((module) => !items.includes(module.number))!.number])}>{completed.length === learningModules.length ? "Restart learning path" : "Complete next module"}</button>
+        </article>
+        <div className="module-list">
+          {learningModules.map((module) => (
+            <article className={completed.includes(module.number) ? "glass-panel module complete" : "glass-panel module"} key={module.number}>
+              <span>{completed.includes(module.number) ? "✓" : module.number}</span>
+              <div>
+                <h3>{module.title}</h3>
+                <p>{module.description}</p>
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
+      <section className="podcast-section" aria-labelledby="podcast-title">
+        <div className="podcast-heading">
+          <div>
+            <p className="section-label">Recommended listening</p>
+            <h3 id="podcast-title">Learn on the go</h3>
+          </div>
+          <span>Curated for Berks County business owners</span>
+        </div>
+        <div className="podcast-grid">
+          {podcasts.map((podcast) => (
+            <a className="glass-panel podcast-card" href={podcast.url} target="_blank" rel="noreferrer" key={podcast.title}>
+              <span className={`podcast-art podcast-${podcast.tone}`} aria-hidden="true">▶</span>
+              <div>
+                <small>APPLE PODCASTS</small>
+                <h4>{podcast.title}</h4>
+                <p>{podcast.description}</p>
+                <strong>{podcast.creator} <span>↗</span></strong>
+              </div>
+            </a>
+          ))}
+        </div>
+      </section>
     </section>
   );
 }

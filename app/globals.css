@@ -406,13 +406,13 @@ button {
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  min-height: 101px;
+  min-height: 128px;
   align-items: center;
-  gap: 14px;
+  gap: 18px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--sponsor-accent) 24%, white);
   border-radius: 22px;
-  padding: 20px 22px 22px 16px;
+  padding: 25px 26px 27px 20px;
   color: var(--ink);
   background:
     linear-gradient(100deg, color-mix(in srgb, var(--sponsor-accent) 12%, white) 0%, rgba(255, 255, 255, .92) 58%, color-mix(in srgb, var(--sponsor-accent) 8%, white) 100%);
@@ -438,12 +438,12 @@ button {
 
 .sponsor-mark {
   display: grid;
-  width: 50px;
-  height: 50px;
+  width: 62px;
+  height: 62px;
   place-items: center;
-  border-radius: 15px;
+  border-radius: 18px;
   color: white;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 850;
   letter-spacing: .04em;
   background: var(--sponsor-accent);
@@ -454,15 +454,15 @@ button {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 22px;
+  gap: 26px;
 }
 
 .sponsor-message > p {
   display: grid;
-  flex: 0 0 160px;
+  flex: 0 0 175px;
   gap: 3px;
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 750;
 }
 
@@ -483,7 +483,7 @@ button {
 .sponsor-copy strong {
   overflow: hidden;
   font-family: var(--font-display);
-  font-size: 19px;
+  font-size: 22px;
   font-weight: 400;
   letter-spacing: .01em;
   text-overflow: ellipsis;
@@ -493,7 +493,7 @@ button {
 .sponsor-copy small {
   overflow: hidden;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -695,66 +695,78 @@ button {
   gap: 18px;
 }
 
-.member-moments {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  overflow-x: auto;
+.feed-leaderboard {
+  overflow: hidden;
   border-radius: 22px;
-  padding: 13px 18px;
-  scrollbar-width: none;
+  padding: 18px 20px;
 }
 
-.member-moments::-webkit-scrollbar { display: none; }
-
-.moments-label {
-  display: grid;
-  flex: 0 0 128px;
-  gap: 2px;
-  border-right: 1px solid var(--line);
+.feed-leaderboard-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
 }
 
-.moments-label strong { font-size: 13px; }
-.moments-label span { color: var(--muted); font-size: 10px; }
-
-.moment {
-  display: grid;
-  flex: 0 0 54px;
-  gap: 4px;
-  justify-items: center;
-  border: 0;
-  padding: 0;
-  color: var(--ink);
-  background: transparent;
+.feed-leaderboard-head h3 {
+  margin: 2px 0 0;
+  font-size: 18px;
 }
 
-.moment-ring {
+.feed-leader-list {
   display: grid;
-  width: 48px;
-  height: 48px;
+  gap: 6px;
+}
+
+.feed-leader {
+  display: grid;
+  grid-template-columns: 28px 38px minmax(140px, 1fr) 54px 54px minmax(92px, auto);
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 14px;
+}
+
+.feed-leader:nth-child(odd) { background: rgba(0, 114, 184, 0.055); }
+
+.leader-rank {
+  display: grid;
+  width: 26px;
+  height: 26px;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(145deg, var(--gold), var(--coral), var(--blue));
-}
-
-.moment-ring > span {
-  display: grid;
-  width: 41px;
-  height: 41px;
-  place-items: center;
-  border: 2px solid white;
-  border-radius: 50%;
-  color: white;
-  background: var(--blue);
-  font-size: 10px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
   font-weight: 850;
 }
 
-.moment-ring.tone-1 > span { background: #3f5771; }
-.moment-ring.tone-2 > span { background: #476f5b; }
-.moment-ring.tone-3 > span { background: #a64f57; }
-.moment-ring.tone-4 > span { background: #65538d; }
-.moment small { font-size: 10px; font-weight: 700; }
+.leader-rank.rank-1 { color: #6c4b00; background: #f7d875; }
+.leader-rank.rank-2 { color: #435263; background: #dce4ea; }
+.leader-rank.rank-3 { color: #784624; background: #ecc19f; }
+
+.feed-leader .impact-avatar {
+  width: 38px;
+  height: 38px;
+  font-size: 11px;
+}
+
+.leader-person,
+.leader-metric,
+.leader-value {
+  display: grid;
+  gap: 1px;
+}
+
+.leader-person strong { font-size: 13px; }
+.leader-person small,
+.leader-metric small,
+.leader-value small { color: var(--muted); font-size: 10px; }
+.leader-metric { text-align: center; }
+.leader-metric strong { font-size: 15px; }
+.leader-value { text-align: right; }
+.leader-value strong { color: var(--blue); font-size: 14px; }
 
 .feed-column,
 .right-rail,
@@ -1352,6 +1364,69 @@ button {
   align-items: center;
 }
 
+.learn-page {
+  display: grid;
+  gap: 24px;
+}
+
+.podcast-section {
+  display: grid;
+  gap: 14px;
+}
+
+.podcast-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.podcast-heading h3 { margin: 2px 0 0; }
+.podcast-heading > span { color: var(--muted); font-size: 12px; }
+
+.podcast-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.podcast-card {
+  display: flex;
+  min-width: 0;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  color: var(--ink);
+  text-decoration: none;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.podcast-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(0, 17, 103, 0.2);
+  box-shadow: 0 16px 34px rgba(0, 17, 103, 0.1);
+}
+
+.podcast-art {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  place-items: center;
+  border-radius: 15px;
+  color: white;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.podcast-blue { background: linear-gradient(145deg, var(--blue), #39a7db); }
+.podcast-coral { background: linear-gradient(145deg, var(--coral), var(--gold)); }
+.podcast-violet { background: linear-gradient(145deg, var(--violet), #b04dcc); }
+.podcast-card small { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: 0.08em; }
+.podcast-card h4 { margin: 4px 0 6px; font-size: 15px; line-height: 1.25; }
+.podcast-card p { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.podcast-card strong { color: var(--blue); font-size: 11px; }
+.podcast-card strong span { margin-left: 3px; }
+
 .module span {
   display: grid;
   width: 54px;
@@ -1773,6 +1848,8 @@ button {
     grid-template-columns: 1fr 1fr;
   }
 
+  .podcast-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2075,6 +2152,21 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .feed-leaderboard { padding: 16px 12px; }
+  .feed-leaderboard-head { align-items: start; }
+  .feed-leaderboard-head .link-button { font-size: 12px; white-space: nowrap; }
+  .feed-leader {
+    grid-template-columns: 25px 34px minmax(0, 1fr) 42px 76px;
+    gap: 7px;
+    padding: 9px 6px;
+  }
+  .feed-leader .impact-avatar { width: 34px; height: 34px; }
+  .feed-leader .leader-metric + .leader-metric { display: none; }
+  .leader-person { min-width: 0; }
+  .leader-person strong,
+  .leader-person small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .leader-value strong { font-size: 12px; }
+
   .toolbar {
     gap: 8px;
     margin-bottom: 12px;
@@ -2160,6 +2252,10 @@ button {
   .learning-grid {
     gap: 12px;
   }
+
+  .podcast-grid { grid-template-columns: 1fr; }
+  .podcast-heading { align-items: start; }
+  .podcast-heading > span { max-width: 130px; text-align: right; }
 
   .learn-feature {
     min-height: 310px;
@@ -3160,16 +3256,16 @@ button {
   .sponsor-banner {
     grid-template-columns: auto minmax(0, 1fr);
     gap: 11px;
-    min-height: 115px;
-    padding: 18px 14px 22px;
+    min-height: 130px;
+    padding: 21px 16px 25px;
     border-radius: 19px;
   }
 
   .sponsor-mark {
-    width: 44px;
-    height: 44px;
+    width: 50px;
+    height: 50px;
     border-radius: 13px;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .sponsor-message {
@@ -3189,7 +3285,7 @@ button {
   }
 
   .sponsor-copy strong {
-    font-size: 16px;
+    font-size: 18px;
   }
 
   .sponsor-copy small {
@@ -3202,7 +3298,7 @@ button {
 
   .sponsor-controls {
     bottom: 7px;
-    left: 69px;
+    left: 77px;
   }
 
   .referral-header {
