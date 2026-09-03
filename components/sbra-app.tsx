@@ -206,43 +206,43 @@ const primaryNavKeys: ViewKey[] = ["community", "directory", "referrals", "event
 
 const mockAds = [
   {
-    sponsor: "Harbor & Pine Insurance",
-    headline: "Coverage that keeps up with a growing business.",
-    copy: "Practical guidance for SBRA members, from first hire to second location.",
-    action: "Explore member coverage",
-    mark: "HP",
+    sponsor: "Power Marketing International",
+    headline: "Build a website designed to turn attention into leads.",
+    copy: "Web design, online advertising, SEO, and social media support from an SBRA member.",
+    action: "Member spotlight",
+    mark: "PM",
     tone: "navy"
   },
   {
-    sponsor: "Common Ground Workspace",
-    headline: "A better room for your next big conversation.",
-    copy: "Meeting rooms and flexible offices, with preferred rates for local businesses.",
-    action: "View local spaces",
-    mark: "CG",
+    sponsor: "Diamond Credit Union",
+    headline: "A local financial partner for personal and business milestones.",
+    copy: "Member-owned banking solutions built around the financial success of the people they serve.",
+    action: "Meet the member",
+    mark: "DC",
     tone: "sage"
   },
   {
-    sponsor: "Northstar Books",
-    headline: "Know your numbers. Keep your weekends.",
-    copy: "Monthly bookkeeping built for owners who would rather be building.",
-    action: "See how it works",
-    mark: "NB",
+    sponsor: "Precision Hearing Aid Center",
+    headline: "Hear more of the moments that matter.",
+    copy: "Local hearing evaluations, professional fittings, and ongoing hearing-aid service.",
+    action: "Member spotlight",
+    mark: "PH",
     tone: "gold"
   },
   {
-    sponsor: "Brightline Studio",
-    headline: "Make the first impression feel like you.",
-    copy: "Thoughtful brand and web design for established local companies.",
-    action: "Meet the studio",
-    mark: "BS",
+    sponsor: "Reading Dermatology Associates",
+    headline: "Thoughtful skin care for every stage of life.",
+    copy: "Medical and cosmetic dermatology for patients ranging from infants to seniors.",
+    action: "Meet the member",
+    mark: "RD",
     tone: "coral"
   },
   {
-    sponsor: "Foundry Community Bank",
-    headline: "Local decisions for your next move.",
-    copy: "Business banking with people who understand the neighborhood you serve.",
-    action: "Talk with a banker",
-    mark: "FC",
+    sponsor: "Security Service Company",
+    headline: "Local security experience you can build around.",
+    copy: "Security-system solutions from a Berks County SBRA member serving homes and businesses.",
+    action: "Member spotlight",
+    mark: "SS",
     tone: "blue"
   }
 ] as const;
@@ -585,7 +585,7 @@ export function SBRAApp() {
       {
         id: "event-alert",
         title: "Breakfast Referral Club",
-        detail: "Friday 7:30 AM at B2 Bistro — Tom Alvarez is the feature speaker.",
+        detail: "Friday 7:30 AM at B2 Bistro — sample event details for the member demo.",
         view: "community" as ViewKey
       }
     ],
@@ -1601,7 +1601,7 @@ function AdBanner({ ads }: { ads: typeof mockAds }) {
   return (
     <aside
       className={`sponsor-banner sponsor-${ad.tone}`}
-      aria-label={`Sponsored message from ${ad.sponsor}`}
+      aria-label={`Sample member promotion from ${ad.sponsor}`}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
@@ -1611,7 +1611,7 @@ function AdBanner({ ads }: { ads: typeof mockAds }) {
     >
       <div className="sponsor-mark" aria-hidden="true">{ad.mark}</div>
       <div className="sponsor-message" aria-live="polite">
-        <p><span>Sponsored</span>{ad.sponsor}</p>
+        <p><span>Sample member promotion</span>{ad.sponsor}</p>
         <div className="sponsor-copy">
           <strong>{ad.headline}</strong>
           <small>{ad.copy}</small>
@@ -2097,12 +2097,12 @@ function CommunityView({
 
         <section className="glass-panel rail-card">
           <p className="section-label">New members</p>
-          {["Grace Whitfield", "Tom Alvarez"].map((name, index) => (
+          {["Yamile Zabala", "Adam Wentling"].map((name, index) => (
             <div className="mentor" key={name}>
               <div className={index === 0 ? "avatar blue" : "avatar violet"}>{initials(name)}</div>
               <div>
                 <strong>{name}</strong>
-                <span>{index === 0 ? "Vantage Insurance Group" : "Cornerstone Bookkeeping"}</span>
+                <span>{index === 0 ? "Diamond Credit Union" : "Precision Hearing Aid Center"}</span>
               </div>
             </div>
           ))}
@@ -2694,6 +2694,7 @@ function ReferralsView({
           <p className="section-label">Referral exchange</p>
           <h3>Give a lead. Make an introduction. Close the loop.</h3>
           <p className="referral-sub">Connect a real opportunity with the right SBRA member, then keep the status current so everyone can see the impact.</p>
+          <p className="impact-note">The people and businesses are sourced from SBRA’s public directory; all activity, referrals, and financial metrics in this demo are illustrative.</p>
           <ol className="referral-how" aria-label="How the referral program works">
             <li><span>1</span><p><strong>Send</strong><small>Share a qualified lead or warm member introduction.</small></p></li>
             <li><span>2</span><p><strong>Follow up</strong><small>The receiving member contacts them and updates the status.</small></p></li>
@@ -2857,7 +2858,7 @@ function ReferralImpactBoard({
           </div>
         ))}
       </div>
-      <p className="impact-note">Demo estimates shown for member savings. In production, these can be calculated from redeemed discounts, included programs, and event benefits.</p>
+      <p className="impact-note">All referral activity, revenue, savings, rankings, and engagement shown here are illustrative demo data—not verified results attributed to these members.</p>
     </section>
   );
 }
