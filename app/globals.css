@@ -357,13 +357,13 @@ button {
   position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  min-height: 84px;
+  min-height: 101px;
   align-items: center;
   gap: 14px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--sponsor-accent) 24%, white);
   border-radius: 22px;
-  padding: 14px 22px 18px 16px;
+  padding: 20px 22px 22px 16px;
   color: var(--ink);
   background:
     linear-gradient(100deg, color-mix(in srgb, var(--sponsor-accent) 12%, white) 0%, rgba(255, 255, 255, .92) 58%, color-mix(in srgb, var(--sponsor-accent) 8%, white) 100%);
@@ -3107,8 +3107,8 @@ button {
   .sponsor-banner {
     grid-template-columns: auto minmax(0, 1fr);
     gap: 11px;
-    min-height: 96px;
-    padding: 12px 14px 18px;
+    min-height: 115px;
+    padding: 18px 14px 22px;
     border-radius: 19px;
   }
 
