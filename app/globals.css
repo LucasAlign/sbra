@@ -74,6 +74,28 @@ button {
   letter-spacing: 0;
 }
 
+.login-card .brand-logo-wordmark {
+  max-width: 205px;
+}
+
+.login-title {
+  color: var(--blue);
+  font-family: var(--font-display);
+  font-size: clamp(38px, 6vw, 50px) !important;
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.035em !important;
+}
+
+.login-heading {
+  max-width: 360px;
+  margin: 14px auto 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
 .login-copy {
   color: var(--muted);
   line-height: 1.5;

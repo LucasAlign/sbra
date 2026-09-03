@@ -1114,8 +1114,8 @@ export function SBRAApp() {
       <main className="login-screen">
         <section className="glass-panel login-card">
           <LogoBlock large />
-          <p className="eyebrow">Berks County Collab</p>
-          <h1>Local networks. One community.</h1>
+          <h1 className="login-title">Berks County Collab</h1>
+          <h2 className="login-heading">Local networks. One community.</h2>
           <p className="organization-credit">Founding network · SBRA</p>
           <p className="login-copy">Loading your community...</p>
         </section>
@@ -1129,8 +1129,8 @@ export function SBRAApp() {
         {dbEnabled && <SessionBridge onSession={setSession} />}
         <section className="glass-panel login-card">
           <LogoBlock large />
-          <p className="eyebrow">Berks County Collab</p>
-          <h1>Your local business community, connected.</h1>
+          <h1 className="login-title">Berks County Collab</h1>
+          <h2 className="login-heading">Your local business community, connected.</h2>
           <p className="tagline">Powered by founding network SBRA · Be Better. Grow Faster.</p>
           <p className="login-copy">{liveNote}</p>
           <div className="login-form">
