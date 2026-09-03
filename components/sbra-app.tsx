@@ -1113,8 +1113,10 @@ export function SBRAApp() {
     return (
       <main className="login-screen">
         <section className="glass-panel login-card">
-          <p className="login-eyebrow">Welcome to</p>
-          <h1 className="login-title"><span>Berks County</span><strong>Collab</strong></h1>
+          <h1 className="visually-hidden">Berks County Collab</h1>
+          <div className="login-brand-lockup" aria-hidden="true">
+            <img src="/berks-county-collab.png" alt="" width={1254} height={1254} />
+          </div>
           <h2 className="login-heading">Local networks. One community.</h2>
           <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
           <p className="login-copy">Loading your community...</p>
@@ -1128,8 +1130,10 @@ export function SBRAApp() {
       <main className="login-screen">
         {dbEnabled && <SessionBridge onSession={setSession} />}
         <section className="glass-panel login-card">
-          <p className="login-eyebrow">Welcome to</p>
-          <h1 className="login-title"><span>Berks County</span><strong>Collab</strong></h1>
+          <h1 className="visually-hidden">Berks County Collab</h1>
+          <div className="login-brand-lockup" aria-hidden="true">
+            <img src="/berks-county-collab.png" alt="" width={1254} height={1254} />
+          </div>
           <h2 className="login-heading">Your local business community, connected.</h2>
           <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
           <p className="tagline">Be Better. Grow Faster.</p>
