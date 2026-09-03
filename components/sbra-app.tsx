@@ -210,7 +210,7 @@ const mockAds = [
     headline: "Build a website designed to turn attention into leads.",
     copy: "Web design, online advertising, SEO, and social media support from an SBRA member.",
     action: "Member spotlight",
-    mark: "PM",
+    logo: "https://irp.cdn-website.com/43c3ee7c/dms3rep/multi/opt/PMI-Logo-Black-150w.png",
     tone: "navy"
   },
   {
@@ -218,7 +218,7 @@ const mockAds = [
     headline: "A local financial partner for personal and business milestones.",
     copy: "Member-owned banking solutions built around the financial success of the people they serve.",
     action: "Meet the member",
-    mark: "DC",
+    logo: "https://diamondcu.org/wp-content/uploads/2025/05/logo.png",
     tone: "sage"
   },
   {
@@ -226,7 +226,7 @@ const mockAds = [
     headline: "Hear more of the moments that matter.",
     copy: "Local hearing evaluations, professional fittings, and ongoing hearing-aid service.",
     action: "Member spotlight",
-    mark: "PH",
+    logo: "https://precisionhac.com/wp-content/uploads/2023/06/precisionhearingaidcenter-logofull-copy-v3-1.jpg",
     tone: "gold"
   },
   {
@@ -234,7 +234,7 @@ const mockAds = [
     headline: "Thoughtful skin care for every stage of life.",
     copy: "Medical and cosmetic dermatology for patients ranging from infants to seniors.",
     action: "Meet the member",
-    mark: "RD",
+    logo: "https://readingderm.com/wp-content/uploads/2026/04/Logo.svg",
     tone: "coral"
   },
   {
@@ -242,7 +242,7 @@ const mockAds = [
     headline: "Local security experience you can build around.",
     copy: "Security-system solutions from a Berks County SBRA member serving homes and businesses.",
     action: "Member spotlight",
-    mark: "SS",
+    logo: "https://securityservicecompany.com/img/2022/12/SSC-Logo.svg",
     tone: "blue"
   }
 ] as const;
@@ -1113,10 +1113,9 @@ export function SBRAApp() {
     return (
       <main className="login-screen">
         <section className="glass-panel login-card">
-          <h1 className="visually-hidden">Berks County Collab</h1>
-          <div className="login-brand-lockup" aria-hidden="true">
-            <img src="/berks-county-collab.png" alt="" width={1254} height={1254} />
-          </div>
+          <h1 className="login-brand-lockup">
+            <img src="/berks-county-collab.png" alt="Berks County Collab" width={1254} height={1254} />
+          </h1>
           <h2 className="login-heading">Local networks. One community.</h2>
           <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
           <p className="login-copy">Loading your community...</p>
@@ -1130,10 +1129,9 @@ export function SBRAApp() {
       <main className="login-screen">
         {dbEnabled && <SessionBridge onSession={setSession} />}
         <section className="glass-panel login-card">
-          <h1 className="visually-hidden">Berks County Collab</h1>
-          <div className="login-brand-lockup" aria-hidden="true">
-            <img src="/berks-county-collab.png" alt="" width={1254} height={1254} />
-          </div>
+          <h1 className="login-brand-lockup">
+            <img src="/berks-county-collab.png" alt="Berks County Collab" width={1254} height={1254} />
+          </h1>
           <h2 className="login-heading">Your local business community, connected.</h2>
           <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
           <p className="tagline">Be Better. Grow Faster.</p>
@@ -1609,7 +1607,9 @@ function AdBanner({ ads }: { ads: typeof mockAds }) {
         if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false);
       }}
     >
-      <div className="sponsor-mark" aria-hidden="true">{ad.mark}</div>
+      <div className="sponsor-mark">
+        <img src={ad.logo} alt={`${ad.sponsor} logo`} />
+      </div>
       <div className="sponsor-message" aria-live="polite">
         <p><span>Sample member promotion</span>{ad.sponsor}</p>
         <div className="sponsor-copy">
