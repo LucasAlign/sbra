@@ -113,8 +113,14 @@ button {
     width: 100%;
     height: auto;
     margin-inline: auto;
-    transform: translateY(-45px);
+    /* The PNG is a 1254px square on a baked-in white background. Its artwork
+       sits ~11px right of the file center and ~60px below it, so the box being
+       centered still left the logo looking off. Shift by that amount (scaled
+       to the 340px render) so the artwork itself is centered in the crop, and
+       multiply-blend so the white square disappears against the glass card. */
+    transform: translate(-0.9%, -53px);
     transform-origin: top center;
+    mix-blend-mode: multiply;
 }
 
 .login-heading {
@@ -3471,54 +3477,6 @@ button {
 .comment-composer .primary-button {
   min-height: 40px;
   padding: 0 16px;
-}
-
-/* ---- Demo login credentials (seed mode) ---- */
-.demo-credentials {
-  margin: 16px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.demo-credentials-title {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.demo-credential-chip {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid rgba(0, 17, 103, 0.16);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.5);
-  cursor: pointer;
-  text-align: left;
-}
-
-.demo-credential-chip:hover {
-  border-color: var(--blue);
-  background: rgba(255, 255, 255, 0.8);
-}
-
-.demo-credential-label {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--blue);
-}
-
-.demo-credential-detail {
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Onboarding / self-signup ---- */
