@@ -98,7 +98,7 @@ button {
   white-space: nowrap !important;
 }
 
-.login-brand-lockup {
+.login-card .login-brand-lockup {
     display: grid;
     width: min(340px, 100%);
     height: 230px;
