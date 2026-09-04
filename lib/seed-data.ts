@@ -364,7 +364,7 @@ export const referralSeed: Referral[] = [
     introducedMemberId: "sofia-martinez",
     need: "Illustrative warm introduction included to demonstrate the referral workflow.",
     status: "given",
-    createdAt: Date.now() - 1 * DAY
+    createdAt: Date.now() - 8 * DAY
   },
   {
     id: "ref-tom-grace",

@@ -2921,6 +2921,166 @@ button {
   line-height: 1.4;
 }
 
+/* ---- Stale referral nudge ---- */
+.referral-nudge {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 20px;
+  padding: 16px 18px;
+  border-left: 4px solid var(--coral);
+  background: rgba(184, 26, 31, 0.06);
+}
+
+.referral-nudge-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  color: white;
+  font-weight: 900;
+  background: var(--coral);
+}
+
+.referral-nudge-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.referral-nudge-body strong {
+  color: var(--ink);
+}
+
+.referral-nudge-body span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.referral-stale-chip {
+  align-self: flex-start;
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(184, 26, 31, 0.12);
+  color: var(--coral);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* ---- Top givers leaderboard ---- */
+.leaderboard {
+  border-radius: 22px;
+  padding: 18px 20px;
+}
+
+.leaderboard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.leaderboard-head .section-label {
+  margin: 0;
+}
+
+.leaderboard-you {
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: white;
+  font-size: 12px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--blue), var(--violet));
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.leaderboard-row.you {
+  background: rgba(0, 17, 103, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(0, 17, 103, 0.18);
+}
+
+.leaderboard-rank {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 900;
+  font-size: 13px;
+  background: rgba(247, 215, 68, 0.5);
+}
+
+.leaderboard-row:nth-child(n + 4) .leaderboard-rank {
+  background: rgba(0, 17, 103, 0.08);
+}
+
+.leaderboard-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 750;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.leaderboard-tag {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 800;
+  background: rgba(0, 17, 103, 0.1);
+}
+
+.leaderboard-stat {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.leaderboard-credit {
+  color: var(--ink);
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.leaderboard-selfnote {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .referral-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

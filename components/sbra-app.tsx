@@ -91,6 +91,23 @@ const DEMO_ACCOUNTS: DemoAccount[] = [
 type MemberTextField = "name" | "title" | "email" | "phone" | "bio";
 type DraftPostAttachment = PostAttachment & { file?: File };
 
+// An open referral the receiver hasn't advanced within this many days is
+// "stale" and surfaced as a nudge: stalled referrals starve the giver of the
+// credit they earned, so we prompt the receiver to act.
+const STALE_REFERRAL_DAYS = 7;
+// Rolling window for the top-givers leaderboard. A calendar month reads empty
+// near the 1st; a rolling window always reflects recent giving activity.
+const LEADERBOARD_WINDOW_DAYS = 30;
+const REFERRAL_DAY_MS = 24 * 60 * 60 * 1000;
+
+function isReferralStale(referral: Referral, now: number): boolean {
+  const open = referral.status === "given" || referral.status === "contacted";
+  // Measure from the last activity (contacted, else created) so acting on a
+  // referral resets the clock instead of nagging the receiver again immediately.
+  const lastActivity = referral.contactedAt ?? referral.createdAt;
+  return open && now - lastActivity >= STALE_REFERRAL_DAYS * REFERRAL_DAY_MS;
+}
+
 const demoAdminMember: Member = {
   id: "demo-admin",
   role: "admin",
@@ -928,7 +945,7 @@ export function SBRAApp() {
   }
 
   function markReferralContacted(referral: Referral) {
-    void patchReferral(referral.id, { status: "contacted" });
+    void patchReferral(referral.id, { status: "contacted", contactedAt: Date.now() });
   }
 
   function markReferralLost(referral: Referral) {
@@ -2743,6 +2760,28 @@ function ReferralsView({
   const closedWonGiven = given.filter((referral) => referral.status === "closed_won");
   const creditedValue = closedWonGiven.reduce((total, referral) => total + (referral.closedValue ?? 0), 0);
 
+  const now = Date.now();
+  // Open referrals sent to you that have gone quiet — your move to advance them.
+  const staleReceived = received.filter((referral) => isReferralStale(referral, now));
+
+  // Top givers over a rolling window, ranked by referrals given (the behavior we
+  // want to reward), then by dollars credited as a tiebreaker.
+  const windowStart = now - LEADERBOARD_WINDOW_DAYS * REFERRAL_DAY_MS;
+  const giverStats = new Map<string, { giverId: string; given: number; closedWon: number; credited: number }>();
+  for (const referral of referrals) {
+    if (referral.createdAt < windowStart) continue;
+    const stats = giverStats.get(referral.giverId) ?? { giverId: referral.giverId, given: 0, closedWon: 0, credited: 0 };
+    stats.given += 1;
+    if (referral.status === "closed_won") {
+      stats.closedWon += 1;
+      stats.credited += referral.closedValue ?? 0;
+    }
+    giverStats.set(referral.giverId, stats);
+  }
+  const rankedGivers = [...giverStats.values()].sort((a, b) => b.given - a.given || b.credited - a.credited);
+  const topGivers = rankedGivers.slice(0, 5);
+  const myRankIndex = rankedGivers.findIndex((stats) => stats.giverId === currentMemberId);
+
   return (
     <section className="referrals-layout">
       <div className="glass-panel referral-header">
@@ -2762,6 +2801,21 @@ function ReferralsView({
           Send a referral
         </button>
       </div>
+
+      {staleReceived.length > 0 && (
+        <div className="glass-panel referral-nudge" role="status">
+          <span className="referral-nudge-icon" aria-hidden="true">!</span>
+          <div className="referral-nudge-body">
+            <strong>
+              {staleReceived.length} referral{staleReceived.length > 1 ? "s" : ""} waiting on you
+            </strong>
+            <span>
+              {staleReceived.length === 1 ? "A referral has" : "Referrals have"} sat for{" "}
+              {STALE_REFERRAL_DAYS}+ days. Mark them contacted or closed so the giver gets their credit.
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="metric-grid">
         <article className="glass-panel metric">
@@ -2793,6 +2847,39 @@ function ReferralsView({
         currentMemberId={currentMemberId}
       />
 
+      {topGivers.length > 0 && (
+        <div className="glass-panel leaderboard">
+          <div className="leaderboard-head">
+            <p className="section-label">Top givers · last {LEADERBOARD_WINDOW_DAYS} days</p>
+            {myRankIndex >= 0 && <span className="leaderboard-you">You&apos;re #{myRankIndex + 1}</span>}
+          </div>
+          <ol className="leaderboard-list">
+            {topGivers.map((stats, index) => {
+              const member = memberById.get(stats.giverId);
+              const isYou = stats.giverId === currentMemberId;
+              return (
+                <li key={stats.giverId} className={isYou ? "leaderboard-row you" : "leaderboard-row"}>
+                  <span className="leaderboard-rank">{index + 1}</span>
+                  <span className="leaderboard-name">
+                    {member?.name ?? "SBRA member"}
+                    {isYou && <span className="leaderboard-tag">You</span>}
+                  </span>
+                  <span className="leaderboard-stat">
+                    {stats.given} given · {stats.closedWon} closed
+                  </span>
+                  <span className="leaderboard-credit">${stats.credited.toLocaleString()}</span>
+                </li>
+              );
+            })}
+          </ol>
+          {myRankIndex >= topGivers.length && (
+            <p className="leaderboard-selfnote">
+              You&apos;re #{myRankIndex + 1} with {rankedGivers[myRankIndex].given} given — give another to climb.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="referral-columns">
         <section className="referral-column">
           <p className="section-label">Given by you ({given.length})</p>
@@ -2801,6 +2888,7 @@ function ReferralsView({
               key={referral.id}
               referral={referral}
               perspective="given"
+              isStale={isReferralStale(referral, now)}
               memberById={memberById}
               businessById={businessById}
               onMarkContacted={onMarkContacted}
@@ -2818,6 +2906,7 @@ function ReferralsView({
               key={referral.id}
               referral={referral}
               perspective="received"
+              isStale={isReferralStale(referral, now)}
               memberById={memberById}
               businessById={businessById}
               onMarkContacted={onMarkContacted}
@@ -2922,6 +3011,7 @@ function ReferralImpactBoard({
 function ReferralCard({
   referral,
   perspective,
+  isStale,
   memberById,
   businessById,
   onMarkContacted,
@@ -2930,6 +3020,7 @@ function ReferralCard({
 }: {
   referral: Referral;
   perspective: "given" | "received";
+  isStale: boolean;
   memberById: Map<string, Member>;
   businessById: Map<string, Business>;
   onMarkContacted: (referral: Referral) => void;
@@ -2969,6 +3060,14 @@ function ReferralCard({
       )}
 
       <p className="referral-need">{referral.need}</p>
+
+      {isStale && !isClosed && (
+        <p className="referral-stale-chip">
+          {perspective === "received"
+            ? "Your move — update this"
+            : `Waiting on ${counterpart?.name?.split(" ")[0] ?? "them"}`}
+        </p>
+      )}
 
       {referral.status === "closed_won" && (
         <div className="referral-closed">

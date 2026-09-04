@@ -83,6 +83,7 @@ export type Referral = {
   closedValue?: number; // $ credited to the giver when closed_won
   thankYou?: string; // note from receiver to giver
   createdAt: number;
+  contactedAt?: number; // set when the receiver marks it contacted; resets staleness
   closedAt?: number;
 };
 
