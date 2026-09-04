@@ -29,6 +29,7 @@ import * as backendActions from "@/app/actions";
 import { isBackendEnabled } from "@/lib/backend";
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
+import { latinoBusinessSeed, latinoMemberSeed } from "@/lib/latino-directory";
 import {
   businessSeed,
   commentSeed,
@@ -191,7 +192,9 @@ type GlobalSearchResult = {
 
 const memberFields: MemberTextField[] = ["name", "title", "email", "phone", "bio"];
 
-const navItems: Array<{ key: ViewKey; label: string; count: string; icon: ViewKey; adminOnly?: boolean }> = [
+type NavItem = { key: ViewKey; label: string; count: string; icon: ViewKey; adminOnly?: boolean };
+
+const navItems: NavItem[] = [
   { key: "community", label: "Home", count: "12", icon: "community" },
   { key: "directory", label: "Directory", count: "Members", icon: "directory" },
   { key: "referrals", label: "Referrals", count: "Core", icon: "referrals" },
@@ -202,9 +205,15 @@ const navItems: Array<{ key: ViewKey; label: string; count: string; icon: ViewKe
   { key: "admin", label: "Admin", count: "Live", icon: "admin", adminOnly: true }
 ];
 
+const latinoNavItems: NavItem[] = [
+  { key: "directory", label: "Directorio", count: "Miembros", icon: "directory" }
+];
+
 const primaryNavKeys: ViewKey[] = ["community", "directory", "referrals", "events"];
 
-const mockAds = [
+type MemberAd = { sponsor: string; headline: string; copy: string; action: string; logo: string; tone: string };
+
+const mockAds: MemberAd[] = [
   {
     sponsor: "Power Marketing International",
     headline: "Build a website designed to turn attention into leads.",
@@ -245,7 +254,19 @@ const mockAds = [
     logo: "https://securityservicecompany.com/img/2022/12/SSC-Logo.svg",
     tone: "blue"
   }
-] as const;
+];
+
+function latinoBusinessLogo(name: string) {
+  return latinoBusinessSeed.find((business) => business.name === name)?.logo || "/sbra-mark.png";
+}
+
+const latinoAds: MemberAd[] = [
+  { sponsor: "Fritura Kings", headline: "Sabor local para compartir en comunidad.", copy: "Restaurante miembro de la Cámara Latina en Reading.", action: "Conoce al miembro", logo: latinoBusinessLogo("Fritura Kings"), tone: "coral" },
+  { sponsor: "OmniV Global Systems, LLC", headline: "Tecnología para conectar y hacer crecer tu negocio.", copy: "Sistemas y soluciones empresariales de un miembro local.", action: "Ver negocio", logo: latinoBusinessLogo("OmniV Global Systems, LLC"), tone: "blue" },
+  { sponsor: "Penn State Berks", headline: "Educación y recursos para avanzar.", copy: "Programas de educación continua y Berks LaunchBox.", action: "Conoce al miembro", logo: latinoBusinessLogo("Penn State Berks"), tone: "navy" },
+  { sponsor: "KimonoMono, LLC", headline: "Estrategia y mercadeo con propósito.", copy: "Apoyo creativo para marcas y empresas en crecimiento.", action: "Ver negocio", logo: latinoBusinessLogo("KimonoMono, LLC"), tone: "sage" },
+  { sponsor: "Tec Centro Berks", headline: "Capacitación que abre nuevas oportunidades.", copy: "Desarrollo de la fuerza laboral para nuestra comunidad.", action: "Conoce al miembro", logo: latinoBusinessLogo("Tec Centro Berks"), tone: "gold" }
+];
 
 // Illustrative demo savings from member pricing, included events, and learning.
 // Referral revenue remains sourced from closed referral records below.
@@ -289,6 +310,7 @@ export function SBRAApp() {
   const [activeView, setActiveView] = useState<ViewKey>("community");
   const [activeOrganizationId, setActiveOrganizationId] = useState("sbra");
   const activeOrganization = getCommunityOrganization(activeOrganizationId);
+  const isLatino = activeOrganizationId === "berks-latino-chamber";
   // Keeps the active destination scrolled into view within the horizontally
   // scrollable mobile nav bar, so the selected tab is always visible.
   const activeNavRef = useRef<HTMLButtonElement | null>(null);
@@ -472,7 +494,7 @@ export function SBRAApp() {
     setActiveView("community");
   }, [dbEnabled, session, role, members]);
 
-  const visibleNav = navItems.filter((item) => !item.adminOnly || role === "admin");
+  const visibleNav = (isLatino ? latinoNavItems : navItems).filter((item) => !item.adminOnly || role === "admin");
   const primaryNav = visibleNav.filter((item) => primaryNavKeys.includes(item.key));
   const moreNav = visibleNav.filter((item) => !primaryNavKeys.includes(item.key));
 
@@ -1109,6 +1131,21 @@ export function SBRAApp() {
     setMoreOpen(false);
   }
 
+  function selectOrganization(organizationId: string) {
+    const latino = organizationId === "berks-latino-chamber";
+    setActiveOrganizationId(organizationId);
+    setBusinesses(latino ? latinoBusinessSeed : businessSeed);
+    setMembers(latino ? latinoMemberSeed : memberSeed);
+    setActiveView(latino ? "directory" : "community");
+    setSearch("");
+    setCategoryFilter("all");
+    setActiveBusiness(null);
+    setMoreOpen(false);
+    setAlertsOpen(false);
+    setSettingsOpen(false);
+    setGlobalSearchOpen(false);
+  }
+
   if (authLoading) {
     return (
       <main className="login-screen">
@@ -1246,18 +1283,22 @@ export function SBRAApp() {
       {dbEnabled && <SessionBridge onSession={setSession} />}
       <aside className="glass-panel sidebar">
         <div className="brand">
-          <LogoBlock />
+          {activeOrganization.logo ? (
+            <div className="brand-logo organization-logo">
+              <img src={activeOrganization.logo} alt="Cámara de Comercio Latina del Condado de Berks" />
+            </div>
+          ) : <LogoBlock />}
           <div>
-            <h1>{activeOrganization.shortName} Network</h1>
+            <h1>{isLatino ? "Red de la Cámara Latina" : `${activeOrganization.shortName} Network`}</h1>
           </div>
         </div>
 
         <label className="organization-switcher">
-          <span>Community</span>
+          <span>{isLatino ? "Comunidad" : "Community"}</span>
           <select
             value={activeOrganizationId}
-            onChange={(event) => setActiveOrganizationId(event.target.value)}
-            aria-label="Choose community organization"
+            onChange={(event) => selectOrganization(event.target.value)}
+            aria-label={isLatino ? "Elegir organización comunitaria" : "Choose community organization"}
           >
             {communityOrganizations.map((organization) => (
               <option
@@ -1276,27 +1317,27 @@ export function SBRAApp() {
           {primaryNav.map((item) => (
             <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />
           ))}
-          <button className={moreOpen || moreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
+          {!isLatino && <button className={moreOpen || moreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
             <span className="nav-icon">•••</span><span><strong>More</strong><small>Learn, support &amp; profile</small></span>
-          </button>
-          {moreOpen && <div className="more-menu">{moreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
+          </button>}
+          {!isLatino && moreOpen && <div className="more-menu">{moreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
         </nav>
 
         <section className="theme-card">
-          <p className="section-label">Signed in</p>
+          <p className="section-label">{isLatino ? "Sesión activa" : "Signed in"}</p>
           <div className="role-grid compact">
             <div>
-              <strong>{roleLabel}</strong>
+              <strong>{isLatino ? (role === "admin" ? "Administrador" : "Miembro") : roleLabel}</strong>
               <span>
                 {liveProfile?.email ||
                   (role === "admin" ? "Reports, import, moderation" : currentBusiness?.name || "Member")}
               </span>
             </div>
           </div>
-          <div className="live-note">{liveNote}</div>
+          <div className="live-note">{isLatino ? "Directorio público de miembros de la Cámara Latina." : liveNote}</div>
           <button className="secondary-button logout-button" onClick={() => void signOutCurrentUser()}>
             <span className="button-icon">O</span>
-            Sign out
+            {isLatino ? "Cerrar sesión" : "Sign out"}
           </button>
         </section>
       </aside>
@@ -1304,22 +1345,22 @@ export function SBRAApp() {
       <main className="main-panel">
         <header className="glass-panel topbar">
           <div>
-            <p className="eyebrow">{activeOrganization.shortName} · Welcome back, {currentMember?.name.split(" ")[0] || "there"}</p>
-            <h2>{viewTitles[activeView]}</h2>
+            <p className="eyebrow">{isLatino ? `${activeOrganization.shortName} · Bienvenido` : `${activeOrganization.shortName} · Welcome back, ${currentMember?.name.split(" ")[0] || "there"}`}</p>
+            <h2>{isLatino ? "Directorio de miembros" : viewTitles[activeView]}</h2>
           </div>
           <div className="top-actions">
-            <span className="session-pill">{roleLabel}</span>
+            <span className="session-pill">{isLatino ? (role === "admin" ? "Administrador" : "Miembro") : roleLabel}</span>
             <button
               className={globalSearchOpen ? "icon-button active" : "icon-button"}
-              aria-label="Search"
+              aria-label={isLatino ? "Buscar" : "Search"}
               onClick={() => {
                 setGlobalSearchOpen((open) => !open);
                 setAlertsOpen(false);
               }}
             >
-              Search
+              {isLatino ? "Buscar" : "Search"}
             </button>
-            <button
+            {!isLatino && <button
               className={alertsOpen ? "icon-button active" : "icon-button"}
               aria-label="Notifications"
               onClick={() => {
@@ -1328,8 +1369,8 @@ export function SBRAApp() {
               }}
             >
               <UtilityIcon icon="bell" />
-            </button>
-            <button
+            </button>}
+            {!isLatino && <button
               className={settingsOpen ? "icon-button active" : "icon-button"}
               aria-label="Settings"
               onClick={() => {
@@ -1339,18 +1380,18 @@ export function SBRAApp() {
               }}
             >
               <UtilityIcon icon="settings" />
-            </button>
-            <button className="primary-button" onClick={() => setComposerOpen(true)}>
+            </button>}
+            {!isLatino && <button className="primary-button" onClick={() => setComposerOpen(true)}>
               <span className="button-icon">+</span>
               New Post
-            </button>
+            </button>}
           </div>
           {globalSearchOpen && (
             <div className="top-popover search-popover">
               <input
-                aria-label="Search Berks County Collab"
+                aria-label={isLatino ? "Buscar en el directorio" : "Search Berks County Collab"}
                 autoFocus
-                placeholder="Search businesses, members, posts, support..."
+                placeholder={isLatino ? "Buscar negocios, miembros o servicios..." : "Search businesses, members, posts, support..."}
                 value={globalSearch}
                 onChange={(event) => setGlobalSearch(event.target.value)}
               />
@@ -1361,12 +1402,12 @@ export function SBRAApp() {
                     <span>{result.detail}</span>
                   </button>
                 ))}
-                {globalSearch.trim() && globalResults.length === 0 && <p>No matches yet.</p>}
-                {!globalSearch.trim() && <p>Try a business, member, service, support topic, or module.</p>}
+                {globalSearch.trim() && globalResults.length === 0 && <p>{isLatino ? "No hay resultados." : "No matches yet."}</p>}
+                {!globalSearch.trim() && <p>{isLatino ? "Busca un negocio, miembro o servicio." : "Try a business, member, service, support topic, or module."}</p>}
               </div>
             </div>
           )}
-          {alertsOpen && (
+          {!isLatino && alertsOpen && (
             <div className="top-popover alerts-popover">
               <p className="section-label">Notifications</p>
               <div className="popover-list">
@@ -1379,7 +1420,7 @@ export function SBRAApp() {
               </div>
             </div>
           )}
-          {settingsOpen && (
+          {!isLatino && settingsOpen && (
             <div className="top-popover settings-popover">
               <p className="section-label">Settings</p>
               <div className="settings-list">
@@ -1400,7 +1441,7 @@ export function SBRAApp() {
           )}
         </header>
 
-        <AdBanner ads={mockAds} />
+        <AdBanner ads={isLatino ? latinoAds : mockAds} spanish={isLatino} />
 
         {activeView === "community" && (
           <CommunityView
@@ -1448,6 +1489,7 @@ export function SBRAApp() {
             onCategoryFilter={setCategoryFilter}
             onSearch={setSearch}
             onOpenBusiness={openBusiness}
+            spanish={isLatino}
           />
         )}
         {activeView === "referrals" && (
@@ -1525,9 +1567,9 @@ export function SBRAApp() {
             <span>{item.label}</span>
           </button>
         ))}
-        <button className={moreNav.some((item) => item.key === activeView) ? "active" : ""} onClick={() => setMoreOpen((open) => !open)} aria-label="More">
+        {!isLatino && <button className={moreNav.some((item) => item.key === activeView) ? "active" : ""} onClick={() => setMoreOpen((open) => !open)} aria-label="More">
           <span className="mobile-icon">•••</span><span>More</span>
-        </button>
+        </button>}
       </nav>
       {moreOpen && <div className="mobile-more-menu glass-panel">{moreNav.map((item) => <button key={item.key} className={activeView === item.key ? "active" : ""} onClick={() => selectNav(item.key)}><NavIcon icon={item.icon} /><span>{item.label}</span></button>)}</div>}
 
@@ -1536,6 +1578,7 @@ export function SBRAApp() {
           business={activeBusiness}
           members={membersByBusiness.get(activeBusiness.id) ?? []}
           onClose={() => setActiveBusiness(null)}
+          spanish={isLatino}
         />
       )}
 
@@ -1582,7 +1625,7 @@ export function SBRAApp() {
   );
 }
 
-function AdBanner({ ads }: { ads: typeof mockAds }) {
+function AdBanner({ ads, spanish = false }: { ads: MemberAd[]; spanish?: boolean }) {
   const [activeAd, setActiveAd] = useState(0);
   const [paused, setPaused] = useState(false);
 
@@ -1599,7 +1642,7 @@ function AdBanner({ ads }: { ads: typeof mockAds }) {
   return (
     <aside
       className={`sponsor-banner sponsor-${ad.tone}`}
-      aria-label={`Sample member promotion from ${ad.sponsor}`}
+      aria-label={spanish ? `Promoción de muestra del miembro ${ad.sponsor}` : `Sample member promotion from ${ad.sponsor}`}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
@@ -1611,20 +1654,20 @@ function AdBanner({ ads }: { ads: typeof mockAds }) {
         <img src={ad.logo} alt={`${ad.sponsor} logo`} />
       </div>
       <div className="sponsor-message" aria-live="polite">
-        <p><span>Sample member promotion</span>{ad.sponsor}</p>
+        <p><span>{spanish ? "Promoción de miembro" : "Sample member promotion"}</span>{ad.sponsor}</p>
         <div className="sponsor-copy">
           <strong>{ad.headline}</strong>
           <small>{ad.copy}</small>
         </div>
       </div>
       <span className="sponsor-action">{ad.action}<span aria-hidden="true">→</span></span>
-      <div className="sponsor-controls" aria-label="Choose advertisement">
+      <div className="sponsor-controls" aria-label={spanish ? "Elegir anuncio" : "Choose advertisement"}>
         {ads.map((item, index) => (
           <button
             key={item.sponsor}
             className={index === activeAd ? "active" : ""}
             onClick={() => setActiveAd(index)}
-            aria-label={`Show ad ${index + 1}: ${item.sponsor}`}
+            aria-label={spanish ? `Mostrar anuncio ${index + 1}: ${item.sponsor}` : `Show ad ${index + 1}: ${item.sponsor}`}
             aria-current={index === activeAd ? "true" : undefined}
           />
         ))}
@@ -1671,7 +1714,7 @@ function NavButton({
   active,
   onClick
 }: {
-  item: (typeof navItems)[number];
+  item: NavItem;
   active: boolean;
   onClick: () => void;
 }) {
@@ -2138,7 +2181,8 @@ function DirectoryView({
   search,
   onCategoryFilter,
   onSearch,
-  onOpenBusiness
+  onOpenBusiness,
+  spanish = false
 }: {
   businesses: Business[];
   membersByBusiness: Map<string, Member[]>;
@@ -2148,18 +2192,19 @@ function DirectoryView({
   onCategoryFilter: (value: string) => void;
   onSearch: (value: string) => void;
   onOpenBusiness: (business: Business) => void;
+  spanish?: boolean;
 }) {
   return (
     <section>
       <div className="glass-panel toolbar">
         <input
-          aria-label="Search member businesses"
-          placeholder="Search by business, service, or referral need..."
+          aria-label={spanish ? "Buscar negocios miembros" : "Search member businesses"}
+          placeholder={spanish ? "Buscar por negocio, servicio o necesidad..." : "Search by business, service, or referral need..."}
           value={search}
           onChange={(event) => onSearch(event.target.value)}
         />
-        <select aria-label="Filter by category" value={categoryFilter} onChange={(event) => onCategoryFilter(event.target.value)}>
-          <option value="all">All categories</option>
+        <select aria-label={spanish ? "Filtrar por categoría" : "Filter by category"} value={categoryFilter} onChange={(event) => onCategoryFilter(event.target.value)}>
+          <option value="all">{spanish ? "Todas las categorías" : "All categories"}</option>
           {categories.map((category) => (
             <option value={category} key={category}>
               {category}
@@ -2192,17 +2237,17 @@ function DirectoryView({
                 ))}
               </div>
               <div className="biz-referral">
-                <span className="section-label">Referrals wanted</span>
-                <p>{business.referralsWanted || "Open to all introductions."}</p>
+                <span className="section-label">{spanish ? "Conexiones buscadas" : "Referrals wanted"}</span>
+                <p>{business.referralsWanted || (spanish ? "Abierto a nuevas conexiones." : "Open to all introductions.")}</p>
               </div>
               <div className="biz-card-foot">
                 <span>{primaryContact ? primaryContact.name : "Member"}</span>
-                <strong>View profile →</strong>
+                <strong>{spanish ? "Ver perfil →" : "View profile →"}</strong>
               </div>
             </button>
           );
         })}
-        {businesses.length === 0 && <div className="empty-state">No member businesses match these filters yet.</div>}
+        {businesses.length === 0 && <div className="empty-state">{spanish ? "No hay negocios que coincidan con estos filtros." : "No member businesses match these filters yet."}</div>}
       </div>
     </section>
   );
@@ -2211,24 +2256,26 @@ function DirectoryView({
 function BusinessModal({
   business,
   members,
-  onClose
+  onClose,
+  spanish = false
 }: {
   business: Business;
   members: Member[];
   onClose: () => void;
+  spanish?: boolean;
 }) {
   return (
     <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="business-name">
-        <button className="modal-close" onClick={onClose} aria-label="Close business profile">
-          Close
+        <button className="modal-close" onClick={onClose} aria-label={spanish ? "Cerrar perfil del negocio" : "Close business profile"}>
+          {spanish ? "Cerrar" : "Close"}
         </button>
         <div className="modal-head">
           <div className="avatar large business-logo">
             {business.logo ? <img src={business.logo} alt={`${business.name} logo`} /> : initials(business.name)}
           </div>
           <div>
-            <p className="section-label">Member business</p>
+            <p className="section-label">{spanish ? "Negocio miembro" : "Member business"}</p>
             <h3 id="business-name">{business.name}</h3>
             <p>{business.category} · {business.city}</p>
           </div>
@@ -2238,7 +2285,7 @@ function BusinessModal({
 
         <div className="biz-detail-grid">
           <div>
-            <span className="section-label">Services offered</span>
+            <span className="section-label">{spanish ? "Servicios ofrecidos" : "Services offered"}</span>
             <div className="biz-services">
               {splitList(business.servicesOffered).map((service) => (
                 <span className="service-chip" key={service}>
@@ -2248,15 +2295,15 @@ function BusinessModal({
             </div>
           </div>
           <div>
-            <span className="section-label">Referrals wanted</span>
-            <p>{business.referralsWanted || "Open to all introductions."}</p>
+            <span className="section-label">{spanish ? "Conexiones buscadas" : "Referrals wanted"}</span>
+            <p>{business.referralsWanted || (spanish ? "Abierto a nuevas conexiones." : "Open to all introductions.")}</p>
           </div>
           <div>
-            <span className="section-label">Contact</span>
+            <span className="section-label">{spanish ? "Contacto" : "Contact"}</span>
             <p>
               {business.website && (
                 <>
-                  <a href={business.website} target="_blank" rel="noreferrer">Visit website</a>
+                  <a href={business.website} target="_blank" rel="noreferrer">{spanish ? "Visitar sitio web" : "Visit website"}</a>
                   <br />
                 </>
               )}
@@ -2267,14 +2314,14 @@ function BusinessModal({
           </div>
           {business.memberOffer && (
             <div>
-              <span className="section-label">Member offer</span>
+              <span className="section-label">{spanish ? "Oferta para miembros" : "Member offer"}</span>
               <p>{business.memberOffer}</p>
             </div>
           )}
         </div>
 
         <div className="member-list">
-          <span className="section-label">Team ({members.length})</span>
+          <span className="section-label">{spanish ? `Miembros (${members.length})` : `Team (${members.length})`}</span>
           {members.map((member) => (
             <div className="member-row" key={member.id}>
               <div className="mini-avatar blue member-photo">
@@ -2294,7 +2341,7 @@ function BusinessModal({
               </div>
             </div>
           ))}
-          {members.length === 0 && <p>No members listed yet.</p>}
+          {members.length === 0 && <p>{spanish ? "No hay miembros disponibles." : "No members listed yet."}</p>}
         </div>
       </section>
     </div>

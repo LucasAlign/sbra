@@ -5,6 +5,7 @@ export type CommunityOrganization = {
   description: string;
   status: "active" | "coming_soon";
   isFoundingPartner?: boolean;
+  logo?: string;
 };
 
 // Organization catalog for Berks County Collab. Adding a partner starts here;
@@ -21,9 +22,10 @@ export const communityOrganizations: CommunityOrganization[] = [
   {
     id: "berks-latino-chamber",
     name: "Berks County Latino Chamber of Commerce",
-    shortName: "Latino Chamber",
-    description: "A future community within Berks County Collab.",
-    status: "coming_soon"
+    shortName: "Cámara Latina",
+    description: "Impulsando el éxito de los negocios latinos.",
+    status: "active",
+    logo: "https://res.cloudinary.com/joinit/image/upload/v1740507882/xysfksr9ui5axgnolixx.jpg"
   }
 ];
 
