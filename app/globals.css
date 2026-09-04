@@ -306,10 +306,6 @@ button {
   width: 100%;
   max-width: 280px;
   height: auto;
-  /* Optical centering: the artwork's ink is heavier on the left (the "A" mark
-     plus the shorter top text line), so its visual center sits ~3.2% of its
-     width left of the bounding-box center. Nudge right so it looks centered. */
-  transform: translateX(3.2%);
 }
 
 .brand h1,
