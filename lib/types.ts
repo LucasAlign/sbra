@@ -6,6 +6,7 @@ export type ViewKey =
   | "referrals"
   | "events"
   | "learn"
+  | "tools"
   | "support"
   | "profile"
   | "admin";

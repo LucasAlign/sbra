@@ -534,6 +534,7 @@ export const viewTitles = {
   referrals: "Referrals",
   events: "Events & Mingles",
   learn: "Learning Hub",
+  tools: "Business Tools",
   support: "Support Center",
   profile: "My Profile",
   admin: "Admin Portal"

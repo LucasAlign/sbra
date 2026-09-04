@@ -23,6 +23,7 @@ import {
   watchSupportRequests,
   type LiveUserProfile
 } from "@/lib/data";
+import { AdminView } from "@/components/admin-view";
 import type { Session } from "next-auth";
 import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
 import * as backendActions from "@/app/actions";
@@ -217,9 +218,10 @@ const navItems: NavItem[] = [
   { key: "referrals", label: "Referrals", count: "Core", icon: "referrals" },
   { key: "events", label: "Events", count: "Mingles", icon: "events" },
   { key: "learn", label: "Learn", count: "3", icon: "learn" },
+  { key: "tools", label: "Tools", count: "Kit", icon: "tools" },
   { key: "support", label: "Support", count: "4", icon: "support" },
   { key: "profile", label: "Profile", count: "You", icon: "profile" },
-  { key: "admin", label: "Admin", count: "Live", icon: "admin", adminOnly: true }
+  { key: "admin", label: "Admin tools", count: "Reports", icon: "admin", adminOnly: true }
 ];
 
 const latinoNavItems: NavItem[] = [
@@ -227,6 +229,163 @@ const latinoNavItems: NavItem[] = [
 ];
 
 const primaryNavKeys: ViewKey[] = ["community", "directory", "referrals", "events"];
+
+// Business Tools hub. Skeleton only for now: each tool renders a placeholder
+// detail panel; the real calculators/generators get built in later per tool.
+type ToolStatus = "soon" | "beta";
+type ToolDef = {
+  id: string;
+  name: string;
+  tagline: string;
+  description: string;
+  icon: string;
+  status: ToolStatus;
+};
+type ToolCategory = {
+  key: string;
+  title: string;
+  blurb: string;
+  tools: ToolDef[];
+};
+
+const toolCategories: ToolCategory[] = [
+  {
+    key: "money",
+    title: "Money & Finance",
+    blurb: "Know your numbers — price right, bill fast, and see what referrals are worth.",
+    tools: [
+      {
+        id: "referral-roi",
+        name: "Referral ROI Calculator",
+        tagline: "What the club is really worth to you",
+        description:
+          "Turn your given and received referrals into hard dollars — closed-loop value earned, given, and your net return from the exchange.",
+        icon: "💸",
+        status: "soon"
+      },
+      {
+        id: "invoice-quote",
+        name: "Invoice & Quote Generator",
+        tagline: "Branded invoices and estimates in minutes",
+        description:
+          "Fill in a client and line items to produce a clean, branded invoice or quote you can download and send.",
+        icon: "🧾",
+        status: "soon"
+      },
+      {
+        id: "pricing-margin",
+        name: "Pricing & Margin Calculator",
+        tagline: "Price for profit, not guesswork",
+        description:
+          "Enter costs and a target margin to get your price, markup, and break-even units at a glance.",
+        icon: "🏷️",
+        status: "soon"
+      },
+      {
+        id: "loan-cashflow",
+        name: "Loan & Cash-Flow Estimator",
+        tagline: "See your runway before you commit",
+        description:
+          "Model loan payments, runway, and a simple 90-day cash-flow forecast so financing decisions are clear.",
+        icon: "📉",
+        status: "soon"
+      }
+    ]
+  },
+  {
+    key: "growth",
+    title: "Marketing & Networking",
+    blurb: "Fill the pipeline and stay top-of-mind with the people you meet.",
+    tools: [
+      {
+        id: "marketing-content",
+        name: "Marketing Content Generator",
+        tagline: "Draft posts and emails in seconds",
+        description:
+          "Answer a few prompts and generate ready-to-edit social posts, email blurbs, and promos in your voice.",
+        icon: "✍️",
+        status: "soon"
+      },
+      {
+        id: "networking-crm",
+        name: "Networking CRM Lite",
+        tagline: "Never drop a follow-up again",
+        description:
+          "Track the contacts you meet at Breakfast Club and Mingles, log notes, and get reminders to follow up.",
+        icon: "🤝",
+        status: "soon"
+      }
+    ]
+  },
+  {
+    key: "strategy",
+    title: "Strategy & Performance",
+    blurb: "Step back, size up the business, and track the goals that move it.",
+    tools: [
+      {
+        id: "health-scorecard",
+        name: "Business Health Scorecard",
+        tagline: "A quick check-up across your business",
+        description:
+          "A short self-assessment across marketing, finance, operations, and sales that scores your business and points to next steps.",
+        icon: "🩺",
+        status: "soon"
+      },
+      {
+        id: "goal-kpi",
+        name: "Goal & KPI Tracker",
+        tagline: "Set targets, watch them move",
+        description:
+          "Set quarterly goals and KPIs, log progress, and see momentum with simple visual progress bars.",
+        icon: "🎯",
+        status: "soon"
+      }
+    ]
+  },
+  {
+    key: "resources",
+    title: "Templates & Resources",
+    blurb: "Grab-and-go documents, checklists, and local programs for Berks County owners.",
+    tools: [
+      {
+        id: "doc-templates",
+        name: "Document Template Library",
+        tagline: "Contracts, NDAs, proposals — ready to fill",
+        description:
+          "A library of common business documents you can download, customize, and use right away.",
+        icon: "📄",
+        status: "soon"
+      },
+      {
+        id: "breakeven-onepager",
+        name: "Break-even & Margin One-Pagers",
+        tagline: "Printable cheat sheets for your numbers",
+        description:
+          "Clean one-page break-even and profit-margin worksheets to plan and share.",
+        icon: "📊",
+        status: "soon"
+      },
+      {
+        id: "tax-calendar",
+        name: "Tax & Compliance Calendar",
+        tagline: "Never miss a deadline",
+        description:
+          "Key tax and compliance dates with reminders so filings and renewals don't sneak up on you.",
+        icon: "🗓️",
+        status: "soon"
+      },
+      {
+        id: "grant-finder",
+        name: "Grant & Local Resource Finder",
+        tagline: "Money and help near you",
+        description:
+          "Find grants, loans, and local programs — Berks LaunchBox, SBA, and county resources — matched to your business.",
+        icon: "🧭",
+        status: "soon"
+      }
+    ]
+  }
+];
 
 type MemberAd = { sponsor: string; headline: string; copy: string; action: string; logo: string; tone: string };
 
@@ -514,6 +673,11 @@ export function SBRAApp() {
   const visibleNav = (isLatino ? latinoNavItems : navItems).filter((item) => !item.adminOnly || role === "admin");
   const primaryNav = visibleNav.filter((item) => primaryNavKeys.includes(item.key));
   const moreNav = visibleNav.filter((item) => !primaryNavKeys.includes(item.key));
+  // Admins get their tools pinned to the top of the sidebar, above Home. The
+  // mobile bar keeps them under More so it stays four tabs wide.
+  const adminNavItem = visibleNav.find((item) => item.key === "admin");
+  const sidebarNav = adminNavItem ? [adminNavItem, ...primaryNav] : primaryNav;
+  const sidebarMoreNav = moreNav.filter((item) => item.key !== "admin");
 
   const categories = useMemo(
     () => Array.from(new Set(businesses.map((business) => business.category))).sort(),
@@ -1309,13 +1473,13 @@ export function SBRAApp() {
         </label>
 
         <nav className="nav-list" aria-label="Primary">
-          {primaryNav.map((item) => (
+          {sidebarNav.map((item) => (
             <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />
           ))}
-          {!isLatino && <button className={moreOpen || moreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
-            <span className="nav-icon">•••</span><span><strong>More</strong><small>Learn, support &amp; profile</small></span>
+          {!isLatino && <button className={moreOpen || sidebarMoreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
+            <span className="nav-icon">•••</span><span><strong>More</strong><small>Learn, tools, support &amp; profile</small></span>
           </button>}
-          {!isLatino && moreOpen && <div className="more-menu">{moreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
+          {!isLatino && moreOpen && <div className="more-menu">{sidebarMoreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
         </nav>
 
         <section className="theme-card">
@@ -1520,6 +1684,7 @@ export function SBRAApp() {
           />
         )}
         {activeView === "learn" && <LearnView />}
+        {activeView === "tools" && <ToolsView onGetHelp={() => selectNav("support")} />}
         {activeView === "support" && (
           <SupportView
             requests={requests}
@@ -1535,10 +1700,15 @@ export function SBRAApp() {
         )}
         {activeView === "admin" && role === "admin" && (
           <AdminView
-            businessCount={businesses.length}
-            memberCount={members.length}
-            categories={categories}
             businesses={businesses}
+            members={members}
+            referrals={referrals}
+            events={events}
+            rsvps={rsvps}
+            requests={requests}
+            posts={posts}
+            comments={comments}
+            reactions={reactions}
             importNote={importNote}
             adminNote={adminNote}
             onAdminAction={setAdminNote}
@@ -1803,6 +1973,14 @@ function NavIcon({ icon }: { icon: ViewKey }) {
       <svg {...common}>
         <circle cx="12" cy="8" r="4" />
         <path d="M5 21a7 7 0 0 1 14 0" />
+      </svg>
+    );
+  }
+
+  if (icon === "tools") {
+    return (
+      <svg {...common}>
+        <path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.2-.4-.4-2.2 2.6-2.6Z" />
       </svg>
     );
   }
@@ -2343,6 +2521,95 @@ function BusinessModal({
   );
 }
 
+function ToolsView({ onGetHelp }: { onGetHelp: () => void }) {
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [openTool, setOpenTool] = useState<ToolDef | null>(null);
+
+  const toolCount = toolCategories.reduce((sum, category) => sum + category.tools.length, 0);
+  const shownCategories =
+    activeCategory === "all"
+      ? toolCategories
+      : toolCategories.filter((category) => category.key === activeCategory);
+
+  if (openTool) {
+    return (
+      <section className="tools-page">
+        <button className="tool-back" onClick={() => setOpenTool(null)}>
+          ← All tools
+        </button>
+        <article className="glass-panel tool-detail">
+          <span className="tool-detail-icon" aria-hidden="true">{openTool.icon}</span>
+          <p className="section-label">{openTool.tagline}</p>
+          <h3>{openTool.name}</h3>
+          <p className="tool-detail-copy">{openTool.description}</p>
+          <div className="tool-detail-note">
+            <strong>Coming soon.</strong> This tool is on the SBRA roadmap — the working version
+            gets built out next. Tell us how you'd use it and we'll prioritize it.
+          </div>
+          <div className="tool-detail-actions">
+            <button className="primary-button" onClick={onGetHelp}>Request this tool</button>
+            <button className="secondary-button" onClick={() => setOpenTool(null)}>Back to tools</button>
+          </div>
+        </article>
+      </section>
+    );
+  }
+
+  return (
+    <section className="tools-page">
+      <article className="glass-panel tools-hero">
+        <div>
+          <p className="section-label">Member toolkit</p>
+          <h3>Power tools to run and grow your business</h3>
+          <p>
+            A growing kit of calculators, generators, and templates built for SBRA members —
+            {" "}be better, grow faster.
+          </p>
+        </div>
+        <span className="tools-hero-count"><strong>{toolCount}</strong> tools</span>
+      </article>
+
+      <div className="tools-filters" role="tablist" aria-label="Tool categories">
+        <button
+          className={activeCategory === "all" ? "tool-chip active" : "tool-chip"}
+          onClick={() => setActiveCategory("all")}
+        >
+          All
+        </button>
+        {toolCategories.map((category) => (
+          <button
+            key={category.key}
+            className={activeCategory === category.key ? "tool-chip active" : "tool-chip"}
+            onClick={() => setActiveCategory(category.key)}
+          >
+            {category.title}
+          </button>
+        ))}
+      </div>
+
+      {shownCategories.map((category) => (
+        <section className="tool-category" key={category.key} aria-labelledby={`tool-cat-${category.key}`}>
+          <div className="tool-category-head">
+            <h4 id={`tool-cat-${category.key}`}>{category.title}</h4>
+            <p>{category.blurb}</p>
+          </div>
+          <div className="tools-grid">
+            {category.tools.map((tool) => (
+              <button className="glass-panel tool-card" key={tool.id} onClick={() => setOpenTool(tool)}>
+                <span className="tool-card-icon" aria-hidden="true">{tool.icon}</span>
+                <span className="tool-card-status">{tool.status === "beta" ? "Beta" : "Soon"}</span>
+                <h5>{tool.name}</h5>
+                <p>{tool.tagline}</p>
+                <span className="tool-card-open">Open →</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+    </section>
+  );
+}
+
 function LearnView() {
   const [completed, setCompleted] = useState<Array<string | number>>([]);
   const progress = Math.round((completed.length / learningModules.length) * 100);
@@ -2524,126 +2791,6 @@ function ProfileView({
       <button className="primary-button profile-edit" onClick={() => onEdit(member)}>
         Edit Profile
       </button>
-    </section>
-  );
-}
-
-function AdminView({
-  businessCount,
-  memberCount,
-  categories,
-  businesses,
-  importNote,
-  adminNote,
-  onAdminAction,
-  onImport
-}: {
-  businessCount: number;
-  memberCount: number;
-  categories: string[];
-  businesses: Business[];
-  importNote: string;
-  adminNote: string;
-  onAdminAction: (note: string) => void;
-  onImport: (file: File | undefined) => void;
-}) {
-  const topCategories = categories
-    .map((category) => ({
-      category,
-      count: businesses.filter((business) => business.category === category).length
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 4);
-  const maxCount = Math.max(1, ...topCategories.map((entry) => entry.count));
-
-  return (
-    <section>
-      <div className="metric-grid">
-        <article className="glass-panel metric">
-          <span>Member businesses</span>
-          <strong>{businessCount}</strong>
-          <p>Directory records</p>
-        </article>
-        <article className="glass-panel metric">
-          <span>People</span>
-          <strong>{memberCount}</strong>
-          <p>Member logins</p>
-        </article>
-        <article className="glass-panel metric">
-          <span>Support resolved</span>
-          <strong>42</strong>
-          <p>8 open requests</p>
-        </article>
-        <article className="glass-panel metric">
-          <span>Referrals this month</span>
-          <strong>63</strong>
-          <p>Tracked outcomes</p>
-        </article>
-      </div>
-
-      <div className="admin-grid">
-        <section className="glass-panel report-card admin-import-card">
-          <p className="section-label">Access controlled</p>
-          <h3>Admin Data Import</h3>
-          <p className="admin-copy">
-            Only Admin and staff users can import rosters, approve accounts, assign membership tiers, moderate posts, and
-            export reports. Members never see this navigation.
-          </p>
-          <div className="role-grid">
-            <div>
-              <strong>Admin / Staff</strong>
-              <span>Import, tiers, reports, moderation</span>
-            </div>
-            <div>
-              <strong>Member</strong>
-              <span>Directory, referrals, events, support</span>
-            </div>
-          </div>
-          <label className="import-button">
-            <span className="button-icon">U</span>
-            Import CSV/Excel
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={(event) => onImport(event.target.files?.[0])} />
-          </label>
-          <div className="import-note">{importNote}</div>
-        </section>
-
-        <section className="glass-panel report-card">
-          <p className="section-label">Businesses by category</p>
-          {topCategories.map(({ category, count }) => (
-            <div className="bar-row" key={category}>
-              <span>{category}</span>
-              <div>
-                <i style={{ width: `${Math.round((count / maxCount) * 100)}%` }} />
-              </div>
-              <strong>{count}</strong>
-            </div>
-          ))}
-        </section>
-
-        <section className="glass-panel report-card">
-          <p className="section-label">Admin tools</p>
-          {[
-            ["Approve new member accounts", "A", "Account queue opened: pending members need verification."],
-            ["Assign membership tiers", "T", "Tier manager opened: set solo / small / growth / enterprise per business."],
-            ["Review imported roster data", "R", "Roster review opened: validate columns before saving."],
-            ["Export referral impact report", "E", "Impact report queued with referrals, closed value, and engagement."],
-            ["Review flagged content", "F", "Moderation queue opened: no high-priority flags in this seed demo."]
-          ].map(([label, icon, note]) => (
-            <button
-              className="admin-action"
-              key={label as string}
-              disabled
-              title="Coming soon"
-              onClick={() => onAdminAction(note as string)}
-            >
-              <span className="nav-icon">{icon as string}</span>
-              {label as string}
-              <span className="coming-soon-badge">Coming soon</span>
-            </button>
-          ))}
-          <div className="import-note admin-tool-note">{adminNote}</div>
-        </section>
-      </div>
     </section>
   );
 }
