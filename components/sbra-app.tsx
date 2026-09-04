@@ -2168,20 +2168,20 @@ function DirectoryView({
         </select>
       </div>
       <div className="biz-grid">
-        {businesses.map((business, index) => {
-          const owner = (membersByBusiness.get(business.id) ?? []).find((member) => member.isOwner);
+        {businesses.map((business) => {
+          const primaryContact = (membersByBusiness.get(business.id) ?? []).find((member) => member.isOwner)
+            ?? (membersByBusiness.get(business.id) ?? [])[0];
           const teamSize = membersByBusiness.get(business.id)?.length ?? 0;
           return (
             <button className="glass-panel biz-card" key={business.id} onClick={() => onOpenBusiness(business)}>
               <div className="biz-card-head">
-                <span className={`mini-avatar ${index % 3 === 1 ? "coral" : index % 3 === 2 ? "green" : "blue"}`}>
-                  {initials(business.name)}
+                <span className="mini-avatar business-logo">
+                  {business.logo ? <img src={business.logo} alt={`${business.name} logo`} /> : initials(business.name)}
                 </span>
                 <div>
                   <strong>{business.name}</strong>
                   <small>{business.category} · {business.city}</small>
                 </div>
-                <TierBadge tier={business.tier} />
               </div>
               <p className="biz-desc">{business.description}</p>
               <div className="biz-services">
@@ -2196,7 +2196,7 @@ function DirectoryView({
                 <p>{business.referralsWanted || "Open to all introductions."}</p>
               </div>
               <div className="biz-card-foot">
-                <span>{owner ? owner.name : "Member"}</span>
+                <span>{primaryContact ? primaryContact.name : "Member"}</span>
                 <strong>View profile →</strong>
               </div>
             </button>
@@ -2224,13 +2224,14 @@ function BusinessModal({
           Close
         </button>
         <div className="modal-head">
-          <div className="avatar large">{initials(business.name)}</div>
+          <div className="avatar large business-logo">
+            {business.logo ? <img src={business.logo} alt={`${business.name} logo`} /> : initials(business.name)}
+          </div>
           <div>
             <p className="section-label">Member business</p>
             <h3 id="business-name">{business.name}</h3>
             <p>{business.category} · {business.city}</p>
           </div>
-          <TierBadge tier={business.tier} />
         </div>
 
         <p className="post-copy">{business.description}</p>
@@ -2255,7 +2256,7 @@ function BusinessModal({
             <p>
               {business.website && (
                 <>
-                  {business.website}
+                  <a href={business.website} target="_blank" rel="noreferrer">Visit website</a>
                   <br />
                 </>
               )}
@@ -2264,13 +2265,21 @@ function BusinessModal({
               {business.city}
             </p>
           </div>
+          {business.memberOffer && (
+            <div>
+              <span className="section-label">Member offer</span>
+              <p>{business.memberOffer}</p>
+            </div>
+          )}
         </div>
 
         <div className="member-list">
           <span className="section-label">Team ({members.length})</span>
           {members.map((member) => (
             <div className="member-row" key={member.id}>
-              <div className="mini-avatar blue">{initials(member.name)}</div>
+              <div className="mini-avatar blue member-photo">
+                {member.photo ? <img src={member.photo} alt="" /> : initials(member.name)}
+              </div>
               <div className="member-row-main">
                 <strong>
                   {member.name}

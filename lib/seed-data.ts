@@ -10,6 +10,7 @@ import type {
   SbraEvent,
   SupportRequest
 } from "@/lib/types";
+import { sbraBusinessSeed, sbraMemberSeed } from "@/lib/sbra-directory.generated";
 
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
@@ -25,7 +26,7 @@ function nextWeekday(targetDow: number, hour: number, minute = 0) {
 }
 
 // SBRA member businesses (the directory) — Greater Reading / Berks County, PA.
-export const businessSeed: Business[] = [
+const legacyBusinessSeed: Business[] = [
   {
     id: "keystone-web",
     name: "Power Marketing International",
@@ -137,7 +138,7 @@ export const businessSeed: Business[] = [
 ];
 
 // Members (people). Each belongs to one Business (many-to-one).
-export const memberSeed: Member[] = [
+const legacyMemberSeed: Member[] = [
   {
     id: "maya-chen",
     businessId: "keystone-web",
@@ -229,6 +230,12 @@ export const memberSeed: Member[] = [
     isOwner: true
   }
 ];
+
+// The live public SBRA Berks County directory, synced by scripts/sync-sbra-directory.mjs.
+// Legacy constants above preserve the original demo fixture shape for reference while
+// stable IDs in the generated data keep referrals, posts, and RSVPs connected.
+export const businessSeed: Business[] = sbraBusinessSeed;
+export const memberSeed: Member[] = sbraMemberSeed;
 
 export const learningModules: Module[] = [
   {

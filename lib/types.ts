@@ -107,6 +107,8 @@ export type Business = {
   address: string;
   city: string;
   tier: MembershipTier;
+  logo?: string;
+  memberOffer?: string;
 };
 
 // A person with a login, belonging to exactly one Business (many-to-one).
@@ -121,6 +123,7 @@ export type Member = {
   phone: string;
   bio: string;
   isOwner: boolean;
+  photo?: string;
 };
 
 export type CommunityPost = {
