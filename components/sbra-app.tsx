@@ -388,6 +388,22 @@ const toolCategories: ToolCategory[] = [
   }
 ];
 
+// Curated tool shortcuts surfaced on the community home page. Order matters —
+// these are the highest-value tools for a member landing on the feed. Each id
+// must match a ToolDef in `toolCategories`.
+const homeToolLinkIds = [
+  "referral-roi",
+  "invoice-quote",
+  "pricing-margin",
+  "networking-crm",
+  "goal-kpi",
+  "health-scorecard"
+];
+
+const homeToolLinks = homeToolLinkIds
+  .map((id) => toolCategories.flatMap((category) => category.tools).find((tool) => tool.id === id))
+  .filter((tool): tool is ToolDef => Boolean(tool));
+
 type MemberAd = { sponsor: string; headline: string; copy: string; action: string; logo: string; tone: string };
 
 const mockAds: MemberAd[] = [
@@ -485,6 +501,9 @@ export function SBRAApp() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginRole, setLoginRole] = useState<UserRole>("member");
   const [activeView, setActiveView] = useState<ViewKey>("community");
+  // When a home-page quick link opens a specific tool, we stash its id here and
+  // navigate to the Tools view, which reads and clears it on mount.
+  const [pendingToolId, setPendingToolId] = useState<string | null>(null);
   const [activeOrganizationId, setActiveOrganizationId] = useState("sbra");
   const activeOrganization = getCommunityOrganization(activeOrganizationId);
   const isLatino = activeOrganizationId === "berks-latino-chamber";
@@ -1313,6 +1332,12 @@ export function SBRAApp() {
     setMoreOpen(false);
   }
 
+  // Jump straight into a specific tool from a home-page quick link.
+  function openToolFromHome(toolId: string) {
+    setPendingToolId(toolId);
+    selectNav("tools");
+  }
+
   function selectOrganization(organizationId: string) {
     const latino = organizationId === "berks-latino-chamber";
     setActiveOrganizationId(organizationId);
@@ -1637,6 +1662,8 @@ export function SBRAApp() {
             onFindMember={() => selectNav("directory")}
             onGiveReferral={openReferralComposer}
             onViewEvents={() => selectNav("events")}
+            onOpenTool={openToolFromHome}
+            onViewAllTools={() => selectNav("tools")}
           />
         )}
         {activeView === "directory" && (
@@ -1695,6 +1722,8 @@ export function SBRAApp() {
             currentMember={currentMember}
             currentBusiness={currentBusiness}
             onGetHelp={() => selectNav("support")}
+            initialToolId={pendingToolId}
+            onInitialToolConsumed={() => setPendingToolId(null)}
           />
         )}
         {activeView === "support" && (
@@ -2074,7 +2103,9 @@ function CommunityView({
   onCancelPost,
   onFindMember,
   onGiveReferral,
-  onViewEvents
+  onViewEvents,
+  onOpenTool,
+  onViewAllTools
 }: {
   posts: CommunityPost[];
   referrals: Referral[];
@@ -2104,6 +2135,8 @@ function CommunityView({
   onFindMember: () => void;
   onGiveReferral: () => void;
   onViewEvents: () => void;
+  onOpenTool: (toolId: string) => void;
+  onViewAllTools: () => void;
 }) {
   const referralLeaders = Array.from(memberById.values())
     .map((member) => {
@@ -2149,6 +2182,31 @@ function CommunityView({
             <span className="leader-metric"><strong>{row.wins}</strong><small>Won</small></span>
             <span className="leader-value"><strong>${row.generated.toLocaleString()}</strong><small>Generated</small></span>
           </div>
+        ))}
+      </div>
+    </section>
+    <section className="glass-panel home-tools" aria-labelledby="home-tools-title">
+      <div className="home-tools-head">
+        <div>
+          <p className="section-label">Business tools</p>
+          <h3 id="home-tools-title">Member tools, one click away</h3>
+        </div>
+        <button className="link-button" onClick={onViewAllTools}>See all tools →</button>
+      </div>
+      <div className="home-tools-row">
+        {homeToolLinks.map((tool) => (
+          <button
+            key={tool.id}
+            className="home-tool-link"
+            onClick={() => onOpenTool(tool.id)}
+            title={tool.description}
+          >
+            <span className="home-tool-icon" aria-hidden="true">{tool.icon}</span>
+            <span className="home-tool-text">
+              <strong>{tool.name}</strong>
+              <small>{tool.tagline}</small>
+            </span>
+          </button>
         ))}
       </div>
     </section>
@@ -2566,7 +2624,9 @@ function ToolsView({
   businessById,
   currentMember,
   currentBusiness,
-  onGetHelp
+  onGetHelp,
+  initialToolId,
+  onInitialToolConsumed
 }: {
   referrals: Referral[];
   currentMemberId: string;
@@ -2576,10 +2636,21 @@ function ToolsView({
   currentMember?: Member;
   currentBusiness?: Business;
   onGetHelp: () => void;
+  initialToolId?: string | null;
+  onInitialToolConsumed?: () => void;
 }) {
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [openTool, setOpenTool] = useState<ToolDef | null>(null);
+
+  // A home-page quick link can request a specific tool: open it, then clear the
+  // request so navigating back to the hub doesn't force it open again.
+  useEffect(() => {
+    if (!initialToolId) return;
+    const match = toolCategories.flatMap((category) => category.tools).find((tool) => tool.id === initialToolId);
+    if (match) setOpenTool(match);
+    onInitialToolConsumed?.();
+  }, [initialToolId, onInitialToolConsumed]);
   const [exportNote, setExportNote] = useState("");
   const [pendingImport, setPendingImport] = useState<ImportPreview | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);

@@ -819,6 +819,82 @@ button {
   font-size: 18px;
 }
 
+/* Tool quick links on the community home page */
+.home-tools {
+  overflow: hidden;
+  border-radius: 22px;
+  padding: 18px 20px;
+}
+
+.home-tools-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.home-tools-head h3 {
+  margin: 2px 0 0;
+  font-size: 18px;
+}
+
+.home-tools-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.home-tool-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.home-tool-link:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 114, 184, 0.45);
+  box-shadow: 0 10px 22px rgba(0, 17, 103, 0.1);
+}
+
+.home-tool-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 20px;
+  background: rgba(0, 114, 184, 0.1);
+}
+
+.home-tool-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-tool-text strong {
+  font-size: 13.5px;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.home-tool-text small {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .feed-leader-list {
   display: grid;
   gap: 6px;
@@ -3127,6 +3203,11 @@ button {
   .feed-leaderboard { padding: 16px 12px; }
   .feed-leaderboard-head { align-items: start; }
   .feed-leaderboard-head .link-button { font-size: 12px; white-space: nowrap; }
+
+  .home-tools { padding: 16px 12px; }
+  .home-tools-head { align-items: start; }
+  .home-tools-head .link-button { font-size: 12px; white-space: nowrap; }
+  .home-tools-row { grid-template-columns: 1fr 1fr; }
   .feed-leader {
     grid-template-columns: 25px 34px minmax(0, 1fr) 42px 76px;
     gap: 7px;
