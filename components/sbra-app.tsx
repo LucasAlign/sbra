@@ -28,6 +28,7 @@ import type { Session } from "next-auth";
 import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
 import * as backendActions from "@/app/actions";
 import { isBackendEnabled } from "@/lib/backend";
+import { loadTool, saveTool, TOOL_KEYS } from "@/lib/tool-storage";
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import { latinoBusinessSeed, latinoMemberSeed } from "@/lib/latino-directory";
@@ -2763,27 +2764,6 @@ function toNum(value: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
-// Per-viewer persistence for tools that save (goals, invoice defaults, last
-// scorecard). Seed mode has no backend, so we keep it in localStorage; every
-// access is guarded because storage can be unavailable or throw.
-function loadStored<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-function saveStored<T>(key: string, value: T) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // storage full or blocked — the tool still works in-session
-  }
-}
-
 function ToolField({
   label,
   value,
@@ -2931,12 +2911,12 @@ function ReferralRoiTool({
 type PricedProduct = { id: string; name: string; cost: string; margin: string; price: number; profit: number; markup: number };
 
 function PricingMarginTool() {
-  const STORE_KEY = "sbra.tool.pricing";
+  const STORE_KEY = TOOL_KEYS.pricing;
   const [cost, setCost] = useState("40");
   const [margin, setMargin] = useState("45");
   const [fixed, setFixed] = useState("");
   const [productName, setProductName] = useState("");
-  const [products, setProducts] = useState<PricedProduct[]>(() => loadStored<PricedProduct[]>(STORE_KEY, []));
+  const [products, setProducts] = useState<PricedProduct[]>(() => loadTool<PricedProduct[]>(STORE_KEY, []));
 
   const costNum = toNum(cost);
   const marginNum = Math.min(toNum(margin), 99.9); // margin of 100% would divide by zero
@@ -2948,7 +2928,7 @@ function PricingMarginTool() {
 
   function persist(next: PricedProduct[]) {
     setProducts(next);
-    saveStored(STORE_KEY, next);
+    saveTool(STORE_KEY, next);
   }
   function saveProduct() {
     persist([...products, { id: `p-${Date.now()}`, name: productName.trim() || `Product ${products.length + 1}`, cost, margin, price, profit: profitPerUnit, markup }]);
@@ -3010,14 +2990,14 @@ type LoanScenario = { id: string; name: string; amount: string; rate: string; te
 type LoanRow = { period: number; payment: number; principal: number; interest: number; balance: number };
 
 function LoanCashFlowTool() {
-  const STORE_KEY = "sbra.tool.loan";
+  const STORE_KEY = TOOL_KEYS.loan;
   const [amount, setAmount] = useState("50000");
   const [rate, setRate] = useState("9");
   const [term, setTerm] = useState("60");
   const [cash, setCash] = useState("");
   const [revenue, setRevenue] = useState("");
   const [expenses, setExpenses] = useState("");
-  const [scenarios, setScenarios] = useState<LoanScenario[]>(() => loadStored<LoanScenario[]>(STORE_KEY, []));
+  const [scenarios, setScenarios] = useState<LoanScenario[]>(() => loadTool<LoanScenario[]>(STORE_KEY, []));
   const [scenarioName, setScenarioName] = useState("");
   const [scheduleView, setScheduleView] = useState<"year" | "month">("year");
   const [showSchedule, setShowSchedule] = useState(false);
@@ -3055,7 +3035,7 @@ function LoanCashFlowTool() {
 
   function persistScenarios(next: LoanScenario[]) {
     setScenarios(next);
-    saveStored(STORE_KEY, next);
+    saveTool(STORE_KEY, next);
   }
   function saveScenario() {
     const name = scenarioName.trim() || `${usd(principal)} @ ${toNum(rate)}%`;
@@ -3225,15 +3205,15 @@ const scorecardSections: { key: string; label: string; tip: string; items: strin
 type ScoreSnapshot = { id: string; date: string; overall: number; sections: { key: string; label: string; pct: number }[] };
 
 function HealthScorecardTool() {
-  const STORE_KEY = "sbra.tool.scorecard";
-  const HISTORY_KEY = "sbra.tool.scorecard.history";
-  const [answers, setAnswers] = useState<Record<string, number>>(() => loadStored(STORE_KEY, {}));
-  const [history, setHistory] = useState<ScoreSnapshot[]>(() => loadStored<ScoreSnapshot[]>(HISTORY_KEY, []));
+  const STORE_KEY = TOOL_KEYS.scorecard;
+  const HISTORY_KEY = TOOL_KEYS.scorecardHistory;
+  const [answers, setAnswers] = useState<Record<string, number>>(() => loadTool(STORE_KEY, {}));
+  const [history, setHistory] = useState<ScoreSnapshot[]>(() => loadTool<ScoreSnapshot[]>(HISTORY_KEY, []));
 
   function setAnswer(id: string, value: number) {
     setAnswers((prev) => {
       const next = { ...prev, [id]: value };
-      saveStored(STORE_KEY, next);
+      saveTool(STORE_KEY, next);
       return next;
     });
   }
@@ -3249,7 +3229,7 @@ function HealthScorecardTool() {
 
   function persistHistory(next: ScoreSnapshot[]) {
     setHistory(next);
-    saveStored(HISTORY_KEY, next);
+    saveTool(HISTORY_KEY, next);
   }
   function saveAssessment() {
     const snap: ScoreSnapshot = {
@@ -3373,9 +3353,9 @@ function normalizeGoal(raw: Partial<Goal>): Goal {
 }
 
 function GoalKpiTool() {
-  const STORE_KEY = "sbra.tool.goals";
+  const STORE_KEY = TOOL_KEYS.goals;
   const today = new Date().toISOString().slice(0, 10);
-  const [goals, setGoals] = useState<Goal[]>(() => loadStored<Partial<Goal>[]>(STORE_KEY, []).map(normalizeGoal));
+  const [goals, setGoals] = useState<Goal[]>(() => loadTool<Partial<Goal>[]>(STORE_KEY, []).map(normalizeGoal));
   const [label, setLabel] = useState("");
   const [target, setTarget] = useState("");
   const [unit, setUnit] = useState("");
@@ -3383,7 +3363,7 @@ function GoalKpiTool() {
 
   function persist(next: Goal[]) {
     setGoals(next);
-    saveStored(STORE_KEY, next);
+    saveTool(STORE_KEY, next);
   }
   function addGoal() {
     if (!label.trim() || toNum(target) <= 0) return;
@@ -3516,11 +3496,11 @@ function invoiceTotals(doc: SavedInvoice) {
 }
 
 function InvoiceQuoteTool({ currentMember, currentBusiness }: { currentMember?: Member; currentBusiness?: Business }) {
-  const STORE_KEY = "sbra.tool.invoice";
+  const STORE_KEY = TOOL_KEYS.invoice;
   const today = new Date().toISOString().slice(0, 10);
 
   const [store, setStore] = useState<InvoiceStore>(() => {
-    const raw = loadStored<Partial<InvoiceStore> & Partial<InvoiceProfile> & { number?: string }>(STORE_KEY, {});
+    const raw = loadTool<Partial<InvoiceStore> & Partial<InvoiceProfile> & { number?: string }>(STORE_KEY, {});
     if (Array.isArray(raw.docs) && raw.profile) return raw as InvoiceStore;
     const defaultContact = [currentBusiness?.address, currentBusiness?.city, currentMember?.email, currentMember?.phone].filter(Boolean).join(" · ");
     return {
@@ -3535,7 +3515,7 @@ function InvoiceQuoteTool({ currentMember, currentBusiness }: { currentMember?: 
 
   function persist(next: InvoiceStore) {
     setStore(next);
-    saveStored(STORE_KEY, next);
+    saveTool(STORE_KEY, next);
   }
   function newDoc(docType: "Invoice" | "Quote") {
     const num = docType === "Quote" ? `Q${store.nextNumber}` : String(store.nextNumber);
@@ -3869,14 +3849,14 @@ function buildDrafts(kind: ContentKind, biz: string, topic: string, tone: string
 type SavedDraft = { id: string; kind: ContentKind; text: string; date: string };
 
 function MarketingContentTool({ currentBusiness, onRequestAi }: { currentBusiness?: Business; onRequestAi: () => void }) {
-  const STORE_KEY = "sbra.tool.marketing";
+  const STORE_KEY = TOOL_KEYS.marketing;
   const [kind, setKind] = useState<ContentKind>("social");
   const [biz, setBiz] = useState(currentBusiness?.name ?? "");
   const [topic, setTopic] = useState(currentBusiness?.servicesOffered?.split(",")[0]?.trim() ?? "");
   const [tone, setTone] = useState("");
   const [drafts, setDrafts] = useState<string[]>([]);
   const [copied, setCopied] = useState<number | null>(null);
-  const [saved, setSaved] = useState<SavedDraft[]>(() => loadStored<SavedDraft[]>(STORE_KEY, []));
+  const [saved, setSaved] = useState<SavedDraft[]>(() => loadTool<SavedDraft[]>(STORE_KEY, []));
 
   function generate() {
     setDrafts(buildDrafts(kind, biz, topic, tone));
@@ -3893,7 +3873,7 @@ function MarketingContentTool({ currentBusiness, onRequestAi }: { currentBusines
   }
   function persistSaved(next: SavedDraft[]) {
     setSaved(next);
-    saveStored(STORE_KEY, next);
+    saveTool(STORE_KEY, next);
   }
   function saveDraft(text: string) {
     if (saved.some((s) => s.text === text)) return;
@@ -4030,9 +4010,9 @@ function crmDaysUntil(date: string, today: string) {
 }
 
 function NetworkingCrmTool({ members, businessById }: { members: Member[]; businessById: Map<string, Business> }) {
-  const STORE_KEY = "sbra.tool.crm";
+  const STORE_KEY = TOOL_KEYS.crm;
   const [contacts, setContacts] = useState<CrmContact[]>(() =>
-    loadStored<Array<Partial<CrmContact> & { done?: boolean }>>(STORE_KEY, []).map(normalizeCrmContact)
+    loadTool<Array<Partial<CrmContact> & { done?: boolean }>>(STORE_KEY, []).map(normalizeCrmContact)
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -4057,7 +4037,7 @@ function NetworkingCrmTool({ members, businessById }: { members: Member[]; busin
 
   function persist(next: CrmContact[]) {
     setContacts(next);
-    saveStored(STORE_KEY, next);
+    saveTool(STORE_KEY, next);
   }
   function addContact() {
     if (!name.trim()) return;
@@ -4388,17 +4368,17 @@ type CustomDeadline = { id: string; date: string; title: string; detail: string;
 type TaxStore = { done: string[]; custom: CustomDeadline[] };
 
 function TaxCalendarTool() {
-  const STORE_KEY = "sbra.tool.tax";
+  const STORE_KEY = TOOL_KEYS.tax;
   const [scope, setScope] = useState<"all" | TaxScope>("all");
   const [hideDone, setHideDone] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [store, setStore] = useState<TaxStore>(() => loadStored<TaxStore>(STORE_KEY, { done: [], custom: [] }));
+  const [store, setStore] = useState<TaxStore>(() => loadTool<TaxStore>(STORE_KEY, { done: [], custom: [] }));
   const [nd, setNd] = useState({ date: "", title: "", detail: "", scope: "Federal" as TaxScope });
   const today = new Date().toISOString().slice(0, 10);
 
   function persist(next: TaxStore) {
     setStore(next);
-    saveStored(STORE_KEY, next);
+    saveTool(STORE_KEY, next);
   }
   function toggleDone(id: string) {
     persist({ ...store, done: store.done.includes(id) ? store.done.filter((x) => x !== id) : [...store.done, id] });
@@ -4511,17 +4491,17 @@ const grantStatuses = ["none", "interested", "applied", "awarded", "declined"];
 const grantStatusLabel: Record<string, string> = { none: "Not tracked", interested: "Interested", applied: "Applied", awarded: "Awarded", declined: "Declined" };
 
 function GrantFinderTool() {
-  const STORE_KEY = "sbra.tool.grants";
+  const STORE_KEY = TOOL_KEYS.grants;
   const [type, setType] = useState<"all" | ResourceType>("all");
   const [query, setQuery] = useState("");
   const [trackedOnly, setTrackedOnly] = useState(false);
-  const [tracking, setTracking] = useState<Record<string, GrantTrack>>(() => loadStored<Record<string, GrantTrack>>(STORE_KEY, {}));
+  const [tracking, setTracking] = useState<Record<string, GrantTrack>>(() => loadTool<Record<string, GrantTrack>>(STORE_KEY, {}));
 
   function setTrack(name: string, patch: Partial<GrantTrack>) {
     const base: GrantTrack = tracking[name] ?? { status: "none", note: "" };
     const next = { ...tracking, [name]: { ...base, ...patch } };
     setTracking(next);
-    saveStored(STORE_KEY, next);
+    saveTool(STORE_KEY, next);
   }
 
   const q = query.trim().toLowerCase();
@@ -4628,15 +4608,15 @@ const docTemplates: { id: string; name: string; category: string; body: string }
 type SavedDoc = { id: string; name: string; body: string; date: string };
 
 function DocTemplatesTool({ currentBusiness }: { currentBusiness?: Business }) {
-  const STORE_KEY = "sbra.tool.docs";
+  const STORE_KEY = TOOL_KEYS.docs;
   const bizName = currentBusiness?.name ?? "[YOUR BUSINESS]";
-  const [saved, setSaved] = useState<SavedDoc[]>(() => loadStored<SavedDoc[]>(STORE_KEY, []));
+  const [saved, setSaved] = useState<SavedDoc[]>(() => loadTool<SavedDoc[]>(STORE_KEY, []));
   const [editor, setEditor] = useState<{ id: string | null; name: string; body: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   function persist(next: SavedDoc[]) {
     setSaved(next);
-    saveStored(STORE_KEY, next);
+    saveTool(STORE_KEY, next);
   }
   function openTemplate(t: (typeof docTemplates)[number]) {
     setEditor({ id: null, name: t.name, body: t.body.replaceAll("[YOUR BUSINESS]", bizName) });
