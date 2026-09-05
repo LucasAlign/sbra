@@ -2043,6 +2043,9 @@ button {
 .ai-request button { flex: 0 0 auto; }
 
 .draft-card { gap: 12px; }
+.saved-drafts { display: grid; gap: 12px; }
+.saved-draft { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 8px; }
+.saved-draft-meta { display: flex; align-items: center; gap: 10px; }
 .draft-text {
   margin: 0;
   white-space: pre-wrap;
@@ -2106,6 +2109,10 @@ button {
 .inv-status-sent { background: rgba(0, 17, 103, 0.1); color: var(--blue); }
 .inv-status-paid { background: rgba(27, 127, 95, 0.16); color: #1b7f5f; }
 .inv-status-overdue { background: rgba(184, 26, 31, 0.12); color: var(--coral); }
+.roi-status-given { background: rgba(107, 111, 138, 0.16); color: #5c607e; }
+.roi-status-contacted { background: rgba(0, 17, 103, 0.1); color: var(--blue); }
+.roi-status-closed_won { background: rgba(27, 127, 95, 0.16); color: #1b7f5f; }
+.roi-status-closed_lost { background: rgba(184, 26, 31, 0.12); color: var(--coral); }
 .inv-total { font-family: var(--font-display); font-size: 17px; color: var(--ink); }
 
 /* Shared data tables (loan schedule, scenario compare, scorecard history) */

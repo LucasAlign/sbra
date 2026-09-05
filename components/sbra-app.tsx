@@ -2882,6 +2882,33 @@ function ReferralRoiTool({
         )}
       </article>
 
+      {(stats.givenCount > 0 || stats.receivedCount > 0) && (
+        <article className="glass-panel tool-panel">
+          <p className="section-label">Referral breakdown</p>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead><tr><th>Direction</th><th>With</th><th>Need</th><th>Status</th><th>Value</th></tr></thead>
+              <tbody>
+                {[
+                  ...referrals.filter((r) => r.giverId === currentMemberId).map((r) => ({ r, dir: "Given", who: memberById.get(r.receiverId)?.name })),
+                  ...referrals.filter((r) => r.receiverId === currentMemberId).map((r) => ({ r, dir: "Received", who: memberById.get(r.giverId)?.name }))
+                ]
+                  .sort((a, b) => b.r.createdAt - a.r.createdAt)
+                  .map(({ r, dir, who }) => (
+                    <tr key={r.id}>
+                      <td>{dir}</td>
+                      <td>{who ?? r.prospectName ?? "—"}</td>
+                      <td>{r.need}</td>
+                      <td><span className={`crm-stage-badge roi-status-${r.status}`}>{referralStatusLabels[r.status]}</span></td>
+                      <td>{r.closedValue ? usd(r.closedValue) : "—"}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      )}
+
       <article className="glass-panel tool-panel">
         <p className="section-label">Project your annual ROI</p>
         <div className="tool-form">
@@ -2901,10 +2928,15 @@ function ReferralRoiTool({
   );
 }
 
+type PricedProduct = { id: string; name: string; cost: string; margin: string; price: number; profit: number; markup: number };
+
 function PricingMarginTool() {
+  const STORE_KEY = "sbra.tool.pricing";
   const [cost, setCost] = useState("40");
   const [margin, setMargin] = useState("45");
   const [fixed, setFixed] = useState("");
+  const [productName, setProductName] = useState("");
+  const [products, setProducts] = useState<PricedProduct[]>(() => loadStored<PricedProduct[]>(STORE_KEY, []));
 
   const costNum = toNum(cost);
   const marginNum = Math.min(toNum(margin), 99.9); // margin of 100% would divide by zero
@@ -2913,6 +2945,15 @@ function PricingMarginTool() {
   const markup = costNum > 0 ? (profitPerUnit / costNum) * 100 : 0;
   const fixedNum = toNum(fixed);
   const breakEvenUnits = profitPerUnit > 0 ? Math.ceil(fixedNum / profitPerUnit) : 0;
+
+  function persist(next: PricedProduct[]) {
+    setProducts(next);
+    saveStored(STORE_KEY, next);
+  }
+  function saveProduct() {
+    persist([...products, { id: `p-${Date.now()}`, name: productName.trim() || `Product ${products.length + 1}`, cost, margin, price, profit: profitPerUnit, markup }]);
+    setProductName("");
+  }
 
   return (
     <div className="tool-body">
@@ -2931,8 +2972,36 @@ function PricingMarginTool() {
             <div className="result-tile"><span>Break-even units / mo</span><strong>{profitPerUnit > 0 ? breakEvenUnits.toLocaleString() : "—"}</strong></div>
           )}
         </div>
+        <div className="crm-add-actions">
+          <label className="tool-field" style={{ flex: "1 1 200px" }}><span>Save as product…</span><span className="tool-input-wrap"><input value={productName} placeholder="e.g. Standard package" onChange={(e) => setProductName(e.target.value)} /></span></label>
+          <button className="secondary-button" onClick={saveProduct}>Save product</button>
+        </div>
         <p className="tool-hint">Price = cost ÷ (1 − margin). Break-even = fixed costs ÷ profit per unit.</p>
       </article>
+
+      {products.length > 0 && (
+        <article className="glass-panel tool-panel">
+          <p className="section-label">Your product pricing</p>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead><tr><th>Product</th><th>Cost</th><th>Margin</th><th>Price</th><th>Profit</th><th>Markup</th><th></th></tr></thead>
+              <tbody>
+                {products.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td>{usd(toNum(p.cost))}</td>
+                    <td>{toNum(p.margin)}%</td>
+                    <td><strong>{usd(p.price)}</strong></td>
+                    <td>{usd(p.profit)}</td>
+                    <td>{Math.round(p.markup)}%</td>
+                    <td className="table-actions"><button className="link-button danger" onClick={() => persist(products.filter((x) => x.id !== p.id))}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      )}
     </div>
   );
 }
@@ -3677,6 +3746,32 @@ function BreakEvenTool({ currentBusiness }: { currentBusiness?: Business }) {
           )}
         </div>
         <p className="tool-hint">Contribution margin = price − variable cost. Break-even units = fixed costs ÷ contribution margin. Below the break-even you run at a loss; above it, each unit adds {usd(cm)} of profit.</p>
+        {cm > 0 && (
+          <>
+            <p className="section-label" style={{ marginTop: 4 }}>Profit at different volumes</p>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead><tr><th>Units / mo</th><th>Revenue</th><th>Total cost</th><th>Profit</th></tr></thead>
+                <tbody>
+                  {[0.5, 0.75, 1, 1.5, 2, 3].map((mult) => {
+                    const units = Math.round(beUnits * mult) || 0;
+                    const revenue = units * priceNum;
+                    const totalCost = toNum(fixed) + units * toNum(variable);
+                    const profit = revenue - totalCost;
+                    return (
+                      <tr key={mult}>
+                        <td>{units.toLocaleString()}{mult === 1 ? " (break-even)" : ""}</td>
+                        <td>{usd(revenue)}</td>
+                        <td>{usd(totalCost)}</td>
+                        <td style={{ color: profit >= 0 ? "#1b7f5f" : "var(--coral)" }}>{profit >= 0 ? usd(profit) : `−${usd(-profit)}`}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </article>
       <div className="tool-detail-actions no-print">
         <button className="primary-button" onClick={() => window.print()}>Print / Save PDF</button>
@@ -3735,13 +3830,17 @@ function buildDrafts(kind: ContentKind, biz: string, topic: string, tone: string
   }
 }
 
+type SavedDraft = { id: string; kind: ContentKind; text: string; date: string };
+
 function MarketingContentTool({ currentBusiness, onRequestAi }: { currentBusiness?: Business; onRequestAi: () => void }) {
+  const STORE_KEY = "sbra.tool.marketing";
   const [kind, setKind] = useState<ContentKind>("social");
   const [biz, setBiz] = useState(currentBusiness?.name ?? "");
   const [topic, setTopic] = useState(currentBusiness?.servicesOffered?.split(",")[0]?.trim() ?? "");
   const [tone, setTone] = useState("");
   const [drafts, setDrafts] = useState<string[]>([]);
   const [copied, setCopied] = useState<number | null>(null);
+  const [saved, setSaved] = useState<SavedDraft[]>(() => loadStored<SavedDraft[]>(STORE_KEY, []));
 
   function generate() {
     setDrafts(buildDrafts(kind, biz, topic, tone));
@@ -3755,6 +3854,14 @@ function MarketingContentTool({ currentBusiness, onRequestAi }: { currentBusines
     } catch {
       // clipboard blocked — the member can still select and copy manually
     }
+  }
+  function persistSaved(next: SavedDraft[]) {
+    setSaved(next);
+    saveStored(STORE_KEY, next);
+  }
+  function saveDraft(text: string) {
+    if (saved.some((s) => s.text === text)) return;
+    persistSaved([{ id: `d-${Date.now()}`, kind, text, date: new Date().toISOString().slice(0, 10) }, ...saved]);
   }
 
   return (
@@ -3789,12 +3896,34 @@ function MarketingContentTool({ currentBusiness, onRequestAi }: { currentBusines
           <p className="draft-text">{draft}</p>
           <div className="tool-detail-actions">
             <button className="secondary-button" onClick={() => copy(draft, i)}>{copied === i ? "Copied ✓" : "Copy"}</button>
+            <button className="secondary-button" onClick={() => saveDraft(draft)} disabled={saved.some((s) => s.text === draft)}>{saved.some((s) => s.text === draft) ? "Saved ✓" : "Save"}</button>
           </div>
         </article>
       ))}
       {drafts.length === 0 && (
         <article className="glass-panel tool-panel">
           <p className="tool-hint">Pick a content type, fill in a topic, and hit Generate to get a few ready-to-edit drafts.</p>
+        </article>
+      )}
+
+      {saved.length > 0 && (
+        <article className="glass-panel tool-panel">
+          <p className="section-label">Saved drafts ({saved.length})</p>
+          <div className="saved-drafts">
+            {saved.map((s) => (
+              <div className="saved-draft" key={s.id}>
+                <div className="saved-draft-meta">
+                  <span className="crm-tag">{contentKinds.find((c) => c.key === s.kind)?.label ?? s.kind}</span>
+                  <span className="tool-hint">{s.date}</span>
+                </div>
+                <p className="draft-text">{s.text}</p>
+                <div className="tool-detail-actions">
+                  <button className="secondary-button" onClick={() => copy(s.text, -1)}>Copy</button>
+                  <button className="secondary-button crm-danger" onClick={() => persistSaved(saved.filter((x) => x.id !== s.id))}>Remove</button>
+                </div>
+              </div>
+            ))}
+          </div>
         </article>
       )}
     </div>
