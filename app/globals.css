@@ -2076,6 +2076,13 @@ button {
 .stage-active { background: rgba(27, 127, 95, 0.16); color: #1b7f5f; }
 .stage-dormant { background: rgba(107, 111, 138, 0.12); color: #9195ab; }
 
+/* Invoice status badges (share crm-stage-badge base) */
+.inv-status-draft { background: rgba(107, 111, 138, 0.16); color: #5c607e; }
+.inv-status-sent { background: rgba(0, 17, 103, 0.1); color: var(--blue); }
+.inv-status-paid { background: rgba(27, 127, 95, 0.16); color: #1b7f5f; }
+.inv-status-overdue { background: rgba(184, 26, 31, 0.12); color: var(--coral); }
+.inv-total { font-family: var(--font-display); font-size: 17px; color: var(--ink); }
+
 .crm-stage-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .crm-stage-pick {
   padding: 6px 12px;

@@ -3218,129 +3218,257 @@ function GoalKpiTool() {
   );
 }
 
-// ---- Invoice & Quote Generator ----
+// ---- Invoice & Quote Generator (full: saved docs, statuses, dashboard) ----
 type InvoiceItem = { id: string; desc: string; qty: string; rate: string };
-type InvoiceProfile = { fromName: string; fromContact: string; number: string };
+type InvoiceProfile = { fromName: string; fromContact: string };
+type InvoiceStatus = "draft" | "sent" | "paid";
+const invoiceStatuses: { key: InvoiceStatus; label: string }[] = [
+  { key: "draft", label: "Draft" },
+  { key: "sent", label: "Sent" },
+  { key: "paid", label: "Paid" }
+];
+type SavedInvoice = {
+  id: string;
+  docType: "Invoice" | "Quote";
+  number: string;
+  date: string;
+  dueDate: string;
+  fromName: string;
+  fromContact: string;
+  toName: string;
+  toContact: string;
+  items: InvoiceItem[];
+  taxRate: string;
+  notes: string;
+  status: InvoiceStatus;
+  createdAt: number;
+};
+type InvoiceStore = { profile: InvoiceProfile; nextNumber: number; docs: SavedInvoice[] };
+
+function invoiceTotals(doc: SavedInvoice) {
+  const subtotal = doc.items.reduce((s, it) => s + toNum(it.qty) * toNum(it.rate), 0);
+  const tax = subtotal * (toNum(doc.taxRate) / 100);
+  return { subtotal, tax, total: subtotal + tax };
+}
 
 function InvoiceQuoteTool({ currentMember, currentBusiness }: { currentMember?: Member; currentBusiness?: Business }) {
   const STORE_KEY = "sbra.tool.invoice";
-  const stored = loadStored<Partial<InvoiceProfile>>(STORE_KEY, {});
-  const [docType, setDocType] = useState<"Invoice" | "Quote">("Invoice");
-  const [fromName, setFromName] = useState(stored.fromName ?? currentBusiness?.name ?? "");
-  const [fromContact, setFromContact] = useState(
-    stored.fromContact ??
-      [currentBusiness?.address, currentBusiness?.city, currentMember?.email, currentMember?.phone].filter(Boolean).join(" · ")
-  );
-  const [number, setNumber] = useState(stored.number ?? "1001");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [toName, setToName] = useState("");
-  const [toContact, setToContact] = useState("");
-  const [taxRate, setTaxRate] = useState("");
-  const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<InvoiceItem[]>([{ id: "i1", desc: "", qty: "1", rate: "" }]);
+  const today = new Date().toISOString().slice(0, 10);
 
-  function saveProfile(next: Partial<InvoiceProfile>) {
-    saveStored(STORE_KEY, { fromName, fromContact, number, ...next });
+  const [store, setStore] = useState<InvoiceStore>(() => {
+    const raw = loadStored<Partial<InvoiceStore> & Partial<InvoiceProfile> & { number?: string }>(STORE_KEY, {});
+    if (Array.isArray(raw.docs) && raw.profile) return raw as InvoiceStore;
+    const defaultContact = [currentBusiness?.address, currentBusiness?.city, currentMember?.email, currentMember?.phone].filter(Boolean).join(" · ");
+    return {
+      profile: { fromName: raw.fromName ?? currentBusiness?.name ?? "", fromContact: raw.fromContact ?? defaultContact },
+      nextNumber: raw.number ? parseInt(raw.number, 10) || 1001 : 1001,
+      docs: []
+    };
+  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | InvoiceStatus>("all");
+  const [search, setSearch] = useState("");
+
+  function persist(next: InvoiceStore) {
+    setStore(next);
+    saveStored(STORE_KEY, next);
+  }
+  function newDoc(docType: "Invoice" | "Quote") {
+    const num = docType === "Quote" ? `Q${store.nextNumber}` : String(store.nextNumber);
+    const doc: SavedInvoice = {
+      id: `inv-${Date.now()}`,
+      docType,
+      number: num,
+      date: today,
+      dueDate: "",
+      fromName: store.profile.fromName,
+      fromContact: store.profile.fromContact,
+      toName: "",
+      toContact: "",
+      items: [{ id: "i1", desc: "", qty: "1", rate: "" }],
+      taxRate: "",
+      notes: "",
+      status: "draft",
+      createdAt: Date.now()
+    };
+    persist({ ...store, nextNumber: store.nextNumber + 1, docs: [doc, ...store.docs] });
+    setEditingId(doc.id);
+  }
+  function updateDoc(id: string, patch: Partial<SavedInvoice>, alsoProfile = false) {
+    persist({
+      ...store,
+      profile: alsoProfile
+        ? { fromName: patch.fromName ?? store.profile.fromName, fromContact: patch.fromContact ?? store.profile.fromContact }
+        : store.profile,
+      docs: store.docs.map((d) => (d.id === id ? { ...d, ...patch } : d))
+    });
+  }
+  function deleteDoc(id: string) {
+    persist({ ...store, docs: store.docs.filter((d) => d.id !== id) });
+    if (editingId === id) setEditingId(null);
   }
 
-  function updateItem(id: string, patch: Partial<InvoiceItem>) {
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
-  }
-  function addItem() {
-    setItems((prev) => [...prev, { id: `i${Date.now()}`, desc: "", qty: "1", rate: "" }]);
-  }
-  function removeItem(id: string) {
-    setItems((prev) => (prev.length > 1 ? prev.filter((it) => it.id !== id) : prev));
+  const editing = store.docs.find((d) => d.id === editingId) ?? null;
+
+  // ---- Editor view ----
+  if (editing) {
+    const { subtotal, tax, total } = invoiceTotals(editing);
+    const setItems = (items: InvoiceItem[]) => updateDoc(editing.id, { items });
+    return (
+      <div className="tool-body">
+        <button className="tool-back no-print" onClick={() => setEditingId(null)}>← All documents</button>
+
+        <article className="glass-panel tool-panel no-print">
+          <div className="scorecard-head">
+            <p className="section-label">{editing.docType} {editing.number}</p>
+            <div className="crm-stage-row">
+              {invoiceStatuses.map((s) => (
+                <button key={s.key} className={editing.status === s.key ? `crm-stage-pick active inv-status-${s.key}` : "crm-stage-pick"} onClick={() => updateDoc(editing.id, { status: s.key })}>{s.label}</button>
+              ))}
+            </div>
+          </div>
+          <div className="tool-form">
+            <label className="tool-field"><span>From (your business)</span><span className="tool-input-wrap"><input value={editing.fromName} onChange={(e) => updateDoc(editing.id, { fromName: e.target.value }, true)} /></span></label>
+            <label className="tool-field"><span>Your contact</span><span className="tool-input-wrap"><input value={editing.fromContact} onChange={(e) => updateDoc(editing.id, { fromContact: e.target.value }, true)} /></span></label>
+            <label className="tool-field"><span>Bill to</span><span className="tool-input-wrap"><input value={editing.toName} placeholder="Client name" onChange={(e) => updateDoc(editing.id, { toName: e.target.value })} /></span></label>
+            <label className="tool-field"><span>Client contact</span><span className="tool-input-wrap"><input value={editing.toContact} placeholder="Email / address" onChange={(e) => updateDoc(editing.id, { toContact: e.target.value })} /></span></label>
+            <label className="tool-field"><span>{editing.docType} #</span><span className="tool-input-wrap"><input value={editing.number} onChange={(e) => updateDoc(editing.id, { number: e.target.value })} /></span></label>
+            <label className="tool-field"><span>Date</span><span className="tool-input-wrap"><input type="date" value={editing.date} onChange={(e) => updateDoc(editing.id, { date: e.target.value })} /></span></label>
+            <label className="tool-field"><span>Due date</span><span className="tool-input-wrap"><input type="date" value={editing.dueDate} onChange={(e) => updateDoc(editing.id, { dueDate: e.target.value })} /></span></label>
+            <label className="tool-field"><span>Tax rate</span><span className="tool-input-wrap"><input type="number" min="0" step="any" value={editing.taxRate} onChange={(e) => updateDoc(editing.id, { taxRate: e.target.value })} /><span className="tool-affix suffix">%</span></span></label>
+          </div>
+        </article>
+
+        <article className="glass-panel tool-panel no-print">
+          <p className="section-label">Line items</p>
+          <div className="invoice-items">
+            {editing.items.map((it) => (
+              <div className="invoice-item-row" key={it.id}>
+                <input className="ii-desc" value={it.desc} placeholder="Description" onChange={(e) => setItems(editing.items.map((x) => x.id === it.id ? { ...x, desc: e.target.value } : x))} />
+                <input className="ii-num" type="number" min="0" step="any" value={it.qty} placeholder="Qty" onChange={(e) => setItems(editing.items.map((x) => x.id === it.id ? { ...x, qty: e.target.value } : x))} />
+                <input className="ii-num" type="number" min="0" step="any" value={it.rate} placeholder="Rate" onChange={(e) => setItems(editing.items.map((x) => x.id === it.id ? { ...x, rate: e.target.value } : x))} />
+                <span className="ii-amt">{usd(toNum(it.qty) * toNum(it.rate))}</span>
+                <button className="ii-remove" onClick={() => setItems(editing.items.length > 1 ? editing.items.filter((x) => x.id !== it.id) : editing.items)} aria-label="Remove line">×</button>
+              </div>
+            ))}
+          </div>
+          <div className="tool-detail-actions">
+            <button className="secondary-button" onClick={() => setItems([...editing.items, { id: `i${Date.now()}`, desc: "", qty: "1", rate: "" }])}>+ Add line</button>
+          </div>
+          <label className="tool-field"><span>Notes / terms</span><span className="tool-input-wrap"><input value={editing.notes} placeholder="Payment due in 30 days…" onChange={(e) => updateDoc(editing.id, { notes: e.target.value })} /></span></label>
+        </article>
+
+        <article className="glass-panel tool-panel tool-print" id="invoice-print">
+          <div className="invoice-doc">
+            <div className="invoice-doc-head">
+              <div>
+                <h3>{editing.docType}</h3>
+                <p>#{editing.number} · {editing.date}{editing.dueDate ? ` · due ${editing.dueDate}` : ""}</p>
+              </div>
+              <div className="invoice-from">
+                <strong>{editing.fromName || "Your business"}</strong>
+                <span>{editing.fromContact}</span>
+              </div>
+            </div>
+            <div className="invoice-billto">
+              <small>BILL TO</small>
+              <strong>{editing.toName || "Client"}</strong>
+              <span>{editing.toContact}</span>
+            </div>
+            <table className="invoice-table">
+              <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+              <tbody>
+                {editing.items.map((it) => (
+                  <tr key={it.id}>
+                    <td>{it.desc || "—"}</td>
+                    <td>{toNum(it.qty) || 0}</td>
+                    <td>{usd(toNum(it.rate))}</td>
+                    <td>{usd(toNum(it.qty) * toNum(it.rate))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="invoice-totals">
+              <div><span>Subtotal</span><strong>{usd(subtotal)}</strong></div>
+              {toNum(editing.taxRate) > 0 && <div><span>Tax ({toNum(editing.taxRate)}%)</span><strong>{usd(tax)}</strong></div>}
+              <div className="invoice-grand"><span>Total</span><strong>{usd(total)}</strong></div>
+            </div>
+            {editing.notes && <p className="invoice-notes">{editing.notes}</p>}
+          </div>
+        </article>
+
+        <div className="tool-detail-actions no-print">
+          <button className="primary-button" onClick={() => window.print()}>Print / Save PDF</button>
+          <button className="secondary-button crm-danger" onClick={() => deleteDoc(editing.id)}>Delete</button>
+        </div>
+      </div>
+    );
   }
 
-  const subtotal = items.reduce((sum, it) => sum + toNum(it.qty) * toNum(it.rate), 0);
-  const tax = subtotal * (toNum(taxRate) / 100);
-  const total = subtotal + tax;
+  // ---- List / dashboard view ----
+  const q = search.trim().toLowerCase();
+  const visible = store.docs
+    .filter((d) => statusFilter === "all" || d.status === statusFilter)
+    .filter((d) => !q || `${d.number} ${d.toName} ${d.notes}`.toLowerCase().includes(q));
+  const outstanding = store.docs.filter((d) => d.docType === "Invoice" && d.status === "sent").reduce((s, d) => s + invoiceTotals(d).total, 0);
+  const paid = store.docs.filter((d) => d.status === "paid").reduce((s, d) => s + invoiceTotals(d).total, 0);
+  const draftCount = store.docs.filter((d) => d.status === "draft").length;
 
   return (
     <div className="tool-body">
       <article className="glass-panel tool-panel">
-        <div className="scorecard-head">
-          <p className="section-label">Details</p>
-          <div className="doc-toggle" role="group" aria-label="Document type">
-            {(["Invoice", "Quote"] as const).map((t) => (
-              <button key={t} className={docType === t ? "doc-tab active" : "doc-tab"} onClick={() => setDocType(t)}>{t}</button>
-            ))}
-          </div>
-        </div>
-        <div className="tool-form">
-          <label className="tool-field"><span>From (your business)</span><span className="tool-input-wrap"><input value={fromName} onChange={(e) => { setFromName(e.target.value); saveProfile({ fromName: e.target.value }); }} /></span></label>
-          <label className="tool-field"><span>Your contact</span><span className="tool-input-wrap"><input value={fromContact} onChange={(e) => { setFromContact(e.target.value); saveProfile({ fromContact: e.target.value }); }} /></span></label>
-          <label className="tool-field"><span>Bill to</span><span className="tool-input-wrap"><input value={toName} placeholder="Client name" onChange={(e) => setToName(e.target.value)} /></span></label>
-          <label className="tool-field"><span>Client contact</span><span className="tool-input-wrap"><input value={toContact} placeholder="Email / address" onChange={(e) => setToContact(e.target.value)} /></span></label>
-          <label className="tool-field"><span>{docType} #</span><span className="tool-input-wrap"><input value={number} onChange={(e) => { setNumber(e.target.value); saveProfile({ number: e.target.value }); }} /></span></label>
-          <label className="tool-field"><span>Date</span><span className="tool-input-wrap"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></span></label>
+        <div className="tool-metric-grid">
+          <div className="tool-metric"><strong>{store.docs.length}</strong><span>Documents</span></div>
+          <div className="tool-metric"><strong>{usd(outstanding)}</strong><span>Outstanding</span></div>
+          <div className="tool-metric"><strong>{usd(paid)}</strong><span>Paid</span></div>
+          <div className="tool-metric"><strong>{draftCount}</strong><span>Drafts</span></div>
         </div>
       </article>
 
-      <article className="glass-panel tool-panel">
-        <p className="section-label">Line items</p>
-        <div className="invoice-items">
-          {items.map((it) => (
-            <div className="invoice-item-row" key={it.id}>
-              <input className="ii-desc" value={it.desc} placeholder="Description" onChange={(e) => updateItem(it.id, { desc: e.target.value })} />
-              <input className="ii-num" type="number" min="0" step="any" value={it.qty} placeholder="Qty" onChange={(e) => updateItem(it.id, { qty: e.target.value })} />
-              <input className="ii-num" type="number" min="0" step="any" value={it.rate} placeholder="Rate" onChange={(e) => updateItem(it.id, { rate: e.target.value })} />
-              <span className="ii-amt">{usd(toNum(it.qty) * toNum(it.rate))}</span>
-              <button className="ii-remove" onClick={() => removeItem(it.id)} aria-label="Remove line">×</button>
-            </div>
-          ))}
+      <div className="tools-toolbar">
+        <div className="tools-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+          <input value={search} placeholder="Search documents…" onChange={(e) => setSearch(e.target.value)} aria-label="Search documents" />
+          {search && <button className="tools-search-clear" onClick={() => setSearch("")} aria-label="Clear">×</button>}
         </div>
-        <div className="tool-detail-actions">
-          <button className="secondary-button" onClick={addItem}>+ Add line</button>
-        </div>
-        <div className="tool-form">
-          <ToolField label="Tax rate (optional)" value={taxRate} onChange={setTaxRate} suffix="%" />
-          <label className="tool-field"><span>Notes / terms</span><span className="tool-input-wrap"><input value={notes} placeholder="Payment due in 30 days…" onChange={(e) => setNotes(e.target.value)} /></span></label>
-        </div>
-      </article>
-
-      <article className="glass-panel tool-panel tool-print" id="invoice-print">
-        <div className="invoice-doc">
-          <div className="invoice-doc-head">
-            <div>
-              <h3>{docType}</h3>
-              <p>#{number} · {date}</p>
-            </div>
-            <div className="invoice-from">
-              <strong>{fromName || "Your business"}</strong>
-              <span>{fromContact}</span>
-            </div>
-          </div>
-          <div className="invoice-billto">
-            <small>BILL TO</small>
-            <strong>{toName || "Client"}</strong>
-            <span>{toContact}</span>
-          </div>
-          <table className="invoice-table">
-            <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
-            <tbody>
-              {items.map((it) => (
-                <tr key={it.id}>
-                  <td>{it.desc || "—"}</td>
-                  <td>{toNum(it.qty) || 0}</td>
-                  <td>{usd(toNum(it.rate))}</td>
-                  <td>{usd(toNum(it.qty) * toNum(it.rate))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="invoice-totals">
-            <div><span>Subtotal</span><strong>{usd(subtotal)}</strong></div>
-            {toNum(taxRate) > 0 && <div><span>Tax ({toNum(taxRate)}%)</span><strong>{usd(tax)}</strong></div>}
-            <div className="invoice-grand"><span>Total</span><strong>{usd(total)}</strong></div>
-          </div>
-          {notes && <p className="invoice-notes">{notes}</p>}
-        </div>
-      </article>
-      <div className="tool-detail-actions no-print">
-        <button className="primary-button" onClick={() => window.print()}>Print / Save PDF</button>
+        <button className="primary-button" onClick={() => newDoc("Invoice")}>+ New invoice</button>
+        <button className="secondary-button" onClick={() => newDoc("Quote")}>+ New quote</button>
       </div>
+
+      <div className="tools-filters">
+        <button className={statusFilter === "all" ? "tool-chip active" : "tool-chip"} onClick={() => setStatusFilter("all")}>All</button>
+        {invoiceStatuses.map((s) => (
+          <button key={s.key} className={statusFilter === s.key ? "tool-chip active" : "tool-chip"} onClick={() => setStatusFilter(s.key)}>{s.label}</button>
+        ))}
+      </div>
+
+      {visible.length === 0 ? (
+        <article className="glass-panel tool-panel">
+          <p className="tool-hint">{store.docs.length === 0 ? "No documents yet. Create your first invoice or quote — they save on this device, track their status, and are ready to print or PDF." : "No documents match your search or filter."}</p>
+        </article>
+      ) : (
+        visible.map((d) => {
+          const { total } = invoiceTotals(d);
+          const overdue = d.docType === "Invoice" && d.status === "sent" && d.dueDate && d.dueDate < today;
+          return (
+            <button className="glass-panel tool-panel crm-card" key={d.id} onClick={() => setEditingId(d.id)}>
+              <div className="crm-head">
+                <div className="crm-head-main">
+                  <div>
+                    <h4>{d.docType} {d.number}{d.toName && <span className="crm-company"> · {d.toName}</span>}</h4>
+                    <span className="tool-hint">{d.date}{d.dueDate ? ` · due ${d.dueDate}` : ""}</span>
+                  </div>
+                </div>
+                <span className={overdue ? "crm-stage-badge inv-status-overdue" : `crm-stage-badge inv-status-${d.status}`}>{overdue ? "Overdue" : invoiceStatuses.find((s) => s.key === d.status)?.label}</span>
+              </div>
+              <div className="crm-card-foot">
+                <strong className="inv-total">{usd(total)}</strong>
+                <span className="crm-open">Open →</span>
+              </div>
+            </button>
+          );
+        })
+      )}
     </div>
   );
 }
