@@ -2636,16 +2636,23 @@ function ToolsView({
       );
     }
 
+    const openCategory = toolCategories.find((category) => category.tools.some((tool) => tool.id === openTool.id));
+    const dstyle = openCategory ? categoryStyle[openCategory.key] : undefined;
+
     return (
-      <section className="tools-page">
+      <section
+        className="tools-page tool-detail-page"
+        style={dstyle ? ({ ["--accent" as string]: dstyle.accent, ["--tint" as string]: dstyle.tint }) : undefined}
+      >
         {back}
-        <div className="tool-detail-head">
+        <article className="glass-panel tool-detail-hero">
           <span className="tool-detail-icon" aria-hidden="true">{openTool.icon}</span>
-          <div>
-            <p className="section-label">{openTool.tagline}</p>
+          <div className="tool-detail-hero-text">
+            <p className="section-label">{openCategory?.title ?? "Member tool"}</p>
             <h3>{openTool.name}</h3>
+            <p className="tool-detail-sub">{openTool.description}</p>
           </div>
-        </div>
+        </article>
         {body}
       </section>
     );
