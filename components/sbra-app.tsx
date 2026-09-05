@@ -228,7 +228,7 @@ const latinoNavItems: NavItem[] = [
   { key: "directory", label: "Directorio", count: "Miembros", icon: "directory" }
 ];
 
-const primaryNavKeys: ViewKey[] = ["community", "directory", "referrals", "events"];
+const primaryNavKeys: ViewKey[] = ["community", "directory", "referrals", "events", "tools"];
 
 // Business Tools hub. Skeleton only for now: each tool renders a placeholder
 // detail panel; the real calculators/generators get built in later per tool.
@@ -1477,7 +1477,7 @@ export function SBRAApp() {
             <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />
           ))}
           {!isLatino && <button className={moreOpen || sidebarMoreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
-            <span className="nav-icon">•••</span><span><strong>More</strong><small>Learn, tools, support &amp; profile</small></span>
+            <span className="nav-icon">•••</span><span><strong>More</strong><small>Learn, support &amp; profile</small></span>
           </button>}
           {!isLatino && moreOpen && <div className="more-menu">{sidebarMoreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
         </nav>
