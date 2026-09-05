@@ -2937,23 +2937,65 @@ function PricingMarginTool() {
   );
 }
 
+type LoanScenario = { id: string; name: string; amount: string; rate: string; term: string; payment: number; totalInterest: number };
+type LoanRow = { period: number; payment: number; principal: number; interest: number; balance: number };
+
 function LoanCashFlowTool() {
+  const STORE_KEY = "sbra.tool.loan";
   const [amount, setAmount] = useState("50000");
   const [rate, setRate] = useState("9");
   const [term, setTerm] = useState("60");
   const [cash, setCash] = useState("");
   const [revenue, setRevenue] = useState("");
   const [expenses, setExpenses] = useState("");
+  const [scenarios, setScenarios] = useState<LoanScenario[]>(() => loadStored<LoanScenario[]>(STORE_KEY, []));
+  const [scenarioName, setScenarioName] = useState("");
+  const [scheduleView, setScheduleView] = useState<"year" | "month">("year");
+  const [showSchedule, setShowSchedule] = useState(false);
 
   const principal = toNum(amount);
   const months = Math.max(1, Math.round(toNum(term)));
   const monthlyRate = toNum(rate) / 100 / 12;
-  const payment =
-    monthlyRate > 0
-      ? (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months))
-      : principal / months;
+  const payment = monthlyRate > 0 ? (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months)) : principal / months;
   const totalRepaid = payment * months;
   const totalInterest = totalRepaid - principal;
+
+  const schedule = useMemo<LoanRow[]>(() => {
+    let bal = principal;
+    const monthly: LoanRow[] = [];
+    for (let m = 1; m <= months; m++) {
+      const interest = bal * monthlyRate;
+      const princPaid = Math.min(payment - interest, bal);
+      bal = Math.max(0, bal - princPaid);
+      monthly.push({ period: m, payment: princPaid + interest, principal: princPaid, interest, balance: bal });
+    }
+    if (scheduleView === "month") return monthly;
+    const years: LoanRow[] = [];
+    for (let y = 0; y * 12 < monthly.length; y++) {
+      const slice = monthly.slice(y * 12, y * 12 + 12);
+      years.push({
+        period: y + 1,
+        payment: slice.reduce((s, r) => s + r.payment, 0),
+        principal: slice.reduce((s, r) => s + r.principal, 0),
+        interest: slice.reduce((s, r) => s + r.interest, 0),
+        balance: slice[slice.length - 1].balance
+      });
+    }
+    return years;
+  }, [principal, months, monthlyRate, payment, scheduleView]);
+
+  function persistScenarios(next: LoanScenario[]) {
+    setScenarios(next);
+    saveStored(STORE_KEY, next);
+  }
+  function saveScenario() {
+    const name = scenarioName.trim() || `${usd(principal)} @ ${toNum(rate)}%`;
+    persistScenarios([...scenarios, { id: `s-${Date.now()}`, name, amount, rate, term, payment, totalInterest }]);
+    setScenarioName("");
+  }
+  function loadScenario(s: LoanScenario) {
+    setAmount(s.amount); setRate(s.rate); setTerm(s.term);
+  }
 
   const revNum = toNum(revenue);
   const expNum = toNum(expenses);
@@ -2976,6 +3018,69 @@ function LoanCashFlowTool() {
           <div className="result-tile"><span>Total interest</span><strong>{usd(totalInterest)}</strong></div>
           <div className="result-tile"><span>Total repaid</span><strong>{usd(totalRepaid)}</strong></div>
         </div>
+        <div className="crm-add-actions">
+          <label className="tool-field" style={{ flex: "1 1 200px" }}><span>Save this scenario as…</span><span className="tool-input-wrap"><input value={scenarioName} placeholder="e.g. Bank A — 5yr" onChange={(e) => setScenarioName(e.target.value)} /></span></label>
+          <button className="secondary-button" onClick={saveScenario}>Save scenario</button>
+        </div>
+      </article>
+
+      {scenarios.length > 0 && (
+        <article className="glass-panel tool-panel">
+          <p className="section-label">Compare scenarios</p>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead><tr><th>Scenario</th><th>Amount</th><th>Rate</th><th>Term</th><th>Payment</th><th>Interest</th><th></th></tr></thead>
+              <tbody>
+                {scenarios.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.name}</td>
+                    <td>{usd(toNum(s.amount))}</td>
+                    <td>{toNum(s.rate)}%</td>
+                    <td>{s.term} mo</td>
+                    <td>{usd(s.payment)}</td>
+                    <td>{usd(s.totalInterest)}</td>
+                    <td className="table-actions">
+                      <button className="link-button" onClick={() => loadScenario(s)}>Load</button>
+                      <button className="link-button danger" onClick={() => persistScenarios(scenarios.filter((x) => x.id !== s.id))}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      )}
+
+      <article className="glass-panel tool-panel">
+        <div className="scorecard-head">
+          <p className="section-label">Amortization schedule</p>
+          <button className="secondary-button" onClick={() => setShowSchedule((v) => !v)}>{showSchedule ? "Hide" : "Show"}</button>
+        </div>
+        {showSchedule && (
+          <>
+            <div className="doc-toggle" role="group" aria-label="Schedule view">
+              {(["year", "month"] as const).map((v) => (
+                <button key={v} className={scheduleView === v ? "doc-tab active" : "doc-tab"} onClick={() => setScheduleView(v)}>{v === "year" ? "By year" : "By month"}</button>
+              ))}
+            </div>
+            <div className="table-scroll table-scroll-tall">
+              <table className="data-table">
+                <thead><tr><th>{scheduleView === "year" ? "Year" : "Month"}</th><th>Payment</th><th>Principal</th><th>Interest</th><th>Balance</th></tr></thead>
+                <tbody>
+                  {schedule.map((r) => (
+                    <tr key={r.period}>
+                      <td>{r.period}</td>
+                      <td>{usd(r.payment)}</td>
+                      <td>{usd(r.principal)}</td>
+                      <td>{usd(r.interest)}</td>
+                      <td>{usd(r.balance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </article>
 
       <article className="glass-panel tool-panel">
@@ -3048,9 +3153,13 @@ const scorecardSections: { key: string; label: string; tip: string; items: strin
   }
 ];
 
+type ScoreSnapshot = { id: string; date: string; overall: number; sections: { key: string; label: string; pct: number }[] };
+
 function HealthScorecardTool() {
   const STORE_KEY = "sbra.tool.scorecard";
+  const HISTORY_KEY = "sbra.tool.scorecard.history";
   const [answers, setAnswers] = useState<Record<string, number>>(() => loadStored(STORE_KEY, {}));
+  const [history, setHistory] = useState<ScoreSnapshot[]>(() => loadStored<ScoreSnapshot[]>(HISTORY_KEY, []));
 
   function setAnswer(id: string, value: number) {
     setAnswers((prev) => {
@@ -3069,6 +3178,24 @@ function HealthScorecardTool() {
   const weakest = [...sectionScores].sort((a, b) => a.pct - b.pct)[0];
   const band = overall >= 80 ? "Thriving" : overall >= 60 ? "Solid, with room to grow" : overall >= 40 ? "Needs attention" : "At risk";
 
+  function persistHistory(next: ScoreSnapshot[]) {
+    setHistory(next);
+    saveStored(HISTORY_KEY, next);
+  }
+  function saveAssessment() {
+    const snap: ScoreSnapshot = {
+      id: `sc-${Date.now()}`,
+      date: new Date().toISOString().slice(0, 10),
+      overall,
+      sections: sectionScores.map((s) => ({ key: s.key, label: s.label, pct: s.pct }))
+    };
+    persistHistory([...history, snap]);
+  }
+
+  const prev = history.length > 0 ? history[history.length - 1] : null;
+  const delta = prev ? overall - prev.overall : null;
+  const maxBar = Math.max(100, ...history.map((h) => h.overall));
+
   return (
     <div className="tool-body">
       <article className="glass-panel tool-panel">
@@ -3078,11 +3205,43 @@ function HealthScorecardTool() {
           </div>
           <div>
             <p className="section-label">Overall health</p>
-            <h4 className="scorecard-band">{band}</h4>
+            <h4 className="scorecard-band">{band}{delta !== null && delta !== 0 && <span className={delta > 0 ? "score-delta up" : "score-delta down"}>{delta > 0 ? "▲" : "▼"} {Math.abs(delta)} since last</span>}</h4>
             <p className="tool-hint">Rate each statement from 1 (strongly disagree) to 5 (strongly agree). Your answers save on this device.</p>
           </div>
         </div>
+        <div className="tool-detail-actions">
+          <button className="primary-button" onClick={saveAssessment}>Save this assessment</button>
+        </div>
       </article>
+
+      {history.length > 0 && (
+        <article className="glass-panel tool-panel">
+          <p className="section-label">Score trend</p>
+          <div className="score-trend">
+            {history.slice(-12).map((h) => (
+              <div className="score-bar-col" key={h.id} title={`${h.date}: ${h.overall}`}>
+                <div className="score-bar" style={{ height: `${(h.overall / maxBar) * 100}%` }}><span>{h.overall}</span></div>
+                <small>{h.date.slice(5)}</small>
+              </div>
+            ))}
+          </div>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead><tr><th>Date</th><th>Overall</th>{scorecardSections.map((s) => <th key={s.key}>{s.label.split(" ")[0]}</th>)}<th></th></tr></thead>
+              <tbody>
+                {[...history].reverse().map((h) => (
+                  <tr key={h.id}>
+                    <td>{h.date}</td>
+                    <td><strong>{h.overall}</strong></td>
+                    {scorecardSections.map((s) => <td key={s.key}>{h.sections.find((x) => x.key === s.key)?.pct ?? "—"}</td>)}
+                    <td className="table-actions"><button className="link-button danger" onClick={() => persistHistory(history.filter((x) => x.id !== h.id))}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      )}
 
       {scorecardSections.map((section, si) => {
         const score = sectionScores[si];

@@ -1910,7 +1910,32 @@ button {
 }
 .scorecard-gauge strong { font-size: 24px; line-height: 1; }
 .scorecard-gauge small { color: var(--muted); font-size: 10px; }
-.scorecard-band { margin: 3px 0 4px; font-size: 17px; }
+.scorecard-band { margin: 3px 0 4px; font-size: 17px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.score-delta { font-family: var(--font-body); font-size: 11px; font-weight: 700; }
+.score-delta.up { color: #1b7f5f; }
+.score-delta.down { color: var(--coral); }
+
+.score-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 120px;
+  padding: 4px 2px 0;
+}
+.score-bar-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+.score-bar {
+  width: 100%;
+  max-width: 34px;
+  min-height: 18px;
+  border-radius: 7px 7px 0 0;
+  background: linear-gradient(180deg, var(--blue), #39a7db);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 3px;
+}
+.score-bar span { color: white; font-size: 9px; font-weight: 800; }
+.score-bar-col small { color: var(--muted); font-size: 9px; }
 
 .scorecard-head { display: flex; align-items: center; justify-content: space-between; }
 .scorecard-head .section-label { margin: 0; }
@@ -2082,6 +2107,30 @@ button {
 .inv-status-paid { background: rgba(27, 127, 95, 0.16); color: #1b7f5f; }
 .inv-status-overdue { background: rgba(184, 26, 31, 0.12); color: var(--coral); }
 .inv-total { font-family: var(--font-display); font-size: 17px; color: var(--ink); }
+
+/* Shared data tables (loan schedule, scenario compare, scorecard history) */
+.table-scroll { overflow-x: auto; }
+.table-scroll-tall { max-height: 340px; overflow-y: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.data-table th {
+  position: sticky;
+  top: 0;
+  text-align: right;
+  padding: 8px 10px;
+  background: var(--panel);
+  border-bottom: 2px solid var(--line);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.data-table th:first-child, .data-table td:first-child { text-align: left; }
+.data-table td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.table-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.link-button { border: none; background: none; color: var(--blue); font-family: var(--font-body); font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; }
+.link-button.danger { color: var(--coral); }
 
 .crm-stage-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .crm-stage-pick {
