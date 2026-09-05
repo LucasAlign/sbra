@@ -3357,14 +3357,29 @@ function HealthScorecardTool() {
 }
 
 // ---- Goal & KPI Tracker ----
-type Goal = { id: string; label: string; unit: string; current: number; target: number };
+type GoalCheckin = { date: string; value: number };
+type Goal = { id: string; label: string; unit: string; current: number; target: number; deadline: string; checkins: GoalCheckin[] };
+
+function normalizeGoal(raw: Partial<Goal>): Goal {
+  return {
+    id: raw.id ?? `goal-${Date.now()}`,
+    label: raw.label ?? "",
+    unit: raw.unit ?? "",
+    current: raw.current ?? 0,
+    target: raw.target ?? 0,
+    deadline: raw.deadline ?? "",
+    checkins: Array.isArray(raw.checkins) ? raw.checkins : []
+  };
+}
 
 function GoalKpiTool() {
   const STORE_KEY = "sbra.tool.goals";
-  const [goals, setGoals] = useState<Goal[]>(() => loadStored<Goal[]>(STORE_KEY, []));
+  const today = new Date().toISOString().slice(0, 10);
+  const [goals, setGoals] = useState<Goal[]>(() => loadStored<Partial<Goal>[]>(STORE_KEY, []).map(normalizeGoal));
   const [label, setLabel] = useState("");
   const [target, setTarget] = useState("");
   const [unit, setUnit] = useState("");
+  const [deadline, setDeadline] = useState("");
 
   function persist(next: Goal[]) {
     setGoals(next);
@@ -3372,39 +3387,45 @@ function GoalKpiTool() {
   }
   function addGoal() {
     if (!label.trim() || toNum(target) <= 0) return;
-    persist([
-      ...goals,
-      { id: `goal-${Date.now()}`, label: label.trim(), unit: unit.trim(), current: 0, target: toNum(target) }
-    ]);
-    setLabel("");
-    setTarget("");
-    setUnit("");
+    persist([...goals, normalizeGoal({ id: `goal-${Date.now()}`, label: label.trim(), unit: unit.trim(), current: 0, target: toNum(target), deadline })]);
+    setLabel(""); setTarget(""); setUnit(""); setDeadline("");
   }
   function updateCurrent(id: string, value: string) {
     persist(goals.map((g) => (g.id === id ? { ...g, current: toNum(value) } : g)));
+  }
+  function logCheckin(id: string) {
+    persist(goals.map((g) => {
+      if (g.id !== id) return g;
+      const checkins = [...g.checkins.filter((c) => c.date !== today), { date: today, value: g.current }].sort((a, b) => a.date.localeCompare(b.date));
+      return { ...g, checkins };
+    }));
   }
   function removeGoal(id: string) {
     persist(goals.filter((g) => g.id !== id));
   }
 
+  const active = goals.filter((g) => g.current < g.target).length;
+  const hit = goals.filter((g) => g.target > 0 && g.current >= g.target).length;
+
   return (
     <div className="tool-body">
+      {goals.length > 0 && (
+        <article className="glass-panel tool-panel">
+          <div className="tool-metric-grid">
+            <div className="tool-metric"><strong>{goals.length}</strong><span>Goals</span></div>
+            <div className="tool-metric"><strong>{active}</strong><span>In progress</span></div>
+            <div className="tool-metric"><strong>{hit}</strong><span>Reached</span></div>
+          </div>
+        </article>
+      )}
+
       <article className="glass-panel tool-panel">
         <p className="section-label">Add a goal or KPI</p>
         <div className="tool-form">
-          <label className="tool-field">
-            <span>Goal</span>
-            <span className="tool-input-wrap">
-              <input value={label} placeholder="e.g. New clients this quarter" onChange={(e) => setLabel(e.target.value)} />
-            </span>
-          </label>
+          <label className="tool-field"><span>Goal</span><span className="tool-input-wrap"><input value={label} placeholder="e.g. New clients this quarter" onChange={(e) => setLabel(e.target.value)} /></span></label>
           <ToolField label="Target" value={target} onChange={setTarget} placeholder="e.g. 20" />
-          <label className="tool-field">
-            <span>Unit (optional)</span>
-            <span className="tool-input-wrap">
-              <input value={unit} placeholder="clients, $, calls…" onChange={(e) => setUnit(e.target.value)} />
-            </span>
-          </label>
+          <label className="tool-field"><span>Unit (optional)</span><span className="tool-input-wrap"><input value={unit} placeholder="clients, $, calls…" onChange={(e) => setUnit(e.target.value)} /></span></label>
+          <label className="tool-field"><span>Deadline (optional)</span><span className="tool-input-wrap"><input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} /></span></label>
         </div>
         <div className="tool-detail-actions">
           <button className="primary-button" onClick={addGoal}>Add goal</button>
@@ -3418,12 +3439,14 @@ function GoalKpiTool() {
       ) : (
         goals.map((goal) => {
           const pct = goal.target > 0 ? Math.min(100, Math.round((goal.current / goal.target) * 100)) : 0;
+          const dl = goal.deadline ? Math.round((new Date(goal.deadline + "T00:00:00").getTime() - new Date(today + "T00:00:00").getTime()) / 86400000) : null;
+          const maxV = Math.max(goal.target, ...goal.checkins.map((c) => c.value));
           return (
             <article className="glass-panel tool-panel goal-row" key={goal.id}>
               <div className="goal-head">
                 <div>
                   <h4>{goal.label}</h4>
-                  <span className="tool-hint">{goal.current.toLocaleString()} of {goal.target.toLocaleString()} {goal.unit}</span>
+                  <span className="tool-hint">{goal.current.toLocaleString()} of {goal.target.toLocaleString()} {goal.unit}{goal.deadline ? ` · ${dl! < 0 ? `${Math.abs(dl!)}d overdue` : dl === 0 ? "due today" : `${dl}d left`}` : ""}</span>
                 </div>
                 <span className={pct >= 100 ? "goal-pct done" : "goal-pct"}>{pct}%</span>
               </div>
@@ -3436,8 +3459,21 @@ function GoalKpiTool() {
                     {goal.unit && <span className="tool-affix suffix">{goal.unit}</span>}
                   </span>
                 </label>
-                <button className="secondary-button" onClick={() => removeGoal(goal.id)}>Remove</button>
+                <button className="secondary-button" onClick={() => logCheckin(goal.id)}>Log check-in</button>
+                <button className="secondary-button crm-danger" onClick={() => removeGoal(goal.id)}>Remove</button>
               </div>
+              {goal.checkins.length > 0 && (
+                <div className="goal-history">
+                  <div className="score-trend goal-trend">
+                    {goal.checkins.slice(-10).map((c) => (
+                      <div className="score-bar-col" key={c.date} title={`${c.date}: ${c.value}`}>
+                        <div className="score-bar" style={{ height: `${maxV > 0 ? Math.max(6, (c.value / maxV) * 100) : 6}%` }}><span>{c.value}</span></div>
+                        <small>{c.date.slice(5)}</small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </article>
           );
         })
@@ -4348,23 +4384,53 @@ const taxDeadlines: { date: string; title: string; detail: string; scope: TaxSco
   { date: "2026-04-15", title: "Reading business privilege / mercantile tax", detail: "Local business tax filings vary by municipality — check with your township or the City of Reading.", scope: "Local" }
 ];
 
+type CustomDeadline = { id: string; date: string; title: string; detail: string; scope: TaxScope };
+type TaxStore = { done: string[]; custom: CustomDeadline[] };
+
 function TaxCalendarTool() {
+  const STORE_KEY = "sbra.tool.tax";
   const [scope, setScope] = useState<"all" | TaxScope>("all");
+  const [hideDone, setHideDone] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [store, setStore] = useState<TaxStore>(() => loadStored<TaxStore>(STORE_KEY, { done: [], custom: [] }));
+  const [nd, setNd] = useState({ date: "", title: "", detail: "", scope: "Federal" as TaxScope });
   const today = new Date().toISOString().slice(0, 10);
-  const shown = taxDeadlines
-    .filter((d) => scope === "all" || d.scope === scope)
-    .slice()
-    .sort((a, b) => a.date.localeCompare(b.date));
+
+  function persist(next: TaxStore) {
+    setStore(next);
+    saveStored(STORE_KEY, next);
+  }
+  function toggleDone(id: string) {
+    persist({ ...store, done: store.done.includes(id) ? store.done.filter((x) => x !== id) : [...store.done, id] });
+  }
+  function addDeadline() {
+    if (!nd.date || !nd.title.trim()) return;
+    persist({ ...store, custom: [...store.custom, { id: `cd-${Date.now()}`, date: nd.date, title: nd.title.trim(), detail: nd.detail.trim(), scope: nd.scope }] });
+    setNd({ date: "", title: "", detail: "", scope: "Federal" });
+    setShowAdd(false);
+  }
+  function removeCustom(id: string) {
+    persist({ ...store, custom: store.custom.filter((c) => c.id !== id), done: store.done.filter((x) => x !== id) });
+  }
 
   function daysUntil(date: string) {
     const ms = new Date(date + "T00:00:00").getTime() - new Date(today + "T00:00:00").getTime();
     return Math.round(ms / 86400000);
   }
-  const nextUp = taxDeadlines.filter((d) => d.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
+
+  const all = [
+    ...taxDeadlines.map((d, i) => ({ ...d, id: `s-${i}`, custom: false })),
+    ...store.custom.map((c) => ({ ...c, custom: true }))
+  ];
+  const shown = all
+    .filter((d) => scope === "all" || d.scope === scope)
+    .filter((d) => !hideDone || !store.done.includes(d.id))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const nextUp = all.filter((d) => d.date >= today && !store.done.includes(d.id)).sort((a, b) => a.date.localeCompare(b.date))[0];
 
   return (
     <div className="tool-body">
-      <SampleBanner>Illustrative 2026 dates for planning only — not tax advice. Confirm exact deadlines with your accountant or the IRS/PA DOR.</SampleBanner>
+      <SampleBanner>Illustrative 2026 dates for planning only — not tax advice. Confirm exact deadlines with your accountant or the IRS/PA DOR. Add your own dates below.</SampleBanner>
 
       {nextUp && (
         <article className="glass-panel tool-panel">
@@ -4374,28 +4440,50 @@ function TaxCalendarTool() {
         </article>
       )}
 
-      <div className="tools-filters">
-        {(["all", "Federal", "PA", "Local"] as const).map((s) => (
-          <button key={s} className={scope === s ? "tool-chip active" : "tool-chip"} onClick={() => setScope(s)}>{s === "all" ? "All" : s}</button>
-        ))}
+      <div className="tools-toolbar">
+        <div className="tools-filters">
+          {(["all", "Federal", "PA", "Local"] as const).map((s) => (
+            <button key={s} className={scope === s ? "tool-chip active" : "tool-chip"} onClick={() => setScope(s)}>{s === "all" ? "All" : s}</button>
+          ))}
+        </div>
+        <button className={hideDone ? "tool-chip active" : "tool-chip"} onClick={() => setHideDone((v) => !v)}>Hide done</button>
+        <button className="primary-button" onClick={() => setShowAdd((v) => !v)}>{showAdd ? "Close" : "+ Add deadline"}</button>
       </div>
+
+      {showAdd && (
+        <article className="glass-panel tool-panel">
+          <p className="section-label">Add your own deadline</p>
+          <div className="tool-form">
+            <label className="tool-field"><span>Date</span><span className="tool-input-wrap"><input type="date" value={nd.date} onChange={(e) => setNd({ ...nd, date: e.target.value })} /></span></label>
+            <label className="tool-field"><span>Title</span><span className="tool-input-wrap"><input value={nd.title} placeholder="e.g. Quarterly sales tax" onChange={(e) => setNd({ ...nd, title: e.target.value })} /></span></label>
+            <label className="tool-field"><span>Scope</span><span className="tool-input-wrap"><select value={nd.scope} onChange={(e) => setNd({ ...nd, scope: e.target.value as TaxScope })} style={{ border: "none", background: "none", width: "100%", fontFamily: "var(--font-body)", fontWeight: 700 }}><option>Federal</option><option>PA</option><option>Local</option></select></span></label>
+            <label className="tool-field"><span>Detail</span><span className="tool-input-wrap"><input value={nd.detail} placeholder="Optional note" onChange={(e) => setNd({ ...nd, detail: e.target.value })} /></span></label>
+          </div>
+          <div className="tool-detail-actions"><button className="primary-button" onClick={addDeadline}>Add deadline</button></div>
+        </article>
+      )}
 
       <article className="glass-panel tool-panel">
         <div className="cal-list">
-          {shown.map((d, i) => {
+          {shown.map((d) => {
             const du = daysUntil(d.date);
+            const isDone = store.done.includes(d.id);
             const past = du < 0;
             return (
-              <div className={past ? "cal-row past" : "cal-row"} key={`${d.date}-${i}`}>
+              <div className={isDone ? "cal-row done" : past ? "cal-row past" : "cal-row"} key={d.id}>
                 <div className="cal-date">
                   <strong>{new Date(d.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}</strong>
                   <small>{new Date(d.date + "T00:00:00").getFullYear()}</small>
                 </div>
                 <div className="cal-body">
-                  <div className="cal-title">{d.title} <span className={`cal-scope scope-${d.scope.toLowerCase()}`}>{d.scope}</span></div>
-                  <p>{d.detail}</p>
+                  <div className="cal-title">{d.title} <span className={`cal-scope scope-${d.scope.toLowerCase()}`}>{d.scope}</span>{d.custom && <span className="cal-scope scope-local">Yours</span>}</div>
+                  {d.detail && <p>{d.detail}</p>}
                 </div>
-                <span className="cal-when">{past ? "Passed" : du === 0 ? "Today" : `${du}d`}</span>
+                <div className="cal-actions">
+                  <span className="cal-when">{isDone ? "Done" : past ? "Passed" : du === 0 ? "Today" : `${du}d`}</span>
+                  <button className="link-button" onClick={() => toggleDone(d.id)}>{isDone ? "Undo" : "✓ Done"}</button>
+                  {d.custom && <button className="link-button danger" onClick={() => removeCustom(d.id)}>✕</button>}
+                </div>
               </div>
             );
           })}
@@ -4418,47 +4506,81 @@ const resources: { name: string; org: string; type: ResourceType; detail: string
   { name: "PA DCED Funding & Programs", org: "PA Dept. of Community & Economic Development", type: "Grant", detail: "State grants, loans, and tax credits for Pennsylvania businesses.", url: "https://dced.pa.gov/programs-funding/" }
 ];
 
+type GrantTrack = { status: string; note: string };
+const grantStatuses = ["none", "interested", "applied", "awarded", "declined"];
+const grantStatusLabel: Record<string, string> = { none: "Not tracked", interested: "Interested", applied: "Applied", awarded: "Awarded", declined: "Declined" };
+
 function GrantFinderTool() {
+  const STORE_KEY = "sbra.tool.grants";
   const [type, setType] = useState<"all" | ResourceType>("all");
   const [query, setQuery] = useState("");
+  const [trackedOnly, setTrackedOnly] = useState(false);
+  const [tracking, setTracking] = useState<Record<string, GrantTrack>>(() => loadStored<Record<string, GrantTrack>>(STORE_KEY, {}));
+
+  function setTrack(name: string, patch: Partial<GrantTrack>) {
+    const base: GrantTrack = tracking[name] ?? { status: "none", note: "" };
+    const next = { ...tracking, [name]: { ...base, ...patch } };
+    setTracking(next);
+    saveStored(STORE_KEY, next);
+  }
+
+  const q = query.trim().toLowerCase();
   const shown = resources.filter((r) => {
     if (type !== "all" && r.type !== type) return false;
-    const q = query.trim().toLowerCase();
+    if (trackedOnly && (!tracking[r.name] || tracking[r.name].status === "none")) return false;
     if (!q) return true;
     return `${r.name} ${r.org} ${r.detail}`.toLowerCase().includes(q);
   });
+  const trackedCount = Object.values(tracking).filter((t) => t.status && t.status !== "none").length;
 
   return (
     <div className="tool-body">
-      <SampleBanner>A starter list of real Berks/PA/federal programs — verify current links, eligibility, and deadlines before applying.</SampleBanner>
+      <SampleBanner>A starter list of real Berks/PA/federal programs — verify current links, eligibility, and deadlines before applying. Track your applications below.</SampleBanner>
 
       <article className="glass-panel tool-panel">
         <label className="tool-field">
           <span>Search resources</span>
           <span className="tool-input-wrap"><input value={query} placeholder="loan, mentorship, grant…" onChange={(e) => setQuery(e.target.value)} /></span>
         </label>
-        <div className="tools-filters">
-          {(["all", "Grant", "Loan", "Program", "Mentorship"] as const).map((t) => (
-            <button key={t} className={type === t ? "tool-chip active" : "tool-chip"} onClick={() => setType(t)}>{t === "all" ? "All" : t}</button>
-          ))}
+        <div className="tools-toolbar">
+          <div className="tools-filters">
+            {(["all", "Grant", "Loan", "Program", "Mentorship"] as const).map((t) => (
+              <button key={t} className={type === t ? "tool-chip active" : "tool-chip"} onClick={() => setType(t)}>{t === "all" ? "All" : t}</button>
+            ))}
+          </div>
+          <button className={trackedOnly ? "tool-chip active" : "tool-chip"} onClick={() => setTrackedOnly((v) => !v)}>Tracked ({trackedCount})</button>
         </div>
       </article>
 
-      {shown.map((r) => (
-        <article className="glass-panel tool-panel resource-card" key={r.name}>
-          <div className="resource-head">
-            <div>
-              <h4>{r.name}</h4>
-              <span className="tool-hint">{r.org}</span>
+      {shown.map((r) => {
+        const track = tracking[r.name] ?? { status: "none", note: "" };
+        return (
+          <article className="glass-panel tool-panel resource-card" key={r.name}>
+            <div className="resource-head">
+              <div>
+                <h4>{r.name}</h4>
+                <span className="tool-hint">{r.org}</span>
+              </div>
+              <span className={`cal-scope res-${r.type.toLowerCase()}`}>{r.type}</span>
             </div>
-            <span className={`cal-scope res-${r.type.toLowerCase()}`}>{r.type}</span>
-          </div>
-          <p className="crm-note">{r.detail}</p>
-          <a className="secondary-button resource-link" href={r.url} target="_blank" rel="noreferrer">Visit ↗</a>
-        </article>
-      ))}
+            <p className="crm-note">{r.detail}</p>
+            <div className="grant-track">
+              <label className="grant-status">
+                <span>Status</span>
+                <select value={track.status} onChange={(e) => setTrack(r.name, { status: e.target.value })}>
+                  {grantStatuses.map((s) => <option key={s} value={s}>{grantStatusLabel[s]}</option>)}
+                </select>
+              </label>
+              {track.status !== "none" && (
+                <span className="tool-input-wrap grant-note"><input value={track.note} placeholder="Notes / deadline / contact" onChange={(e) => setTrack(r.name, { note: e.target.value })} /></span>
+              )}
+              <a className="secondary-button resource-link" href={r.url} target="_blank" rel="noreferrer">Visit ↗</a>
+            </div>
+          </article>
+        );
+      })}
       {shown.length === 0 && (
-        <article className="glass-panel tool-panel"><p className="tool-hint">No resources match that search.</p></article>
+        <article className="glass-panel tool-panel"><p className="tool-hint">No resources match your search or filter.</p></article>
       )}
     </div>
   );
@@ -4503,16 +4625,41 @@ const docTemplates: { id: string; name: string; category: string; body: string }
   }
 ];
 
-function DocTemplatesTool({ currentBusiness }: { currentBusiness?: Business }) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const open = docTemplates.find((t) => t.id === openId) ?? null;
-  const bizName = currentBusiness?.name ?? "[YOUR BUSINESS]";
-  const filledBody = open ? open.body.replaceAll("[YOUR BUSINESS]", bizName) : "";
+type SavedDoc = { id: string; name: string; body: string; date: string };
 
+function DocTemplatesTool({ currentBusiness }: { currentBusiness?: Business }) {
+  const STORE_KEY = "sbra.tool.docs";
+  const bizName = currentBusiness?.name ?? "[YOUR BUSINESS]";
+  const [saved, setSaved] = useState<SavedDoc[]>(() => loadStored<SavedDoc[]>(STORE_KEY, []));
+  const [editor, setEditor] = useState<{ id: string | null; name: string; body: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  function persist(next: SavedDoc[]) {
+    setSaved(next);
+    saveStored(STORE_KEY, next);
+  }
+  function openTemplate(t: (typeof docTemplates)[number]) {
+    setEditor({ id: null, name: t.name, body: t.body.replaceAll("[YOUR BUSINESS]", bizName) });
+    setCopied(false);
+  }
+  function openSaved(d: SavedDoc) {
+    setEditor({ id: d.id, name: d.name, body: d.body });
+    setCopied(false);
+  }
+  function saveDoc() {
+    if (!editor) return;
+    if (editor.id) {
+      persist(saved.map((d) => (d.id === editor.id ? { ...d, name: editor.name, body: editor.body } : d)));
+    } else {
+      const doc: SavedDoc = { id: `doc-${Date.now()}`, name: editor.name, body: editor.body, date: new Date().toISOString().slice(0, 10) };
+      persist([doc, ...saved]);
+      setEditor({ ...editor, id: doc.id });
+    }
+  }
   async function copy() {
+    if (!editor) return;
     try {
-      await navigator.clipboard.writeText(filledBody);
+      await navigator.clipboard.writeText(editor.body);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -4520,18 +4667,24 @@ function DocTemplatesTool({ currentBusiness }: { currentBusiness?: Business }) {
     }
   }
 
-  if (open) {
+  if (editor) {
     return (
       <div className="tool-body">
-        <button className="tool-back no-print" onClick={() => setOpenId(null)}>← All templates</button>
+        <button className="tool-back no-print" onClick={() => setEditor(null)}>← All templates</button>
         <SampleBanner>A simple starting template, not legal advice. Have important agreements reviewed by an attorney.</SampleBanner>
+        <article className="glass-panel tool-panel no-print">
+          <label className="tool-field"><span>Document name</span><span className="tool-input-wrap"><input value={editor.name} onChange={(e) => setEditor({ ...editor, name: e.target.value })} /></span></label>
+          <label className="tool-field"><span>Edit your document — fill in the [BRACKETS]</span></label>
+          <textarea className="doc-editor" value={editor.body} onChange={(e) => setEditor({ ...editor, body: e.target.value })} rows={16} />
+        </article>
         <article className="glass-panel tool-panel tool-print" id="doc-print">
-          <h3 style={{ margin: "0 0 4px" }}>{open.name}</h3>
-          <p className="draft-text">{filledBody}</p>
+          <h3 style={{ margin: "0 0 4px" }}>{editor.name}</h3>
+          <p className="draft-text">{editor.body}</p>
         </article>
         <div className="tool-detail-actions no-print">
+          <button className="primary-button" onClick={saveDoc}>{editor.id ? "Save changes" : "Save document"}</button>
           <button className="secondary-button" onClick={copy}>{copied ? "Copied ✓" : "Copy"}</button>
-          <button className="primary-button" onClick={() => window.print()}>Print / Save PDF</button>
+          <button className="secondary-button" onClick={() => window.print()}>Print / Save PDF</button>
         </div>
       </div>
     );
@@ -4541,16 +4694,34 @@ function DocTemplatesTool({ currentBusiness }: { currentBusiness?: Business }) {
   return (
     <div className="tool-body">
       <SampleBanner>Starter templates with fill-in-the-blanks — not legal advice. Review important documents with an attorney.</SampleBanner>
+
+      {saved.length > 0 && (
+        <section className="tool-category">
+          <div className="tool-category-head"><h4>Your saved documents <span className="tool-cat-count">{saved.length}</span></h4></div>
+          {saved.map((d) => (
+            <article className="glass-panel tool-panel crm-card" key={d.id} onClick={() => openSaved(d)} role="button" tabIndex={0}>
+              <div className="crm-head">
+                <div className="crm-head-main"><div><h4>{d.name}</h4><span className="tool-hint">Saved {d.date}</span></div></div>
+                <span className="crm-open">Open →</span>
+              </div>
+              <div className="tool-detail-actions">
+                <button className="secondary-button crm-danger" onClick={(e) => { e.stopPropagation(); persist(saved.filter((x) => x.id !== d.id)); }}>Delete</button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+
       {categories.map((cat) => (
         <section className="tool-category" key={cat}>
           <div className="tool-category-head"><h4>{cat}</h4></div>
           <div className="tools-grid">
             {docTemplates.filter((t) => t.category === cat).map((t) => (
-              <button className="glass-panel tool-card" key={t.id} onClick={() => { setOpenId(t.id); setCopied(false); }}>
+              <button className="glass-panel tool-card" key={t.id} onClick={() => openTemplate(t)}>
                 <span className="tool-card-icon" aria-hidden="true">📄</span>
                 <h5>{t.name}</h5>
                 <p>{t.category}</p>
-                <span className="tool-card-open">Open →</span>
+                <span className="tool-card-open">Use template →</span>
               </button>
             ))}
           </div>
