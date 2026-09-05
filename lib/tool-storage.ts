@@ -89,6 +89,50 @@ export function downloadToolData(filename = "sbra-tools-data.json"): boolean {
 
 const KNOWN_KEYS: string[] = Object.values(TOOL_KEYS);
 
+// Human labels for keys, used in the import confirmation.
+const TOOL_LABELS: Record<string, string> = {
+  [TOOL_KEYS.pricing]: "Pricing products",
+  [TOOL_KEYS.loan]: "Loan scenarios",
+  [TOOL_KEYS.scorecard]: "Scorecard answers",
+  [TOOL_KEYS.scorecardHistory]: "Scorecard history",
+  [TOOL_KEYS.goals]: "Goals & KPIs",
+  [TOOL_KEYS.invoice]: "Invoices & quotes",
+  [TOOL_KEYS.marketing]: "Saved marketing drafts",
+  [TOOL_KEYS.crm]: "CRM contacts",
+  [TOOL_KEYS.tax]: "Tax calendar",
+  [TOOL_KEYS.grants]: "Grant tracking",
+  [TOOL_KEYS.docs]: "Saved documents"
+};
+
+export type ImportPreviewEntry = { key: string; label: string; hadExisting: boolean };
+export type ImportPreview = { ok: boolean; message: string; entries: ImportPreviewEntry[]; data: Record<string, unknown> };
+
+// Validate an import payload and report what WOULD be imported, without writing.
+// The component shows this for confirmation; on confirm it passes { data } to
+// importToolData. `hadExisting` flags keys that already hold data (i.e. would be
+// overwritten).
+export function previewToolData(payload: unknown): ImportPreview {
+  const empty: ImportPreview = { ok: false, message: "", entries: [], data: {} };
+  if (typeof payload !== "object" || payload === null) {
+    return { ...empty, message: "That file isn't a valid SBRA tools export." };
+  }
+  const envelope = payload as { version?: number; data?: unknown };
+  if (typeof envelope.version === "number" && envelope.version > 1) {
+    return { ...empty, message: "This file is from a newer version of the tools and can't be imported here." };
+  }
+  const src = (envelope.data && typeof envelope.data === "object" ? envelope.data : envelope) as Record<string, unknown>;
+  const data: Record<string, unknown> = {};
+  const entries: ImportPreviewEntry[] = [];
+  for (const key of KNOWN_KEYS) {
+    if (key in src && src[key] !== undefined) {
+      data[key] = src[key];
+      entries.push({ key, label: TOOL_LABELS[key] ?? key, hadExisting: loadTool<unknown>(key, undefined) !== undefined });
+    }
+  }
+  if (entries.length === 0) return { ...empty, message: "No SBRA tool data was found in that file." };
+  return { ok: true, message: "", entries, data };
+}
+
 // Restore tool data from a payload produced by downloadToolData / exportAllToolData.
 // Accepts either the versioned envelope ({ app, version, data }) or a bare
 // key→value map. Only writes keys the tools actually own (KNOWN_KEYS), so a

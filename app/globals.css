@@ -1639,6 +1639,42 @@ button {
 .tools-export { margin-left: auto; }
 .tools-export-note { margin: -8px 2px 0; }
 
+.import-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 17, 103, 0.28);
+  backdrop-filter: blur(2px);
+}
+.import-dialog { width: min(440px, 100%); padding: 22px 24px; display: grid; gap: 12px; }
+.import-dialog h4 { margin: 0; font-size: 18px; }
+.import-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.import-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(0, 17, 103, 0.05);
+  font-size: 13px;
+  font-weight: 700;
+}
+.import-overwrite {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(184, 26, 31, 0.12);
+  color: var(--coral);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .tools-empty {
   align-items: center;
   text-align: center;

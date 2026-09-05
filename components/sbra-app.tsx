@@ -28,7 +28,7 @@ import type { Session } from "next-auth";
 import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
 import * as backendActions from "@/app/actions";
 import { isBackendEnabled } from "@/lib/backend";
-import { loadTool, saveTool, downloadToolData, importToolData, TOOL_KEYS } from "@/lib/tool-storage";
+import { loadTool, saveTool, downloadToolData, importToolData, previewToolData, TOOL_KEYS, type ImportPreview } from "@/lib/tool-storage";
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import { latinoBusinessSeed, latinoMemberSeed } from "@/lib/latino-directory";
@@ -2581,30 +2581,41 @@ function ToolsView({
   const [query, setQuery] = useState("");
   const [openTool, setOpenTool] = useState<ToolDef | null>(null);
   const [exportNote, setExportNote] = useState("");
+  const [pendingImport, setPendingImport] = useState<ImportPreview | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
+  function flashNote(message: string) {
+    setExportNote(message);
+    window.setTimeout(() => setExportNote(""), 5000);
+  }
   function handleExport() {
     const ok = downloadToolData();
-    setExportNote(ok ? "Your data is downloading as a JSON file." : "Nothing saved yet — use a tool first, then export.");
-    window.setTimeout(() => setExportNote(""), 4000);
+    flashNote(ok ? "Your data is downloading as a JSON file." : "Nothing saved yet — use a tool first, then export.");
   }
   function handleImportFile(file: File) {
     const reader = new FileReader();
     reader.onload = () => {
-      let result: { ok: boolean; message: string };
+      let preview: ImportPreview;
       try {
-        result = importToolData(JSON.parse(String(reader.result)));
+        preview = previewToolData(JSON.parse(String(reader.result)));
       } catch {
-        result = { ok: false, message: "Couldn't read that file — make sure it's a JSON export." };
+        flashNote("Couldn't read that file — make sure it's a JSON export.");
+        return;
       }
-      setExportNote(result.message);
-      window.setTimeout(() => setExportNote(""), 5000);
+      if (!preview.ok) {
+        flashNote(preview.message);
+        return;
+      }
+      setPendingImport(preview);
     };
-    reader.onerror = () => {
-      setExportNote("Couldn't read that file.");
-      window.setTimeout(() => setExportNote(""), 5000);
-    };
+    reader.onerror = () => flashNote("Couldn't read that file.");
     reader.readAsText(file);
+  }
+  function confirmImport() {
+    if (!pendingImport) return;
+    const result = importToolData({ version: 1, data: pendingImport.data });
+    setPendingImport(null);
+    flashNote(result.message);
   }
 
   const toolCount = toolCategories.reduce((sum, category) => sum + category.tools.length, 0);
@@ -2752,6 +2763,29 @@ function ToolsView({
         />
       </div>
       {exportNote && <p className="tool-hint tools-export-note">{exportNote}</p>}
+
+      {pendingImport && (
+        <div className="import-overlay" role="dialog" aria-modal="true" aria-label="Confirm import">
+          <div className="glass-panel import-dialog">
+            <h4>Import this data?</h4>
+            <p className="tool-hint">This will restore the following on this device{pendingImport.entries.some((e) => e.hadExisting) ? ", replacing what's currently saved for the marked items" : ""}:</p>
+            <ul className="import-list">
+              {pendingImport.entries.map((e) => (
+                <li key={e.key}>
+                  <span>{e.label}</span>
+                  {e.hadExisting && <span className="import-overwrite">overwrites existing</span>}
+                </li>
+              ))}
+            </ul>
+            <div className="tool-detail-actions">
+              <button className="primary-button" onClick={confirmImport}>
+                Import{pendingImport.entries.some((e) => e.hadExisting) ? " & overwrite" : ""}
+              </button>
+              <button className="secondary-button" onClick={() => setPendingImport(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {shownCategories.length === 0 && (
         <article className="glass-panel tool-panel tools-empty">
