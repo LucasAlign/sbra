@@ -2547,6 +2547,14 @@ const BUILT_TOOLS = new Set([
   "doc-templates"
 ]);
 
+// Per-category color accent for the hub cards (kept within the SBRA palette).
+const categoryStyle: Record<string, { accent: string; tint: string }> = {
+  money: { accent: "#001167", tint: "rgba(0, 17, 103, 0.08)" },
+  growth: { accent: "#b81a1f", tint: "rgba(184, 26, 31, 0.08)" },
+  strategy: { accent: "#2a3a8c", tint: "rgba(42, 58, 140, 0.1)" },
+  resources: { accent: "#8a6d00", tint: "rgba(247, 215, 68, 0.22)" }
+};
+
 function ToolsView({
   referrals,
   currentMemberId,
@@ -2563,13 +2571,22 @@ function ToolsView({
   onGetHelp: () => void;
 }) {
   const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [query, setQuery] = useState("");
   const [openTool, setOpenTool] = useState<ToolDef | null>(null);
 
   const toolCount = toolCategories.reduce((sum, category) => sum + category.tools.length, 0);
-  const shownCategories =
-    activeCategory === "all"
-      ? toolCategories
-      : toolCategories.filter((category) => category.key === activeCategory);
+  const q = query.trim().toLowerCase();
+  const shownCategories = (activeCategory === "all"
+    ? toolCategories
+    : toolCategories.filter((category) => category.key === activeCategory)
+  )
+    .map((category) => ({
+      ...category,
+      tools: category.tools.filter(
+        (tool) => !q || `${tool.name} ${tool.tagline} ${tool.description}`.toLowerCase().includes(q)
+      )
+    }))
+    .filter((category) => category.tools.length > 0);
 
   if (openTool) {
     const back = (
@@ -2637,56 +2654,88 @@ function ToolsView({
   return (
     <section className="tools-page">
       <article className="glass-panel tools-hero">
-        <div>
+        <div className="tools-hero-main">
           <p className="section-label">Member toolkit</p>
           <h3>Power tools to run and grow your business</h3>
-          <p>
-            A growing kit of calculators, generators, and templates built for SBRA members —
-            {" "}be better, grow faster.
-          </p>
+          <p>Calculators, generators, and templates built for SBRA members — be better, grow faster.</p>
         </div>
-        <span className="tools-hero-count"><strong>{toolCount}</strong> tools</span>
+        <div className="tools-hero-stats" aria-hidden="true">
+          <div><strong>{toolCount}</strong><span>Tools</span></div>
+          <div className="stat-divider" />
+          <div><strong>{toolCategories.length}</strong><span>Categories</span></div>
+        </div>
       </article>
 
-      <div className="tools-filters" role="tablist" aria-label="Tool categories">
-        <button
-          className={activeCategory === "all" ? "tool-chip active" : "tool-chip"}
-          onClick={() => setActiveCategory("all")}
-        >
-          All
-        </button>
-        {toolCategories.map((category) => (
+      <div className="tools-toolbar">
+        <div className="tools-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            value={query}
+            placeholder="Search tools…"
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="Search tools"
+          />
+          {query && <button className="tools-search-clear" onClick={() => setQuery("")} aria-label="Clear search">×</button>}
+        </div>
+        <div className="tools-filters" role="tablist" aria-label="Tool categories">
           <button
-            key={category.key}
-            className={activeCategory === category.key ? "tool-chip active" : "tool-chip"}
-            onClick={() => setActiveCategory(category.key)}
+            className={activeCategory === "all" ? "tool-chip active" : "tool-chip"}
+            onClick={() => setActiveCategory("all")}
           >
-            {category.title}
+            All
           </button>
-        ))}
+          {toolCategories.map((category) => (
+            <button
+              key={category.key}
+              className={activeCategory === category.key ? "tool-chip active" : "tool-chip"}
+              onClick={() => setActiveCategory(category.key)}
+            >
+              {category.title}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {shownCategories.map((category) => (
-        <section className="tool-category" key={category.key} aria-labelledby={`tool-cat-${category.key}`}>
-          <div className="tool-category-head">
-            <h4 id={`tool-cat-${category.key}`}>{category.title}</h4>
-            <p>{category.blurb}</p>
-          </div>
-          <div className="tools-grid">
-            {category.tools.map((tool) => (
-              <button className="glass-panel tool-card" key={tool.id} onClick={() => setOpenTool(tool)}>
-                <span className="tool-card-icon" aria-hidden="true">{tool.icon}</span>
-                <span className={BUILT_TOOLS.has(tool.id) ? "tool-card-status ready" : "tool-card-status"}>
-                  {BUILT_TOOLS.has(tool.id) ? "Ready" : "Soon"}
-                </span>
-                <h5>{tool.name}</h5>
-                <p>{tool.tagline}</p>
-                <span className="tool-card-open">{BUILT_TOOLS.has(tool.id) ? "Open →" : "Preview →"}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      ))}
+      {shownCategories.length === 0 && (
+        <article className="glass-panel tool-panel tools-empty">
+          <p>No tools match “{query}”.</p>
+          <button className="secondary-button" onClick={() => setQuery("")}>Clear search</button>
+        </article>
+      )}
+
+      {shownCategories.map((category) => {
+        const style = categoryStyle[category.key];
+        return (
+          <section className="tool-category" key={category.key} aria-labelledby={`tool-cat-${category.key}`}>
+            <div className="tool-category-head">
+              <h4 id={`tool-cat-${category.key}`}>
+                {category.title}
+                <span className="tool-cat-count">{category.tools.length} {category.tools.length === 1 ? "tool" : "tools"}</span>
+              </h4>
+              <p>{category.blurb}</p>
+            </div>
+            <div className="tools-grid">
+              {category.tools.map((tool) => (
+                <button
+                  className="glass-panel tool-card"
+                  key={tool.id}
+                  onClick={() => setOpenTool(tool)}
+                  style={style ? ({ ["--accent" as string]: style.accent, ["--tint" as string]: style.tint }) : undefined}
+                >
+                  <span className="tool-card-icon" aria-hidden="true">{tool.icon}</span>
+                  {!BUILT_TOOLS.has(tool.id) && <span className="tool-card-status">Soon</span>}
+                  <h5>{tool.name}</h5>
+                  <p>{tool.tagline}</p>
+                  <span className="tool-card-open">{BUILT_TOOLS.has(tool.id) ? "Open" : "Preview"} <span className="tool-card-arrow" aria-hidden="true">→</span></span>
+                </button>
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </section>
   );
 }
