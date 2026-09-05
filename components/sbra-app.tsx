@@ -2541,7 +2541,10 @@ const BUILT_TOOLS = new Set([
   "invoice-quote",
   "breakeven-onepager",
   "marketing-content",
-  "networking-crm"
+  "networking-crm",
+  "tax-calendar",
+  "grant-finder",
+  "doc-templates"
 ]);
 
 function ToolsView({
@@ -2594,6 +2597,12 @@ function ToolsView({
       body = <MarketingContentTool currentBusiness={currentBusiness} onRequestAi={onGetHelp} />;
     } else if (openTool.id === "networking-crm") {
       body = <NetworkingCrmTool />;
+    } else if (openTool.id === "tax-calendar") {
+      body = <TaxCalendarTool />;
+    } else if (openTool.id === "grant-finder") {
+      body = <GrantFinderTool />;
+    } else if (openTool.id === "doc-templates") {
+      body = <DocTemplatesTool currentBusiness={currentBusiness} />;
     } else {
       body = (
         <article className="glass-panel tool-detail">
@@ -3549,6 +3558,243 @@ function NetworkingCrmTool() {
           );
         })
       )}
+    </div>
+  );
+}
+
+// A reusable "this is sample content" banner for the stubbed tools.
+function SampleBanner({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="sample-banner no-print">
+      <span className="sample-tag">Sample data</span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+// ---- Tax & Compliance Calendar (SAMPLE DATA — verify before relying on it) ----
+type TaxScope = "Federal" | "PA" | "Local";
+const taxDeadlines: { date: string; title: string; detail: string; scope: TaxScope }[] = [
+  { date: "2026-01-15", title: "Q4 2025 estimated tax", detail: "4th-quarter estimated income tax payment for 2025.", scope: "Federal" },
+  { date: "2026-01-31", title: "W-2 & 1099-NEC to recipients", detail: "Furnish wage and contractor statements; file with SSA/IRS.", scope: "Federal" },
+  { date: "2026-03-16", title: "S-corp & partnership returns", detail: "Form 1120-S / 1065 due (or file for extension).", scope: "Federal" },
+  { date: "2026-04-15", title: "Individual & C-corp returns · Q1 estimate", detail: "Form 1040 / 1120 and 1st-quarter 2026 estimated tax.", scope: "Federal" },
+  { date: "2026-04-15", title: "PA personal income tax", detail: "PA-40 return and any balance due.", scope: "PA" },
+  { date: "2026-06-15", title: "Q2 estimated tax", detail: "2nd-quarter 2026 estimated income tax payment.", scope: "Federal" },
+  { date: "2026-06-30", title: "PA annual report", detail: "Annual report for many PA business entities (staggered deadlines).", scope: "PA" },
+  { date: "2026-09-15", title: "Q3 estimate · extended S-corp/partnership", detail: "3rd-quarter estimate and extended 1120-S / 1065.", scope: "Federal" },
+  { date: "2026-10-15", title: "Extended individual & C-corp returns", detail: "Final deadline for returns on extension.", scope: "Federal" },
+  { date: "2026-04-15", title: "Reading business privilege / mercantile tax", detail: "Local business tax filings vary by municipality — check with your township or the City of Reading.", scope: "Local" }
+];
+
+function TaxCalendarTool() {
+  const [scope, setScope] = useState<"all" | TaxScope>("all");
+  const today = new Date().toISOString().slice(0, 10);
+  const shown = taxDeadlines
+    .filter((d) => scope === "all" || d.scope === scope)
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  function daysUntil(date: string) {
+    const ms = new Date(date + "T00:00:00").getTime() - new Date(today + "T00:00:00").getTime();
+    return Math.round(ms / 86400000);
+  }
+  const nextUp = taxDeadlines.filter((d) => d.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
+
+  return (
+    <div className="tool-body">
+      <SampleBanner>Illustrative 2026 dates for planning only — not tax advice. Confirm exact deadlines with your accountant or the IRS/PA DOR.</SampleBanner>
+
+      {nextUp && (
+        <article className="glass-panel tool-panel">
+          <p className="section-label">Next deadline</p>
+          <h4 style={{ margin: "2px 0 2px" }}>{nextUp.title}</h4>
+          <p className="tool-hint">{nextUp.date} · {daysUntil(nextUp.date)} days away · {nextUp.scope}</p>
+        </article>
+      )}
+
+      <div className="tools-filters">
+        {(["all", "Federal", "PA", "Local"] as const).map((s) => (
+          <button key={s} className={scope === s ? "tool-chip active" : "tool-chip"} onClick={() => setScope(s)}>{s === "all" ? "All" : s}</button>
+        ))}
+      </div>
+
+      <article className="glass-panel tool-panel">
+        <div className="cal-list">
+          {shown.map((d, i) => {
+            const du = daysUntil(d.date);
+            const past = du < 0;
+            return (
+              <div className={past ? "cal-row past" : "cal-row"} key={`${d.date}-${i}`}>
+                <div className="cal-date">
+                  <strong>{new Date(d.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}</strong>
+                  <small>{new Date(d.date + "T00:00:00").getFullYear()}</small>
+                </div>
+                <div className="cal-body">
+                  <div className="cal-title">{d.title} <span className={`cal-scope scope-${d.scope.toLowerCase()}`}>{d.scope}</span></div>
+                  <p>{d.detail}</p>
+                </div>
+                <span className="cal-when">{past ? "Passed" : du === 0 ? "Today" : `${du}d`}</span>
+              </div>
+            );
+          })}
+        </div>
+      </article>
+    </div>
+  );
+}
+
+// ---- Grant & Local Resource Finder (SAMPLE DATA — verify links & eligibility) ----
+type ResourceType = "Grant" | "Loan" | "Program" | "Mentorship";
+const resources: { name: string; org: string; type: ResourceType; detail: string; url: string }[] = [
+  { name: "Berks LaunchBox", org: "Penn State Berks", type: "Program", detail: "Free coworking, mentorship, and startup support for Berks County entrepreneurs.", url: "https://launchbox.psu.edu/" },
+  { name: "Kutztown University SBDC", org: "PA SBDC network", type: "Mentorship", detail: "No-cost, confidential consulting and training for small businesses.", url: "https://www.kutztownsbdc.org/" },
+  { name: "SCORE Northeastern PA", org: "SCORE / SBA", type: "Mentorship", detail: "Free volunteer business mentoring and workshops.", url: "https://www.score.org/" },
+  { name: "SBA 7(a) Loan", org: "U.S. Small Business Administration", type: "Loan", detail: "Flexible, government-backed loans for working capital, equipment, and expansion.", url: "https://www.sba.gov/funding-programs/loans/7a-loans" },
+  { name: "SBA Microloan", org: "U.S. Small Business Administration", type: "Loan", detail: "Loans up to $50,000 for startups and small businesses via local intermediaries.", url: "https://www.sba.gov/funding-programs/loans/microloans" },
+  { name: "Berks County Community Foundation", org: "Berks County Community Foundation", type: "Grant", detail: "Local grant programs supporting community and economic development.", url: "https://bccf.org/" },
+  { name: "Greater Reading Chamber Alliance", org: "GRCA", type: "Program", detail: "Business resources, advocacy, and economic-development programs for Greater Reading.", url: "https://greaterreading.org/" },
+  { name: "PA DCED Funding & Programs", org: "PA Dept. of Community & Economic Development", type: "Grant", detail: "State grants, loans, and tax credits for Pennsylvania businesses.", url: "https://dced.pa.gov/programs-funding/" }
+];
+
+function GrantFinderTool() {
+  const [type, setType] = useState<"all" | ResourceType>("all");
+  const [query, setQuery] = useState("");
+  const shown = resources.filter((r) => {
+    if (type !== "all" && r.type !== type) return false;
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return `${r.name} ${r.org} ${r.detail}`.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="tool-body">
+      <SampleBanner>A starter list of real Berks/PA/federal programs — verify current links, eligibility, and deadlines before applying.</SampleBanner>
+
+      <article className="glass-panel tool-panel">
+        <label className="tool-field">
+          <span>Search resources</span>
+          <span className="tool-input-wrap"><input value={query} placeholder="loan, mentorship, grant…" onChange={(e) => setQuery(e.target.value)} /></span>
+        </label>
+        <div className="tools-filters">
+          {(["all", "Grant", "Loan", "Program", "Mentorship"] as const).map((t) => (
+            <button key={t} className={type === t ? "tool-chip active" : "tool-chip"} onClick={() => setType(t)}>{t === "all" ? "All" : t}</button>
+          ))}
+        </div>
+      </article>
+
+      {shown.map((r) => (
+        <article className="glass-panel tool-panel resource-card" key={r.name}>
+          <div className="resource-head">
+            <div>
+              <h4>{r.name}</h4>
+              <span className="tool-hint">{r.org}</span>
+            </div>
+            <span className={`cal-scope res-${r.type.toLowerCase()}`}>{r.type}</span>
+          </div>
+          <p className="crm-note">{r.detail}</p>
+          <a className="secondary-button resource-link" href={r.url} target="_blank" rel="noreferrer">Visit ↗</a>
+        </article>
+      ))}
+      {shown.length === 0 && (
+        <article className="glass-panel tool-panel"><p className="tool-hint">No resources match that search.</p></article>
+      )}
+    </div>
+  );
+}
+
+// ---- Document Template Library (SAMPLE templates — not legal advice) ----
+const docTemplates: { id: string; name: string; category: string; body: string }[] = [
+  {
+    id: "nda",
+    name: "Mutual NDA",
+    category: "Agreements",
+    body:
+      "MUTUAL NON-DISCLOSURE AGREEMENT\n\nThis Agreement is made on [DATE] between [YOUR BUSINESS] and [OTHER PARTY].\n\n1. Purpose. The parties wish to explore [PURPOSE] and may share confidential information.\n2. Confidential Information. Any non-public business, technical, or financial information shared by either party.\n3. Obligations. Each party will keep the other's confidential information secret and use it only for the Purpose.\n4. Term. These obligations last for [NUMBER] years from the date above.\n\nSigned:\n[YOUR BUSINESS] ______________   [OTHER PARTY] ______________"
+  },
+  {
+    id: "service-agreement",
+    name: "Simple Service Agreement",
+    category: "Agreements",
+    body:
+      "SERVICE AGREEMENT\n\nBetween [YOUR BUSINESS] (\"Provider\") and [CLIENT] (\"Client\"), dated [DATE].\n\n1. Services. Provider will deliver: [DESCRIBE SERVICES].\n2. Fees. Client will pay [AMOUNT], due [TERMS, e.g. 50% up front, balance on completion].\n3. Timeline. Work begins [START DATE] and is expected to finish by [END DATE].\n4. Cancellation. Either party may cancel with [NUMBER] days' written notice.\n\nSigned:\nProvider ______________   Client ______________"
+  },
+  {
+    id: "proposal",
+    name: "Project Proposal",
+    category: "Sales",
+    body:
+      "PROJECT PROPOSAL\n\nPrepared for [CLIENT] by [YOUR BUSINESS] on [DATE].\n\nOverview\n[One paragraph on the client's goal and how you'll help.]\n\nScope of Work\n- [Deliverable 1]\n- [Deliverable 2]\n- [Deliverable 3]\n\nInvestment\n[AMOUNT] — [payment terms].\n\nTimeline\n[Start] to [finish], with milestones at [dates].\n\nNext Steps\nReply to approve and we'll send an agreement to get started."
+  },
+  {
+    id: "onboarding",
+    name: "Client Onboarding Letter",
+    category: "Client",
+    body:
+      "Dear [CLIENT],\n\nWelcome to [YOUR BUSINESS] — we're glad to be working with you!\n\nHere's what happens next:\n1. [First step]\n2. [Second step]\n3. [Third step]\n\nYour main point of contact is [NAME] at [EMAIL / PHONE]. Please send over [ANY ITEMS YOU NEED] at your convenience.\n\nThanks again for choosing us.\n\nWarmly,\n[YOUR NAME], [YOUR BUSINESS]"
+  },
+  {
+    id: "referral-thankyou",
+    name: "Referral Thank-You",
+    category: "Client",
+    body:
+      "Hi [NAME],\n\nThank you so much for referring [WHO] to [YOUR BUSINESS]. Referrals from people I respect mean everything, and I'll take great care of them.\n\nIf there's ever anyone I can introduce you to in the SBRA network, just say the word — I'm always happy to return the favor.\n\nGratefully,\n[YOUR NAME]"
+  }
+];
+
+function DocTemplatesTool({ currentBusiness }: { currentBusiness?: Business }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const open = docTemplates.find((t) => t.id === openId) ?? null;
+  const bizName = currentBusiness?.name ?? "[YOUR BUSINESS]";
+  const filledBody = open ? open.body.replaceAll("[YOUR BUSINESS]", bizName) : "";
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(filledBody);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard blocked — the member can still select the text manually
+    }
+  }
+
+  if (open) {
+    return (
+      <div className="tool-body">
+        <button className="tool-back no-print" onClick={() => setOpenId(null)}>← All templates</button>
+        <SampleBanner>A simple starting template, not legal advice. Have important agreements reviewed by an attorney.</SampleBanner>
+        <article className="glass-panel tool-panel tool-print" id="doc-print">
+          <h3 style={{ margin: "0 0 4px" }}>{open.name}</h3>
+          <p className="draft-text">{filledBody}</p>
+        </article>
+        <div className="tool-detail-actions no-print">
+          <button className="secondary-button" onClick={copy}>{copied ? "Copied ✓" : "Copy"}</button>
+          <button className="primary-button" onClick={() => window.print()}>Print / Save PDF</button>
+        </div>
+      </div>
+    );
+  }
+
+  const categories = Array.from(new Set(docTemplates.map((t) => t.category)));
+  return (
+    <div className="tool-body">
+      <SampleBanner>Starter templates with fill-in-the-blanks — not legal advice. Review important documents with an attorney.</SampleBanner>
+      {categories.map((cat) => (
+        <section className="tool-category" key={cat}>
+          <div className="tool-category-head"><h4>{cat}</h4></div>
+          <div className="tools-grid">
+            {docTemplates.filter((t) => t.category === cat).map((t) => (
+              <button className="glass-panel tool-card" key={t.id} onClick={() => { setOpenId(t.id); setCopied(false); }}>
+                <span className="tool-card-icon" aria-hidden="true">📄</span>
+                <h5>{t.name}</h5>
+                <p>{t.category}</p>
+                <span className="tool-card-open">Open →</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

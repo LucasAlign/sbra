@@ -1946,6 +1946,72 @@ button {
 .crm-followup.overdue { background: rgba(184, 26, 31, 0.12); color: var(--coral); }
 .crm-note { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
 
+/* Sample-data banner (stubbed tools) */
+.sample-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(247, 215, 68, 0.16);
+  border: 1px solid rgba(247, 215, 68, 0.5);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.sample-tag {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Tax & compliance calendar */
+.cal-list { display: grid; gap: 2px; }
+.cal-row {
+  display: grid;
+  grid-template-columns: 58px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.cal-row:last-child { border-bottom: none; }
+.cal-row.past { opacity: 0.5; }
+.cal-date { display: grid; text-align: center; line-height: 1.1; }
+.cal-date strong { font-family: var(--font-display); font-size: 15px; color: var(--blue); }
+.cal-date small { color: var(--muted); font-size: 10px; }
+.cal-title { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cal-body p { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.cal-when { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--muted); }
+
+.cal-scope {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.scope-federal { background: rgba(0, 17, 103, 0.1); color: var(--blue); }
+.scope-pa { background: rgba(42, 58, 140, 0.14); color: #2a3a8c; }
+.scope-local { background: rgba(184, 26, 31, 0.1); color: var(--coral); }
+
+/* Grant & resource finder */
+.resource-card { gap: 10px; }
+.resource-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.resource-head h4 { margin: 0 0 2px; font-size: 15px; }
+.res-grant { background: rgba(42, 58, 140, 0.14); color: #2a3a8c; }
+.res-loan { background: rgba(0, 17, 103, 0.1); color: var(--blue); }
+.res-program { background: rgba(247, 215, 68, 0.35); color: var(--ink); }
+.res-mentorship { background: rgba(184, 26, 31, 0.1); color: var(--coral); }
+.resource-link { justify-self: start; text-decoration: none; }
+
 /* Print: isolate the printable sheet (invoice / one-pager) */
 @media print {
   body * { visibility: hidden !important; }
@@ -2801,6 +2867,8 @@ button {
   .invoice-item-row .ii-desc { grid-column: 1 / -1; }
   .invoice-doc-head { flex-direction: column; }
   .invoice-from { text-align: left; }
+  .cal-row { grid-template-columns: 48px 1fr; }
+  .cal-when { grid-column: 2; }
   .podcast-heading { align-items: start; }
   .podcast-heading > span { max-width: 130px; text-align: right; }
 
