@@ -388,21 +388,9 @@ const toolCategories: ToolCategory[] = [
   }
 ];
 
-// Curated tool shortcuts surfaced on the community home page. Order matters —
-// these are the highest-value tools for a member landing on the feed. Each id
-// must match a ToolDef in `toolCategories`.
-const homeToolLinkIds = [
-  "referral-roi",
-  "invoice-quote",
-  "pricing-margin",
-  "networking-crm",
-  "goal-kpi",
-  "health-scorecard"
-];
-
-const homeToolLinks = homeToolLinkIds
-  .map((id) => toolCategories.flatMap((category) => category.tools).find((tool) => tool.id === id))
-  .filter((tool): tool is ToolDef => Boolean(tool));
+// Every member tool, flattened across categories — surfaced as a full toolkit
+// strip on the community home page so members can reach any tool in one click.
+const allTools: ToolDef[] = toolCategories.flatMap((category) => category.tools);
 
 type MemberAd = { sponsor: string; headline: string; copy: string; action: string; logo: string; tone: string };
 
@@ -1626,6 +1614,36 @@ export function SBRAApp() {
           )}
         </header>
 
+        {activeView === "community" && (
+          <section className="glass-panel home-tools" aria-labelledby="home-tools-title">
+            <div className="home-tools-head">
+              <div>
+                <p className="section-label">{isLatino ? "Herramientas" : "Business tools"}</p>
+                <h3 id="home-tools-title">{isLatino ? "Todas tus herramientas, un clic" : "Your full toolkit — open any tool"}</h3>
+              </div>
+              <button className="link-button" onClick={() => selectNav("tools")}>
+                {isLatino ? "Abrir centro de herramientas →" : "Open Tools hub →"}
+              </button>
+            </div>
+            <div className="home-tools-row">
+              {allTools.map((tool) => (
+                <button
+                  key={tool.id}
+                  className="home-tool-link"
+                  onClick={() => openToolFromHome(tool.id)}
+                  title={tool.description}
+                >
+                  <span className="home-tool-icon" aria-hidden="true">{tool.icon}</span>
+                  <span className="home-tool-text">
+                    <strong>{tool.name}</strong>
+                    <small>{tool.tagline}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         <AdBanner ads={isLatino ? latinoAds : mockAds} spanish={isLatino} />
 
         {activeView === "community" && (
@@ -1662,8 +1680,6 @@ export function SBRAApp() {
             onFindMember={() => selectNav("directory")}
             onGiveReferral={openReferralComposer}
             onViewEvents={() => selectNav("events")}
-            onOpenTool={openToolFromHome}
-            onViewAllTools={() => selectNav("tools")}
           />
         )}
         {activeView === "directory" && (
@@ -2103,9 +2119,7 @@ function CommunityView({
   onCancelPost,
   onFindMember,
   onGiveReferral,
-  onViewEvents,
-  onOpenTool,
-  onViewAllTools
+  onViewEvents
 }: {
   posts: CommunityPost[];
   referrals: Referral[];
@@ -2135,8 +2149,6 @@ function CommunityView({
   onFindMember: () => void;
   onGiveReferral: () => void;
   onViewEvents: () => void;
-  onOpenTool: (toolId: string) => void;
-  onViewAllTools: () => void;
 }) {
   const referralLeaders = Array.from(memberById.values())
     .map((member) => {
@@ -2182,31 +2194,6 @@ function CommunityView({
             <span className="leader-metric"><strong>{row.wins}</strong><small>Won</small></span>
             <span className="leader-value"><strong>${row.generated.toLocaleString()}</strong><small>Generated</small></span>
           </div>
-        ))}
-      </div>
-    </section>
-    <section className="glass-panel home-tools" aria-labelledby="home-tools-title">
-      <div className="home-tools-head">
-        <div>
-          <p className="section-label">Business tools</p>
-          <h3 id="home-tools-title">Member tools, one click away</h3>
-        </div>
-        <button className="link-button" onClick={onViewAllTools}>See all tools →</button>
-      </div>
-      <div className="home-tools-row">
-        {homeToolLinks.map((tool) => (
-          <button
-            key={tool.id}
-            className="home-tool-link"
-            onClick={() => onOpenTool(tool.id)}
-            title={tool.description}
-          >
-            <span className="home-tool-icon" aria-hidden="true">{tool.icon}</span>
-            <span className="home-tool-text">
-              <strong>{tool.name}</strong>
-              <small>{tool.tagline}</small>
-            </span>
-          </button>
         ))}
       </div>
     </section>
