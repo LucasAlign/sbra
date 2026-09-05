@@ -28,7 +28,7 @@ import type { Session } from "next-auth";
 import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
 import * as backendActions from "@/app/actions";
 import { isBackendEnabled } from "@/lib/backend";
-import { loadTool, saveTool, downloadToolData, TOOL_KEYS } from "@/lib/tool-storage";
+import { loadTool, saveTool, downloadToolData, importToolData, TOOL_KEYS } from "@/lib/tool-storage";
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import { latinoBusinessSeed, latinoMemberSeed } from "@/lib/latino-directory";
@@ -2581,11 +2581,30 @@ function ToolsView({
   const [query, setQuery] = useState("");
   const [openTool, setOpenTool] = useState<ToolDef | null>(null);
   const [exportNote, setExportNote] = useState("");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   function handleExport() {
     const ok = downloadToolData();
     setExportNote(ok ? "Your data is downloading as a JSON file." : "Nothing saved yet — use a tool first, then export.");
     window.setTimeout(() => setExportNote(""), 4000);
+  }
+  function handleImportFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let result: { ok: boolean; message: string };
+      try {
+        result = importToolData(JSON.parse(String(reader.result)));
+      } catch {
+        result = { ok: false, message: "Couldn't read that file — make sure it's a JSON export." };
+      }
+      setExportNote(result.message);
+      window.setTimeout(() => setExportNote(""), 5000);
+    };
+    reader.onerror = () => {
+      setExportNote("Couldn't read that file.");
+      window.setTimeout(() => setExportNote(""), 5000);
+    };
+    reader.readAsText(file);
   }
 
   const toolCount = toolCategories.reduce((sum, category) => sum + category.tools.length, 0);
@@ -2719,6 +2738,18 @@ function ToolsView({
           ))}
         </div>
         <button className="secondary-button tools-export" onClick={handleExport}>Export my data</button>
+        <button className="secondary-button" onClick={() => importInputRef.current?.click()}>Import</button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) handleImportFile(file);
+            event.target.value = "";
+          }}
+        />
       </div>
       {exportNote && <p className="tool-hint tools-export-note">{exportNote}</p>}
 

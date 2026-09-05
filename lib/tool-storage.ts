@@ -87,6 +87,34 @@ export function downloadToolData(filename = "sbra-tools-data.json"): boolean {
   }
 }
 
+const KNOWN_KEYS: string[] = Object.values(TOOL_KEYS);
+
+// Restore tool data from a payload produced by downloadToolData / exportAllToolData.
+// Accepts either the versioned envelope ({ app, version, data }) or a bare
+// key→value map. Only writes keys the tools actually own (KNOWN_KEYS), so a
+// hand-edited or foreign file can't inject arbitrary localStorage entries.
+// Overwrites existing values for the keys present; keys not in the file are left
+// untouched. Returns how many tools were restored plus a message for the member.
+export function importToolData(payload: unknown): { ok: boolean; imported: number; message: string } {
+  if (typeof payload !== "object" || payload === null) {
+    return { ok: false, imported: 0, message: "That file isn't a valid SBRA tools export." };
+  }
+  const envelope = payload as { app?: string; version?: number; data?: unknown };
+  const data = (envelope.data && typeof envelope.data === "object" ? envelope.data : envelope) as Record<string, unknown>;
+  if (typeof envelope.version === "number" && envelope.version > 1) {
+    return { ok: false, imported: 0, message: "This file is from a newer version of the tools and can't be imported here." };
+  }
+  let imported = 0;
+  for (const key of KNOWN_KEYS) {
+    if (key in data && data[key] !== undefined) {
+      saveTool(key, data[key]);
+      imported += 1;
+    }
+  }
+  if (imported === 0) return { ok: false, imported: 0, message: "No SBRA tool data was found in that file." };
+  return { ok: true, imported, message: `Imported ${imported} ${imported === 1 ? "tool's" : "tools'"} data. Reopen a tool to see it.` };
+}
+
 // Wipe every tool's stored data on this device (e.g. a "reset my tools" action).
 export function clearAllToolData(): void {
   if (typeof window === "undefined") return;
