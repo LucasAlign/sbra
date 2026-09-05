@@ -1790,6 +1790,139 @@ button {
 
 .tool-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
+/* Scorecard */
+.scorecard-summary { display: flex; align-items: center; gap: 20px; }
+.scorecard-gauge {
+  flex: 0 0 auto;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--blue) var(--pct, 0%), rgba(0, 17, 103, 0.1) 0);
+}
+.scorecard-gauge span {
+  display: grid;
+  place-items: center;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: var(--panel);
+  text-align: center;
+}
+.scorecard-gauge strong { font-size: 24px; line-height: 1; }
+.scorecard-gauge small { color: var(--muted); font-size: 10px; }
+.scorecard-band { margin: 3px 0 4px; font-size: 17px; }
+
+.scorecard-head { display: flex; align-items: center; justify-content: space-between; }
+.scorecard-head .section-label { margin: 0; }
+.scorecard-pct { font-family: var(--font-display); font-size: 16px; color: var(--blue); }
+
+.scorecard-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0, 17, 103, 0.1);
+  overflow: hidden;
+}
+.scorecard-bar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--blue), #39a7db); }
+
+.scorecard-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.scorecard-item:last-child { border-bottom: none; }
+.scorecard-item > span { flex: 1; }
+
+.rating { display: flex; gap: 6px; flex: 0 0 auto; }
+.rating-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--muted);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.rating-dot:hover { border-color: var(--blue); }
+.rating-dot.active { background: var(--blue); color: white; border-color: var(--blue); }
+
+/* Goal & KPI tracker */
+.goal-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.goal-head h4 { margin: 0 0 2px; font-size: 15px; }
+.goal-pct { font-family: var(--font-display); font-size: 18px; color: var(--blue); }
+.goal-pct.done { color: #2a3a8c; }
+.goal-controls { display: flex; align-items: end; gap: 12px; }
+.goal-update { flex: 1; max-width: 260px; }
+
+/* Invoice / quote */
+.doc-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.doc-tab { padding: 6px 16px; border: none; background: white; color: var(--muted); font-family: var(--font-body); font-weight: 700; font-size: 12px; cursor: pointer; }
+.doc-tab.active { background: var(--ink); color: white; }
+
+.invoice-items { display: grid; gap: 8px; }
+.invoice-item-row { display: grid; grid-template-columns: 1fr 70px 90px 90px 32px; gap: 8px; align-items: center; }
+.invoice-item-row input {
+  min-width: 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: white;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink);
+}
+.invoice-item-row input:focus-visible { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0, 17, 103, 0.1); }
+.ii-amt { font-weight: 700; font-size: 13px; text-align: right; }
+.ii-remove { border: none; background: none; color: var(--coral); font-size: 20px; line-height: 1; cursor: pointer; }
+
+.invoice-doc { display: grid; gap: 16px; }
+.invoice-doc-head { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+.invoice-doc-head h3 { margin: 0; font-size: 22px; }
+.invoice-doc-head p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+.invoice-from { text-align: right; display: grid; gap: 2px; }
+.invoice-from strong { font-size: 14px; }
+.invoice-from span { color: var(--muted); font-size: 12px; max-width: 240px; }
+.invoice-billto { display: grid; gap: 2px; }
+.invoice-billto small { color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: 0.08em; }
+.invoice-billto span { color: var(--muted); font-size: 12px; }
+
+.invoice-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.invoice-table th { text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--line); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.invoice-table th:last-child, .invoice-table td:last-child { text-align: right; }
+.invoice-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); }
+
+.invoice-totals { display: grid; gap: 5px; justify-content: end; }
+.invoice-totals > div { display: grid; grid-template-columns: 1fr auto; gap: 26px; min-width: 220px; font-size: 13px; }
+.invoice-totals span { color: var(--muted); }
+.invoice-grand { border-top: 2px solid var(--line); padding-top: 6px; margin-top: 2px; font-size: 16px; }
+.invoice-grand strong { color: var(--blue); }
+.invoice-notes { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+/* Print: isolate the printable sheet (invoice / one-pager) */
+@media print {
+  body * { visibility: hidden !important; }
+  .tool-print, .tool-print * { visibility: visible !important; }
+  .tool-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: none !important;
+    box-shadow: none !important;
+    background: white !important;
+  }
+  .no-print { display: none !important; }
+}
+
 .module span {
   display: grid;
   width: 54px;
@@ -2624,6 +2757,11 @@ button {
   .tool-form { grid-template-columns: 1fr; }
   .tool-results { grid-template-columns: 1fr; }
   .tool-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scorecard-item { flex-direction: column; align-items: stretch; gap: 8px; }
+  .invoice-item-row { grid-template-columns: 1fr 1fr; grid-auto-rows: auto; }
+  .invoice-item-row .ii-desc { grid-column: 1 / -1; }
+  .invoice-doc-head { flex-direction: column; }
+  .invoice-from { text-align: left; }
   .podcast-heading { align-items: start; }
   .podcast-heading > span { max-width: 130px; text-align: right; }
 

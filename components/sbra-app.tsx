@@ -1689,6 +1689,8 @@ export function SBRAApp() {
             referrals={referrals}
             currentMemberId={currentMember?.id ?? ""}
             memberById={memberById}
+            currentMember={currentMember}
+            currentBusiness={currentBusiness}
             onGetHelp={() => selectNav("support")}
           />
         )}
@@ -2530,17 +2532,29 @@ function BusinessModal({
 
 // Tools that have a working build. Anything not listed falls back to the
 // "coming soon" placeholder so the hub stays complete while we flesh tools out.
-const BUILT_TOOLS = new Set(["referral-roi", "pricing-margin", "loan-cashflow"]);
+const BUILT_TOOLS = new Set([
+  "referral-roi",
+  "pricing-margin",
+  "loan-cashflow",
+  "health-scorecard",
+  "goal-kpi",
+  "invoice-quote",
+  "breakeven-onepager"
+]);
 
 function ToolsView({
   referrals,
   currentMemberId,
   memberById,
+  currentMember,
+  currentBusiness,
   onGetHelp
 }: {
   referrals: Referral[];
   currentMemberId: string;
   memberById: Map<string, Member>;
+  currentMember?: Member;
+  currentBusiness?: Business;
   onGetHelp: () => void;
 }) {
   const [activeCategory, setActiveCategory] = useState<string>("all");
@@ -2566,6 +2580,14 @@ function ToolsView({
       body = <PricingMarginTool />;
     } else if (openTool.id === "loan-cashflow") {
       body = <LoanCashFlowTool />;
+    } else if (openTool.id === "health-scorecard") {
+      body = <HealthScorecardTool />;
+    } else if (openTool.id === "goal-kpi") {
+      body = <GoalKpiTool />;
+    } else if (openTool.id === "invoice-quote") {
+      body = <InvoiceQuoteTool currentMember={currentMember} currentBusiness={currentBusiness} />;
+    } else if (openTool.id === "breakeven-onepager") {
+      body = <BreakEvenTool currentBusiness={currentBusiness} />;
     } else {
       body = (
         <article className="glass-panel tool-detail">
@@ -2662,6 +2684,27 @@ function usd(n: number) {
 function toNum(value: string) {
   const n = parseFloat(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+// Per-viewer persistence for tools that save (goals, invoice defaults, last
+// scorecard). Seed mode has no backend, so we keep it in localStorage; every
+// access is guarded because storage can be unavailable or throw.
+function loadStored<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function saveStored<T>(key: string, value: T) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // storage full or blocked — the tool still works in-session
+  }
 }
 
 function ToolField({
@@ -2880,6 +2923,400 @@ function LoanCashFlowTool() {
           <p className="tool-hint">Add your revenue and expenses to see whether this loan is comfortable month to month.</p>
         )}
       </article>
+    </div>
+  );
+}
+
+// ---- Business Health Scorecard ----
+const scorecardSections: { key: string; label: string; tip: string; items: string[] }[] = [
+  {
+    key: "marketing",
+    label: "Marketing & Brand",
+    tip: "Pick one channel and show up consistently for 90 days. Ask happy clients for a review or a Pitch spotlight at the next Mingle.",
+    items: [
+      "We have a clear, repeatable way to attract new customers.",
+      "Our brand and message are consistent across our website and socials.",
+      "We know which marketing brings the best return."
+    ]
+  },
+  {
+    key: "finance",
+    label: "Finances & Cash",
+    tip: "Build a simple 90-day cash forecast and review it monthly. Know your break-even number cold.",
+    items: [
+      "We track revenue, expenses, and profit every month.",
+      "We have enough cash reserve to handle a slow month.",
+      "Our pricing reliably covers costs and leaves healthy margin."
+    ]
+  },
+  {
+    key: "sales",
+    label: "Sales & Referrals",
+    tip: "Give referrals first — the club rewards givers. Set a weekly target for referrals given and follow-ups made.",
+    items: [
+      "We have a dependable pipeline of new leads.",
+      "We follow up on every lead and referral promptly.",
+      "We actively give and receive referrals through SBRA."
+    ]
+  },
+  {
+    key: "operations",
+    label: "Operations & Team",
+    tip: "Document your top 3 recurring tasks so the business runs without you in the room.",
+    items: [
+      "Our core processes are documented, not just in our heads.",
+      "The business can run for a few days without the owner.",
+      "We have the right tools and people for current demand."
+    ]
+  }
+];
+
+function HealthScorecardTool() {
+  const STORE_KEY = "sbra.tool.scorecard";
+  const [answers, setAnswers] = useState<Record<string, number>>(() => loadStored(STORE_KEY, {}));
+
+  function setAnswer(id: string, value: number) {
+    setAnswers((prev) => {
+      const next = { ...prev, [id]: value };
+      saveStored(STORE_KEY, next);
+      return next;
+    });
+  }
+
+  const sectionScores = scorecardSections.map((section) => {
+    const values = section.items.map((_, i) => answers[`${section.key}-${i}`] ?? 3);
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    return { ...section, pct: Math.round((avg / 5) * 100) };
+  });
+  const overall = Math.round(sectionScores.reduce((sum, s) => sum + s.pct, 0) / sectionScores.length);
+  const weakest = [...sectionScores].sort((a, b) => a.pct - b.pct)[0];
+  const band = overall >= 80 ? "Thriving" : overall >= 60 ? "Solid, with room to grow" : overall >= 40 ? "Needs attention" : "At risk";
+
+  return (
+    <div className="tool-body">
+      <article className="glass-panel tool-panel">
+        <div className="scorecard-summary">
+          <div className="scorecard-gauge" style={{ ["--pct" as string]: `${overall}%` }}>
+            <span><strong>{overall}</strong><small>/100</small></span>
+          </div>
+          <div>
+            <p className="section-label">Overall health</p>
+            <h4 className="scorecard-band">{band}</h4>
+            <p className="tool-hint">Rate each statement from 1 (strongly disagree) to 5 (strongly agree). Your answers save on this device.</p>
+          </div>
+        </div>
+      </article>
+
+      {scorecardSections.map((section, si) => {
+        const score = sectionScores[si];
+        return (
+          <article className="glass-panel tool-panel" key={section.key}>
+            <div className="scorecard-head">
+              <p className="section-label">{section.label}</p>
+              <span className="scorecard-pct">{score.pct}%</span>
+            </div>
+            <div className="scorecard-bar"><span style={{ width: `${score.pct}%` }} /></div>
+            {section.items.map((item, i) => {
+              const id = `${section.key}-${i}`;
+              const current = answers[id] ?? 3;
+              return (
+                <div className="scorecard-item" key={id}>
+                  <span>{item}</span>
+                  <div className="rating" role="group" aria-label={item}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        className={current === n ? "rating-dot active" : "rating-dot"}
+                        onClick={() => setAnswer(id, n)}
+                        aria-label={`${n} of 5`}
+                        aria-pressed={current === n}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </article>
+        );
+      })}
+
+      <article className="glass-panel tool-panel">
+        <p className="section-label">Your focus area</p>
+        <h4 style={{ margin: "2px 0 4px" }}>{weakest.label} — {weakest.pct}%</h4>
+        <p className="tool-hint">{weakest.tip}</p>
+      </article>
+    </div>
+  );
+}
+
+// ---- Goal & KPI Tracker ----
+type Goal = { id: string; label: string; unit: string; current: number; target: number };
+
+function GoalKpiTool() {
+  const STORE_KEY = "sbra.tool.goals";
+  const [goals, setGoals] = useState<Goal[]>(() => loadStored<Goal[]>(STORE_KEY, []));
+  const [label, setLabel] = useState("");
+  const [target, setTarget] = useState("");
+  const [unit, setUnit] = useState("");
+
+  function persist(next: Goal[]) {
+    setGoals(next);
+    saveStored(STORE_KEY, next);
+  }
+  function addGoal() {
+    if (!label.trim() || toNum(target) <= 0) return;
+    persist([
+      ...goals,
+      { id: `goal-${Date.now()}`, label: label.trim(), unit: unit.trim(), current: 0, target: toNum(target) }
+    ]);
+    setLabel("");
+    setTarget("");
+    setUnit("");
+  }
+  function updateCurrent(id: string, value: string) {
+    persist(goals.map((g) => (g.id === id ? { ...g, current: toNum(value) } : g)));
+  }
+  function removeGoal(id: string) {
+    persist(goals.filter((g) => g.id !== id));
+  }
+
+  return (
+    <div className="tool-body">
+      <article className="glass-panel tool-panel">
+        <p className="section-label">Add a goal or KPI</p>
+        <div className="tool-form">
+          <label className="tool-field">
+            <span>Goal</span>
+            <span className="tool-input-wrap">
+              <input value={label} placeholder="e.g. New clients this quarter" onChange={(e) => setLabel(e.target.value)} />
+            </span>
+          </label>
+          <ToolField label="Target" value={target} onChange={setTarget} placeholder="e.g. 20" />
+          <label className="tool-field">
+            <span>Unit (optional)</span>
+            <span className="tool-input-wrap">
+              <input value={unit} placeholder="clients, $, calls…" onChange={(e) => setUnit(e.target.value)} />
+            </span>
+          </label>
+        </div>
+        <div className="tool-detail-actions">
+          <button className="primary-button" onClick={addGoal}>Add goal</button>
+        </div>
+      </article>
+
+      {goals.length === 0 ? (
+        <article className="glass-panel tool-panel">
+          <p className="tool-hint">No goals yet. Add your first target above — it saves on this device so it's here when you come back.</p>
+        </article>
+      ) : (
+        goals.map((goal) => {
+          const pct = goal.target > 0 ? Math.min(100, Math.round((goal.current / goal.target) * 100)) : 0;
+          return (
+            <article className="glass-panel tool-panel goal-row" key={goal.id}>
+              <div className="goal-head">
+                <div>
+                  <h4>{goal.label}</h4>
+                  <span className="tool-hint">{goal.current.toLocaleString()} of {goal.target.toLocaleString()} {goal.unit}</span>
+                </div>
+                <span className={pct >= 100 ? "goal-pct done" : "goal-pct"}>{pct}%</span>
+              </div>
+              <div className="scorecard-bar"><span style={{ width: `${pct}%` }} /></div>
+              <div className="goal-controls">
+                <label className="tool-field goal-update">
+                  <span>Update progress</span>
+                  <span className="tool-input-wrap">
+                    <input type="number" min="0" step="any" value={String(goal.current)} onChange={(e) => updateCurrent(goal.id, e.target.value)} />
+                    {goal.unit && <span className="tool-affix suffix">{goal.unit}</span>}
+                  </span>
+                </label>
+                <button className="secondary-button" onClick={() => removeGoal(goal.id)}>Remove</button>
+              </div>
+            </article>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+// ---- Invoice & Quote Generator ----
+type InvoiceItem = { id: string; desc: string; qty: string; rate: string };
+type InvoiceProfile = { fromName: string; fromContact: string; number: string };
+
+function InvoiceQuoteTool({ currentMember, currentBusiness }: { currentMember?: Member; currentBusiness?: Business }) {
+  const STORE_KEY = "sbra.tool.invoice";
+  const stored = loadStored<Partial<InvoiceProfile>>(STORE_KEY, {});
+  const [docType, setDocType] = useState<"Invoice" | "Quote">("Invoice");
+  const [fromName, setFromName] = useState(stored.fromName ?? currentBusiness?.name ?? "");
+  const [fromContact, setFromContact] = useState(
+    stored.fromContact ??
+      [currentBusiness?.address, currentBusiness?.city, currentMember?.email, currentMember?.phone].filter(Boolean).join(" · ")
+  );
+  const [number, setNumber] = useState(stored.number ?? "1001");
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [toName, setToName] = useState("");
+  const [toContact, setToContact] = useState("");
+  const [taxRate, setTaxRate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [items, setItems] = useState<InvoiceItem[]>([{ id: "i1", desc: "", qty: "1", rate: "" }]);
+
+  function saveProfile(next: Partial<InvoiceProfile>) {
+    saveStored(STORE_KEY, { fromName, fromContact, number, ...next });
+  }
+
+  function updateItem(id: string, patch: Partial<InvoiceItem>) {
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  }
+  function addItem() {
+    setItems((prev) => [...prev, { id: `i${Date.now()}`, desc: "", qty: "1", rate: "" }]);
+  }
+  function removeItem(id: string) {
+    setItems((prev) => (prev.length > 1 ? prev.filter((it) => it.id !== id) : prev));
+  }
+
+  const subtotal = items.reduce((sum, it) => sum + toNum(it.qty) * toNum(it.rate), 0);
+  const tax = subtotal * (toNum(taxRate) / 100);
+  const total = subtotal + tax;
+
+  return (
+    <div className="tool-body">
+      <article className="glass-panel tool-panel">
+        <div className="scorecard-head">
+          <p className="section-label">Details</p>
+          <div className="doc-toggle" role="group" aria-label="Document type">
+            {(["Invoice", "Quote"] as const).map((t) => (
+              <button key={t} className={docType === t ? "doc-tab active" : "doc-tab"} onClick={() => setDocType(t)}>{t}</button>
+            ))}
+          </div>
+        </div>
+        <div className="tool-form">
+          <label className="tool-field"><span>From (your business)</span><span className="tool-input-wrap"><input value={fromName} onChange={(e) => { setFromName(e.target.value); saveProfile({ fromName: e.target.value }); }} /></span></label>
+          <label className="tool-field"><span>Your contact</span><span className="tool-input-wrap"><input value={fromContact} onChange={(e) => { setFromContact(e.target.value); saveProfile({ fromContact: e.target.value }); }} /></span></label>
+          <label className="tool-field"><span>Bill to</span><span className="tool-input-wrap"><input value={toName} placeholder="Client name" onChange={(e) => setToName(e.target.value)} /></span></label>
+          <label className="tool-field"><span>Client contact</span><span className="tool-input-wrap"><input value={toContact} placeholder="Email / address" onChange={(e) => setToContact(e.target.value)} /></span></label>
+          <label className="tool-field"><span>{docType} #</span><span className="tool-input-wrap"><input value={number} onChange={(e) => { setNumber(e.target.value); saveProfile({ number: e.target.value }); }} /></span></label>
+          <label className="tool-field"><span>Date</span><span className="tool-input-wrap"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></span></label>
+        </div>
+      </article>
+
+      <article className="glass-panel tool-panel">
+        <p className="section-label">Line items</p>
+        <div className="invoice-items">
+          {items.map((it) => (
+            <div className="invoice-item-row" key={it.id}>
+              <input className="ii-desc" value={it.desc} placeholder="Description" onChange={(e) => updateItem(it.id, { desc: e.target.value })} />
+              <input className="ii-num" type="number" min="0" step="any" value={it.qty} placeholder="Qty" onChange={(e) => updateItem(it.id, { qty: e.target.value })} />
+              <input className="ii-num" type="number" min="0" step="any" value={it.rate} placeholder="Rate" onChange={(e) => updateItem(it.id, { rate: e.target.value })} />
+              <span className="ii-amt">{usd(toNum(it.qty) * toNum(it.rate))}</span>
+              <button className="ii-remove" onClick={() => removeItem(it.id)} aria-label="Remove line">×</button>
+            </div>
+          ))}
+        </div>
+        <div className="tool-detail-actions">
+          <button className="secondary-button" onClick={addItem}>+ Add line</button>
+        </div>
+        <div className="tool-form">
+          <ToolField label="Tax rate (optional)" value={taxRate} onChange={setTaxRate} suffix="%" />
+          <label className="tool-field"><span>Notes / terms</span><span className="tool-input-wrap"><input value={notes} placeholder="Payment due in 30 days…" onChange={(e) => setNotes(e.target.value)} /></span></label>
+        </div>
+      </article>
+
+      <article className="glass-panel tool-panel tool-print" id="invoice-print">
+        <div className="invoice-doc">
+          <div className="invoice-doc-head">
+            <div>
+              <h3>{docType}</h3>
+              <p>#{number} · {date}</p>
+            </div>
+            <div className="invoice-from">
+              <strong>{fromName || "Your business"}</strong>
+              <span>{fromContact}</span>
+            </div>
+          </div>
+          <div className="invoice-billto">
+            <small>BILL TO</small>
+            <strong>{toName || "Client"}</strong>
+            <span>{toContact}</span>
+          </div>
+          <table className="invoice-table">
+            <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+            <tbody>
+              {items.map((it) => (
+                <tr key={it.id}>
+                  <td>{it.desc || "—"}</td>
+                  <td>{toNum(it.qty) || 0}</td>
+                  <td>{usd(toNum(it.rate))}</td>
+                  <td>{usd(toNum(it.qty) * toNum(it.rate))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="invoice-totals">
+            <div><span>Subtotal</span><strong>{usd(subtotal)}</strong></div>
+            {toNum(taxRate) > 0 && <div><span>Tax ({toNum(taxRate)}%)</span><strong>{usd(tax)}</strong></div>}
+            <div className="invoice-grand"><span>Total</span><strong>{usd(total)}</strong></div>
+          </div>
+          {notes && <p className="invoice-notes">{notes}</p>}
+        </div>
+      </article>
+      <div className="tool-detail-actions no-print">
+        <button className="primary-button" onClick={() => window.print()}>Print / Save PDF</button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Break-even & Margin One-Pager ----
+function BreakEvenTool({ currentBusiness }: { currentBusiness?: Business }) {
+  const [fixed, setFixed] = useState("4000");
+  const [price, setPrice] = useState("100");
+  const [variable, setVariable] = useState("40");
+  const [targetProfit, setTargetProfit] = useState("");
+
+  const priceNum = toNum(price);
+  const cm = priceNum - toNum(variable);
+  const cmPct = priceNum > 0 ? (cm / priceNum) * 100 : 0;
+  const beUnits = cm > 0 ? Math.ceil(toNum(fixed) / cm) : 0;
+  const beRevenue = beUnits * priceNum;
+  const targetUnits = cm > 0 ? Math.ceil((toNum(fixed) + toNum(targetProfit)) / cm) : 0;
+
+  return (
+    <div className="tool-body">
+      <article className="glass-panel tool-panel">
+        <p className="section-label">Your numbers</p>
+        <div className="tool-form">
+          <ToolField label="Fixed costs / month" value={fixed} onChange={setFixed} prefix="$" />
+          <ToolField label="Price per unit" value={price} onChange={setPrice} prefix="$" />
+          <ToolField label="Variable cost per unit" value={variable} onChange={setVariable} prefix="$" />
+          <ToolField label="Target monthly profit (optional)" value={targetProfit} onChange={setTargetProfit} prefix="$" />
+        </div>
+      </article>
+
+      <article className="glass-panel tool-panel tool-print" id="breakeven-print">
+        <div className="invoice-doc-head">
+          <div>
+            <h3>Break-even one-pager</h3>
+            <p>{currentBusiness?.name || "Your business"} · {new Date().toISOString().slice(0, 10)}</p>
+          </div>
+        </div>
+        <div className="tool-results">
+          <div className="result-tile accent"><span>Break-even units / mo</span><strong>{cm > 0 ? beUnits.toLocaleString() : "—"}</strong></div>
+          <div className="result-tile"><span>Break-even revenue / mo</span><strong>{cm > 0 ? usd(beRevenue) : "—"}</strong></div>
+          <div className="result-tile"><span>Contribution margin / unit</span><strong>{usd(cm)}</strong></div>
+        </div>
+        <div className="tool-results" style={{ marginTop: 12 }}>
+          <div className="result-tile"><span>Contribution margin %</span><strong>{cm > 0 ? `${Math.round(cmPct)}%` : "—"}</strong></div>
+          {toNum(targetProfit) > 0 && (
+            <div className="result-tile positive"><span>Units for target profit</span><strong>{cm > 0 ? targetUnits.toLocaleString() : "—"}</strong></div>
+          )}
+        </div>
+        <p className="tool-hint">Contribution margin = price − variable cost. Break-even units = fixed costs ÷ contribution margin. Below the break-even you run at a loss; above it, each unit adds {usd(cm)} of profit.</p>
+      </article>
+      <div className="tool-detail-actions no-print">
+        <button className="primary-button" onClick={() => window.print()}>Print / Save PDF</button>
+      </div>
     </div>
   );
 }
