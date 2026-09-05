@@ -2539,7 +2539,9 @@ const BUILT_TOOLS = new Set([
   "health-scorecard",
   "goal-kpi",
   "invoice-quote",
-  "breakeven-onepager"
+  "breakeven-onepager",
+  "marketing-content",
+  "networking-crm"
 ]);
 
 function ToolsView({
@@ -2588,6 +2590,10 @@ function ToolsView({
       body = <InvoiceQuoteTool currentMember={currentMember} currentBusiness={currentBusiness} />;
     } else if (openTool.id === "breakeven-onepager") {
       body = <BreakEvenTool currentBusiness={currentBusiness} />;
+    } else if (openTool.id === "marketing-content") {
+      body = <MarketingContentTool currentBusiness={currentBusiness} onRequestAi={onGetHelp} />;
+    } else if (openTool.id === "networking-crm") {
+      body = <NetworkingCrmTool />;
     } else {
       body = (
         <article className="glass-panel tool-detail">
@@ -3317,6 +3323,232 @@ function BreakEvenTool({ currentBusiness }: { currentBusiness?: Business }) {
       <div className="tool-detail-actions no-print">
         <button className="primary-button" onClick={() => window.print()}>Print / Save PDF</button>
       </div>
+    </div>
+  );
+}
+
+// ---- Marketing Content Generator (template-only) ----
+// NOTE (feature request): this is a template engine. The AI upgrade path is to
+// swap buildDrafts() for a call to an LLM (e.g. Claude) using the same inputs
+// as the prompt. The in-tool "Request AI drafts" button files that request via
+// support so members can signal demand. See onRequestAi.
+type ContentKind = "social" | "email" | "promo" | "event" | "referral";
+const contentKinds: { key: ContentKind; label: string }[] = [
+  { key: "social", label: "Social post" },
+  { key: "email", label: "Email blurb" },
+  { key: "promo", label: "Promo / offer" },
+  { key: "event", label: "Event invite" },
+  { key: "referral", label: "Referral ask" }
+];
+
+function buildDrafts(kind: ContentKind, biz: string, topic: string, tone: string): string[] {
+  const b = biz.trim() || "our business";
+  const t = topic.trim() || "what we do";
+  const toneTag = tone.trim() ? ` (${tone.trim()} tone)` : "";
+  switch (kind) {
+    case "social":
+      return [
+        `📣 ${t} is what we do best at ${b}. Ready to see the difference? Send us a message today.${toneTag}`,
+        `At ${b}, we help Berks County get more from ${t}. Here's one tip you can use this week 👇 — and if you want the full version, reach out.`,
+        `Proud to serve our neighbors at ${b}. Whether it's ${t} or a question you've been sitting on, we're here. Comment or DM us.`
+      ];
+    case "email":
+      return [
+        `Subject: A quick note from ${b}\n\nHi there,\n\nWe wanted to share how ${b} can help with ${t}. If now's a good time to talk, just reply to this email and we'll set something up.\n\nTalk soon,\n${b}`,
+        `Subject: Can we help with ${t}?\n\nHello,\n\nMany of our clients come to us for ${t} — and leave with one less thing to worry about. If that sounds useful, we'd love to help.\n\nBest,\n${b}`
+      ];
+    case "promo":
+      return [
+        `🎉 Limited-time offer from ${b}: ask us about ${t} this month and get our best rate of the season. Mention this post when you reach out!`,
+        `New at ${b}: ${t}, done right. Book by the end of the month and we'll take care of the rest. Spots are limited — reach out today.`
+      ];
+    case "event":
+      return [
+        `You're invited! ${b} is hosting a get-together about ${t}. Come for the conversation, stay for the connections. RSVP and bring a fellow business owner.`,
+        `Save the date 🗓️ — ${b} is putting on an event around ${t}. Great for anyone in Berks County looking to learn and network. Details and RSVP inside.`
+      ];
+    case "referral":
+      return [
+        `Quick ask for my SBRA network: if you know someone who needs ${t}, ${b} would love an introduction. I promise to take great care of them — and I'll return the favor.`,
+        `The best compliment is a referral. If ${b} has helped you with ${t}, sending a friend our way means the world. Thank you for thinking of us!`
+      ];
+    default:
+      return [];
+  }
+}
+
+function MarketingContentTool({ currentBusiness, onRequestAi }: { currentBusiness?: Business; onRequestAi: () => void }) {
+  const [kind, setKind] = useState<ContentKind>("social");
+  const [biz, setBiz] = useState(currentBusiness?.name ?? "");
+  const [topic, setTopic] = useState(currentBusiness?.servicesOffered?.split(",")[0]?.trim() ?? "");
+  const [tone, setTone] = useState("");
+  const [drafts, setDrafts] = useState<string[]>([]);
+  const [copied, setCopied] = useState<number | null>(null);
+
+  function generate() {
+    setDrafts(buildDrafts(kind, biz, topic, tone));
+    setCopied(null);
+  }
+  async function copy(text: string, index: number) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(index);
+      window.setTimeout(() => setCopied((c) => (c === index ? null : c)), 1500);
+    } catch {
+      // clipboard blocked — the member can still select and copy manually
+    }
+  }
+
+  return (
+    <div className="tool-body">
+      <article className="glass-panel tool-panel ai-request no-print">
+        <div>
+          <p className="section-label">Planned: AI-written drafts</p>
+          <p className="tool-hint">These drafts come from proven templates today. Want AI to write them in your own voice from a sentence or two? Let us know and we'll prioritize it.</p>
+        </div>
+        <button className="secondary-button" onClick={onRequestAi}>Request AI drafts</button>
+      </article>
+
+      <article className="glass-panel tool-panel">
+        <p className="section-label">What do you need?</p>
+        <div className="tools-filters">
+          {contentKinds.map((c) => (
+            <button key={c.key} className={kind === c.key ? "tool-chip active" : "tool-chip"} onClick={() => setKind(c.key)}>{c.label}</button>
+          ))}
+        </div>
+        <div className="tool-form">
+          <label className="tool-field"><span>Your business</span><span className="tool-input-wrap"><input value={biz} onChange={(e) => setBiz(e.target.value)} /></span></label>
+          <label className="tool-field"><span>Topic / offer</span><span className="tool-input-wrap"><input value={topic} placeholder="e.g. tax planning, spring tune-ups" onChange={(e) => setTopic(e.target.value)} /></span></label>
+          <label className="tool-field"><span>Tone (optional)</span><span className="tool-input-wrap"><input value={tone} placeholder="friendly, professional, bold…" onChange={(e) => setTone(e.target.value)} /></span></label>
+        </div>
+        <div className="tool-detail-actions">
+          <button className="primary-button" onClick={generate}>Generate drafts</button>
+        </div>
+      </article>
+
+      {drafts.map((draft, i) => (
+        <article className="glass-panel tool-panel draft-card" key={i}>
+          <p className="draft-text">{draft}</p>
+          <div className="tool-detail-actions">
+            <button className="secondary-button" onClick={() => copy(draft, i)}>{copied === i ? "Copied ✓" : "Copy"}</button>
+          </div>
+        </article>
+      ))}
+      {drafts.length === 0 && (
+        <article className="glass-panel tool-panel">
+          <p className="tool-hint">Pick a content type, fill in a topic, and hit Generate to get a few ready-to-edit drafts.</p>
+        </article>
+      )}
+    </div>
+  );
+}
+
+// ---- Networking CRM Lite ----
+type CrmContact = {
+  id: string;
+  name: string;
+  company: string;
+  metAt: string;
+  note: string;
+  followUp: string; // yyyy-mm-dd
+  done: boolean;
+};
+
+function NetworkingCrmTool() {
+  const STORE_KEY = "sbra.tool.crm";
+  const [contacts, setContacts] = useState<CrmContact[]>(() => loadStored<CrmContact[]>(STORE_KEY, []));
+  const [name, setName] = useState("");
+  const [company, setCompany] = useState("");
+  const [metAt, setMetAt] = useState("");
+  const [followUp, setFollowUp] = useState("");
+  const [note, setNote] = useState("");
+
+  function persist(next: CrmContact[]) {
+    setContacts(next);
+    saveStored(STORE_KEY, next);
+  }
+  function addContact() {
+    if (!name.trim()) return;
+    persist([
+      ...contacts,
+      { id: `c-${Date.now()}`, name: name.trim(), company: company.trim(), metAt: metAt.trim(), note: note.trim(), followUp, done: false }
+    ]);
+    setName("");
+    setCompany("");
+    setMetAt("");
+    setFollowUp("");
+    setNote("");
+  }
+  function toggleDone(id: string) {
+    persist(contacts.map((c) => (c.id === id ? { ...c, done: !c.done } : c)));
+  }
+  function removeContact(id: string) {
+    persist(contacts.filter((c) => c.id !== id));
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const sorted = [...contacts].sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    if (!a.followUp) return 1;
+    if (!b.followUp) return -1;
+    return a.followUp.localeCompare(b.followUp);
+  });
+  const pending = contacts.filter((c) => !c.done).length;
+  const overdue = contacts.filter((c) => !c.done && c.followUp && c.followUp < today).length;
+
+  return (
+    <div className="tool-body">
+      <article className="glass-panel tool-panel">
+        <div className="tool-metric-grid">
+          <div className="tool-metric"><strong>{contacts.length}</strong><span>Contacts</span></div>
+          <div className="tool-metric"><strong>{pending}</strong><span>To follow up</span></div>
+          <div className="tool-metric"><strong>{overdue}</strong><span>Overdue</span></div>
+        </div>
+      </article>
+
+      <article className="glass-panel tool-panel">
+        <p className="section-label">Add a contact</p>
+        <div className="tool-form">
+          <label className="tool-field"><span>Name</span><span className="tool-input-wrap"><input value={name} placeholder="Who did you meet?" onChange={(e) => setName(e.target.value)} /></span></label>
+          <label className="tool-field"><span>Company</span><span className="tool-input-wrap"><input value={company} onChange={(e) => setCompany(e.target.value)} /></span></label>
+          <label className="tool-field"><span>Met at</span><span className="tool-input-wrap"><input value={metAt} placeholder="Breakfast Club, Mingle…" onChange={(e) => setMetAt(e.target.value)} /></span></label>
+          <label className="tool-field"><span>Follow up by</span><span className="tool-input-wrap"><input type="date" value={followUp} onChange={(e) => setFollowUp(e.target.value)} /></span></label>
+          <label className="tool-field" style={{ gridColumn: "1 / -1" }}><span>Note</span><span className="tool-input-wrap"><input value={note} placeholder="What to remember / next step" onChange={(e) => setNote(e.target.value)} /></span></label>
+        </div>
+        <div className="tool-detail-actions">
+          <button className="primary-button" onClick={addContact}>Add contact</button>
+        </div>
+      </article>
+
+      {sorted.length === 0 ? (
+        <article className="glass-panel tool-panel">
+          <p className="tool-hint">No contacts yet. Add the people you meet at Breakfast Club and Mingles — this list saves on your device so follow-ups never slip.</p>
+        </article>
+      ) : (
+        sorted.map((c) => {
+          const isOverdue = !c.done && c.followUp && c.followUp < today;
+          return (
+            <article className={c.done ? "glass-panel tool-panel crm-card done" : "glass-panel tool-panel crm-card"} key={c.id}>
+              <div className="crm-head">
+                <div>
+                  <h4>{c.name}{c.company && <span className="crm-company"> · {c.company}</span>}</h4>
+                  {c.metAt && <span className="tool-hint">Met at {c.metAt}</span>}
+                </div>
+                {c.followUp && (
+                  <span className={isOverdue ? "crm-followup overdue" : "crm-followup"}>
+                    {c.done ? "Done" : isOverdue ? `Overdue · ${c.followUp}` : `Follow up ${c.followUp}`}
+                  </span>
+                )}
+              </div>
+              {c.note && <p className="crm-note">{c.note}</p>}
+              <div className="tool-detail-actions">
+                <button className="secondary-button" onClick={() => toggleDone(c.id)}>{c.done ? "Reopen" : "Mark followed up"}</button>
+                <button className="secondary-button" onClick={() => removeContact(c.id)}>Remove</button>
+              </div>
+            </article>
+          );
+        })
+      )}
     </div>
   );
 }

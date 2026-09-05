@@ -1907,6 +1907,45 @@ button {
 .invoice-grand strong { color: var(--blue); }
 .invoice-notes { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 
+/* Marketing content generator */
+.ai-request {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid rgba(247, 215, 68, 0.55);
+  background: rgba(247, 215, 68, 0.14);
+}
+.ai-request .section-label { margin: 0 0 3px; }
+.ai-request button { flex: 0 0 auto; }
+
+.draft-card { gap: 12px; }
+.draft-text {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* Networking CRM */
+.crm-card { gap: 10px; }
+.crm-card.done { opacity: 0.62; }
+.crm-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.crm-head h4 { margin: 0 0 2px; font-size: 15px; }
+.crm-company { color: var(--muted); font-weight: 600; }
+.crm-followup {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 17, 103, 0.08);
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 700;
+}
+.crm-followup.overdue { background: rgba(184, 26, 31, 0.12); color: var(--coral); }
+.crm-note { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+
 /* Print: isolate the printable sheet (invoice / one-pager) */
 @media print {
   body * { visibility: hidden !important; }
