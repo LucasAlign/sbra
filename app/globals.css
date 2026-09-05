@@ -1636,6 +1636,9 @@ button {
   border-color: var(--ink);
 }
 
+.tools-export { margin-left: auto; }
+.tools-export-note { margin: -8px 2px 0; }
+
 .tools-empty {
   align-items: center;
   text-align: center;

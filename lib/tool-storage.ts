@@ -66,6 +66,27 @@ export function exportAllToolData(): Record<string, unknown> {
   return out;
 }
 
+// Download every tool's stored data as a JSON file. Returns false if there was
+// nothing to export (so the caller can tell the member) or if the download is
+// blocked. Wrapped in a versioned envelope so a future importer can validate it.
+export function downloadToolData(filename = "sbra-tools-data.json"): boolean {
+  if (typeof window === "undefined") return false;
+  const data = exportAllToolData();
+  if (Object.keys(data).length === 0) return false;
+  try {
+    const payload = { app: "sbra-tools", version: 1, exportedAt: new Date().toISOString(), data };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Wipe every tool's stored data on this device (e.g. a "reset my tools" action).
 export function clearAllToolData(): void {
   if (typeof window === "undefined") return;

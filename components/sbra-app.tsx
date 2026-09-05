@@ -28,7 +28,7 @@ import type { Session } from "next-auth";
 import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
 import * as backendActions from "@/app/actions";
 import { isBackendEnabled } from "@/lib/backend";
-import { loadTool, saveTool, TOOL_KEYS } from "@/lib/tool-storage";
+import { loadTool, saveTool, downloadToolData, TOOL_KEYS } from "@/lib/tool-storage";
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import { latinoBusinessSeed, latinoMemberSeed } from "@/lib/latino-directory";
@@ -2580,6 +2580,13 @@ function ToolsView({
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [openTool, setOpenTool] = useState<ToolDef | null>(null);
+  const [exportNote, setExportNote] = useState("");
+
+  function handleExport() {
+    const ok = downloadToolData();
+    setExportNote(ok ? "Your data is downloading as a JSON file." : "Nothing saved yet — use a tool first, then export.");
+    window.setTimeout(() => setExportNote(""), 4000);
+  }
 
   const toolCount = toolCategories.reduce((sum, category) => sum + category.tools.length, 0);
   const q = query.trim().toLowerCase();
@@ -2711,7 +2718,9 @@ function ToolsView({
             </button>
           ))}
         </div>
+        <button className="secondary-button tools-export" onClick={handleExport}>Export my data</button>
       </div>
+      {exportNote && <p className="tool-hint tools-export-note">{exportNote}</p>}
 
       {shownCategories.length === 0 && (
         <article className="glass-panel tool-panel tools-empty">
