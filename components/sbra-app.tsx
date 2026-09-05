@@ -308,10 +308,10 @@ const toolCategories: ToolCategory[] = [
       },
       {
         id: "networking-crm",
-        name: "Networking CRM Lite",
-        tagline: "Never drop a follow-up again",
+        name: "Networking CRM",
+        tagline: "Work every relationship, never drop a follow-up",
         description:
-          "Track the contacts you meet at Breakfast Club and Mingles, log notes, and get reminders to follow up.",
+          "A full contact manager for your network: pipeline stages, activity history, tags, priority, follow-up reminders, directory import, and CSV export.",
         icon: "🤝",
         status: "soon"
       }
@@ -1689,6 +1689,8 @@ export function SBRAApp() {
             referrals={referrals}
             currentMemberId={currentMember?.id ?? ""}
             memberById={memberById}
+            members={members}
+            businessById={businessById}
             currentMember={currentMember}
             currentBusiness={currentBusiness}
             onGetHelp={() => selectNav("support")}
@@ -2559,6 +2561,8 @@ function ToolsView({
   referrals,
   currentMemberId,
   memberById,
+  members,
+  businessById,
   currentMember,
   currentBusiness,
   onGetHelp
@@ -2566,6 +2570,8 @@ function ToolsView({
   referrals: Referral[];
   currentMemberId: string;
   memberById: Map<string, Member>;
+  members: Member[];
+  businessById: Map<string, Business>;
   currentMember?: Member;
   currentBusiness?: Business;
   onGetHelp: () => void;
@@ -2613,7 +2619,7 @@ function ToolsView({
     } else if (openTool.id === "marketing-content") {
       body = <MarketingContentTool currentBusiness={currentBusiness} onRequestAi={onGetHelp} />;
     } else if (openTool.id === "networking-crm") {
-      body = <NetworkingCrmTool />;
+      body = <NetworkingCrmTool members={members} businessById={businessById} />;
     } else if (openTool.id === "tax-calendar") {
       body = <TaxCalendarTool />;
     } else if (openTool.id === "grant-finder") {
@@ -3508,25 +3514,94 @@ function MarketingContentTool({ currentBusiness, onRequestAi }: { currentBusines
   );
 }
 
-// ---- Networking CRM Lite ----
+// ---- Networking CRM ----
+type CrmStage = "new" | "connected" | "nurturing" | "active" | "dormant";
+const crmStages: { key: CrmStage; label: string }[] = [
+  { key: "new", label: "New" },
+  { key: "connected", label: "Connected" },
+  { key: "nurturing", label: "Nurturing" },
+  { key: "active", label: "Active" },
+  { key: "dormant", label: "Dormant" }
+];
+const crmStageLabel = (stage: CrmStage) => crmStages.find((s) => s.key === stage)?.label ?? stage;
+
+type CrmActivityType = "note" | "call" | "email" | "meeting" | "referral";
+const crmActivityMeta: Record<CrmActivityType, { label: string; icon: string }> = {
+  note: { label: "Note", icon: "📝" },
+  call: { label: "Call", icon: "📞" },
+  email: { label: "Email", icon: "✉️" },
+  meeting: { label: "Meeting", icon: "🤝" },
+  referral: { label: "Referral", icon: "🔁" }
+};
+
+type CrmActivity = { id: string; type: CrmActivityType; date: string; text: string };
 type CrmContact = {
   id: string;
   name: string;
   company: string;
+  title: string;
+  email: string;
+  phone: string;
   metAt: string;
-  note: string;
+  tags: string[];
+  stage: CrmStage;
+  priority: boolean;
   followUp: string; // yyyy-mm-dd
-  done: boolean;
+  note: string;
+  activities: CrmActivity[];
+  createdAt: number;
 };
 
-function NetworkingCrmTool() {
+// Normalizes stored records (including the old Lite shape: {name,company,metAt,note,followUp,done}).
+function normalizeCrmContact(raw: Partial<CrmContact> & { done?: boolean }): CrmContact {
+  return {
+    id: raw.id ?? `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: raw.name ?? "",
+    company: raw.company ?? "",
+    title: raw.title ?? "",
+    email: raw.email ?? "",
+    phone: raw.phone ?? "",
+    metAt: raw.metAt ?? "",
+    tags: Array.isArray(raw.tags) ? raw.tags : [],
+    stage: raw.stage ?? (raw.done ? "connected" : "new"),
+    priority: Boolean(raw.priority),
+    followUp: raw.followUp ?? "",
+    note: raw.note ?? "",
+    activities: Array.isArray(raw.activities) ? raw.activities : [],
+    createdAt: raw.createdAt ?? Date.now()
+  };
+}
+
+function crmDaysUntil(date: string, today: string) {
+  const ms = new Date(date + "T00:00:00").getTime() - new Date(today + "T00:00:00").getTime();
+  return Math.round(ms / 86400000);
+}
+
+function NetworkingCrmTool({ members, businessById }: { members: Member[]; businessById: Map<string, Business> }) {
   const STORE_KEY = "sbra.tool.crm";
-  const [contacts, setContacts] = useState<CrmContact[]>(() => loadStored<CrmContact[]>(STORE_KEY, []));
+  const [contacts, setContacts] = useState<CrmContact[]>(() =>
+    loadStored<Array<Partial<CrmContact> & { done?: boolean }>>(STORE_KEY, []).map(normalizeCrmContact)
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [stageFilter, setStageFilter] = useState<"all" | CrmStage>("all");
+  const [sort, setSort] = useState<"followup" | "recent" | "name">("followup");
+  const [showAdd, setShowAdd] = useState(false);
+
+  // Quick-add form
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [metAt, setMetAt] = useState("");
   const [followUp, setFollowUp] = useState("");
-  const [note, setNote] = useState("");
+  const [importId, setImportId] = useState("");
+
+  // Activity composer (detail view)
+  const [actType, setActType] = useState<CrmActivityType>("note");
+  const [actText, setActText] = useState("");
+  const [actDate, setActDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [actNext, setActNext] = useState("");
+
+  const today = new Date().toISOString().slice(0, 10);
 
   function persist(next: CrmContact[]) {
     setContacts(next);
@@ -3534,83 +3609,297 @@ function NetworkingCrmTool() {
   }
   function addContact() {
     if (!name.trim()) return;
-    persist([
-      ...contacts,
-      { id: `c-${Date.now()}`, name: name.trim(), company: company.trim(), metAt: metAt.trim(), note: note.trim(), followUp, done: false }
-    ]);
-    setName("");
-    setCompany("");
-    setMetAt("");
-    setFollowUp("");
-    setNote("");
+    const c = normalizeCrmContact({ name: name.trim(), company: company.trim(), metAt: metAt.trim(), followUp });
+    persist([...contacts, c]);
+    setName(""); setCompany(""); setMetAt(""); setFollowUp(""); setShowAdd(false);
   }
-  function toggleDone(id: string) {
-    persist(contacts.map((c) => (c.id === id ? { ...c, done: !c.done } : c)));
+  function importFromDirectory(memberId: string) {
+    const m = members.find((x) => x.id === memberId);
+    if (!m) return;
+    const biz = businessById.get(m.businessId);
+    const c = normalizeCrmContact({
+      name: m.name,
+      title: m.title,
+      company: biz?.name ?? "",
+      email: m.email,
+      phone: m.phone,
+      metAt: "SBRA directory",
+      stage: "connected"
+    });
+    persist([...contacts, c]);
+    setImportId("");
+  }
+  function updateContact(id: string, patch: Partial<CrmContact>) {
+    persist(contacts.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   }
   function removeContact(id: string) {
     persist(contacts.filter((c) => c.id !== id));
+    if (selectedId === id) setSelectedId(null);
+  }
+  function addActivity(id: string) {
+    if (!actText.trim()) return;
+    const activity: CrmActivity = { id: `a-${Date.now()}`, type: actType, date: actDate || today, text: actText.trim() };
+    const patch: Partial<CrmContact> = {};
+    persist(
+      contacts.map((c) => {
+        if (c.id !== id) return c;
+        return {
+          ...c,
+          ...patch,
+          activities: [activity, ...c.activities],
+          followUp: actNext || c.followUp,
+          stage: c.stage === "new" ? "connected" : c.stage
+        };
+      })
+    );
+    setActText(""); setActNext(""); setActType("note");
+  }
+  function exportCsv() {
+    const headers = ["Name", "Company", "Title", "Email", "Phone", "Stage", "Priority", "Tags", "Follow up", "Met at", "Note"];
+    const rows = contacts.map((c) => [
+      c.name, c.company, c.title, c.email, c.phone, crmStageLabel(c.stage),
+      c.priority ? "Yes" : "", c.tags.join("; "), c.followUp, c.metAt, c.note
+    ]);
+    const csv = [headers, ...rows]
+      .map((r) => r.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+    try {
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "sbra-contacts.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // download blocked — no-op
+    }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const sorted = [...contacts].sort((a, b) => {
-    if (a.done !== b.done) return a.done ? 1 : -1;
-    if (!a.followUp) return 1;
-    if (!b.followUp) return -1;
-    return a.followUp.localeCompare(b.followUp);
-  });
-  const pending = contacts.filter((c) => !c.done).length;
-  const overdue = contacts.filter((c) => !c.done && c.followUp && c.followUp < today).length;
+  const stats = {
+    total: contacts.length,
+    dueThisWeek: contacts.filter((c) => c.stage !== "dormant" && c.followUp && crmDaysUntil(c.followUp, today) >= 0 && crmDaysUntil(c.followUp, today) <= 7).length,
+    overdue: contacts.filter((c) => c.stage !== "dormant" && c.followUp && c.followUp < today).length,
+    active: contacts.filter((c) => c.stage === "active").length,
+    priority: contacts.filter((c) => c.priority).length
+  };
 
+  const q = search.trim().toLowerCase();
+  const visible = contacts
+    .filter((c) => stageFilter === "all" || c.stage === stageFilter)
+    .filter((c) => !q || `${c.name} ${c.company} ${c.title} ${c.tags.join(" ")} ${c.note}`.toLowerCase().includes(q))
+    .sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority ? -1 : 1;
+      if (sort === "name") return a.name.localeCompare(b.name);
+      if (sort === "recent") return b.createdAt - a.createdAt;
+      // followup: soonest first, blanks last
+      if (!a.followUp) return 1;
+      if (!b.followUp) return -1;
+      return a.followUp.localeCompare(b.followUp);
+    });
+
+  const uncontacted = members.filter((m) => !contacts.some((c) => c.email && c.email === m.email));
+  const selected = contacts.find((c) => c.id === selectedId) ?? null;
+
+  // ---- Detail view ----
+  if (selected) {
+    const du = selected.followUp ? crmDaysUntil(selected.followUp, today) : null;
+    return (
+      <div className="tool-body">
+        <button className="tool-back" onClick={() => setSelectedId(null)}>← All contacts</button>
+
+        <article className="glass-panel tool-panel">
+          <div className="crm-detail-head">
+            <button
+              className={selected.priority ? "crm-star on" : "crm-star"}
+              onClick={() => updateContact(selected.id, { priority: !selected.priority })}
+              aria-label="Toggle priority"
+            >★</button>
+            <div className="crm-detail-title">
+              <input className="crm-name-input" value={selected.name} onChange={(e) => updateContact(selected.id, { name: e.target.value })} placeholder="Name" />
+              <div className="crm-inline-fields">
+                <input value={selected.title} onChange={(e) => updateContact(selected.id, { title: e.target.value })} placeholder="Title" />
+                <input value={selected.company} onChange={(e) => updateContact(selected.id, { company: e.target.value })} placeholder="Company" />
+              </div>
+            </div>
+          </div>
+          <div className="crm-stage-row">
+            {crmStages.map((s) => (
+              <button
+                key={s.key}
+                className={selected.stage === s.key ? `crm-stage-pick active stage-${s.key}` : "crm-stage-pick"}
+                onClick={() => updateContact(selected.id, { stage: s.key })}
+              >{s.label}</button>
+            ))}
+          </div>
+        </article>
+
+        <article className="glass-panel tool-panel">
+          <p className="section-label">Details</p>
+          <div className="tool-form">
+            <label className="tool-field"><span>Email</span><span className="tool-input-wrap"><input value={selected.email} onChange={(e) => updateContact(selected.id, { email: e.target.value })} /></span></label>
+            <label className="tool-field"><span>Phone</span><span className="tool-input-wrap"><input value={selected.phone} onChange={(e) => updateContact(selected.id, { phone: e.target.value })} /></span></label>
+            <label className="tool-field"><span>Met at</span><span className="tool-input-wrap"><input value={selected.metAt} onChange={(e) => updateContact(selected.id, { metAt: e.target.value })} /></span></label>
+            <label className="tool-field"><span>Next follow-up</span><span className="tool-input-wrap"><input type="date" value={selected.followUp} onChange={(e) => updateContact(selected.id, { followUp: e.target.value })} /></span></label>
+            <label className="tool-field" style={{ gridColumn: "1 / -1" }}><span>Tags (comma-separated)</span><span className="tool-input-wrap"><input value={selected.tags.join(", ")} placeholder="referral partner, prospect, vendor…" onChange={(e) => updateContact(selected.id, { tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })} /></span></label>
+            <label className="tool-field" style={{ gridColumn: "1 / -1" }}><span>Quick note</span><span className="tool-input-wrap"><input value={selected.note} placeholder="Key thing to remember" onChange={(e) => updateContact(selected.id, { note: e.target.value })} /></span></label>
+          </div>
+          {du !== null && (
+            <p className={du < 0 ? "crm-followup overdue" : "crm-followup"} style={{ justifySelf: "start" }}>
+              {du < 0 ? `Follow-up overdue by ${Math.abs(du)}d` : du === 0 ? "Follow up today" : `Follow up in ${du}d`}
+            </p>
+          )}
+        </article>
+
+        <article className="glass-panel tool-panel">
+          <p className="section-label">Log activity</p>
+          <div className="crm-activity-form">
+            <div className="crm-act-types">
+              {(Object.keys(crmActivityMeta) as CrmActivityType[]).map((t) => (
+                <button key={t} className={actType === t ? "tool-chip active" : "tool-chip"} onClick={() => setActType(t)}>
+                  {crmActivityMeta[t].icon} {crmActivityMeta[t].label}
+                </button>
+              ))}
+            </div>
+            <label className="tool-field"><span>What happened?</span><span className="tool-input-wrap"><input value={actText} placeholder="Called about the Q4 referral…" onChange={(e) => setActText(e.target.value)} /></span></label>
+            <div className="tool-form">
+              <label className="tool-field"><span>Date</span><span className="tool-input-wrap"><input type="date" value={actDate} onChange={(e) => setActDate(e.target.value)} /></span></label>
+              <label className="tool-field"><span>Set next follow-up (optional)</span><span className="tool-input-wrap"><input type="date" value={actNext} onChange={(e) => setActNext(e.target.value)} /></span></label>
+            </div>
+            <div className="tool-detail-actions">
+              <button className="primary-button" onClick={() => addActivity(selected.id)}>Log activity</button>
+            </div>
+          </div>
+
+          {selected.activities.length > 0 ? (
+            <div className="crm-timeline">
+              {selected.activities.map((a) => (
+                <div className="crm-timeline-item" key={a.id}>
+                  <span className="crm-timeline-icon" aria-hidden="true">{crmActivityMeta[a.type].icon}</span>
+                  <div>
+                    <div className="crm-timeline-meta"><strong>{crmActivityMeta[a.type].label}</strong><span>{a.date}</span></div>
+                    <p>{a.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="tool-hint">No activity logged yet. Every call, email, and meeting you log builds the relationship history.</p>
+          )}
+        </article>
+
+        <div className="tool-detail-actions">
+          <button className="secondary-button crm-danger" onClick={() => removeContact(selected.id)}>Delete contact</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- List view ----
   return (
     <div className="tool-body">
       <article className="glass-panel tool-panel">
-        <div className="tool-metric-grid">
-          <div className="tool-metric"><strong>{contacts.length}</strong><span>Contacts</span></div>
-          <div className="tool-metric"><strong>{pending}</strong><span>To follow up</span></div>
-          <div className="tool-metric"><strong>{overdue}</strong><span>Overdue</span></div>
+        <div className="tool-metric-grid crm-stats">
+          <div className="tool-metric"><strong>{stats.total}</strong><span>Contacts</span></div>
+          <div className="tool-metric"><strong>{stats.dueThisWeek}</strong><span>Due this week</span></div>
+          <div className={stats.overdue ? "tool-metric crm-metric-alert" : "tool-metric"}><strong>{stats.overdue}</strong><span>Overdue</span></div>
+          <div className="tool-metric"><strong>{stats.active}</strong><span>Active</span></div>
+          <div className="tool-metric"><strong>{stats.priority}</strong><span>Priority</span></div>
         </div>
       </article>
 
-      <article className="glass-panel tool-panel">
-        <p className="section-label">Add a contact</p>
-        <div className="tool-form">
-          <label className="tool-field"><span>Name</span><span className="tool-input-wrap"><input value={name} placeholder="Who did you meet?" onChange={(e) => setName(e.target.value)} /></span></label>
-          <label className="tool-field"><span>Company</span><span className="tool-input-wrap"><input value={company} onChange={(e) => setCompany(e.target.value)} /></span></label>
-          <label className="tool-field"><span>Met at</span><span className="tool-input-wrap"><input value={metAt} placeholder="Breakfast Club, Mingle…" onChange={(e) => setMetAt(e.target.value)} /></span></label>
-          <label className="tool-field"><span>Follow up by</span><span className="tool-input-wrap"><input type="date" value={followUp} onChange={(e) => setFollowUp(e.target.value)} /></span></label>
-          <label className="tool-field" style={{ gridColumn: "1 / -1" }}><span>Note</span><span className="tool-input-wrap"><input value={note} placeholder="What to remember / next step" onChange={(e) => setNote(e.target.value)} /></span></label>
+      <div className="tools-toolbar">
+        <div className="tools-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+          </svg>
+          <input value={search} placeholder="Search contacts…" onChange={(e) => setSearch(e.target.value)} aria-label="Search contacts" />
+          {search && <button className="tools-search-clear" onClick={() => setSearch("")} aria-label="Clear">×</button>}
         </div>
-        <div className="tool-detail-actions">
-          <button className="primary-button" onClick={addContact}>Add contact</button>
-        </div>
-      </article>
+        <button className="primary-button" onClick={() => setShowAdd((v) => !v)}>{showAdd ? "Close" : "+ Add contact"}</button>
+        {contacts.length > 0 && <button className="secondary-button" onClick={exportCsv}>Export CSV</button>}
+      </div>
 
-      {sorted.length === 0 ? (
+      <div className="tools-toolbar">
+        <div className="tools-filters">
+          <button className={stageFilter === "all" ? "tool-chip active" : "tool-chip"} onClick={() => setStageFilter("all")}>All stages</button>
+          {crmStages.map((s) => (
+            <button key={s.key} className={stageFilter === s.key ? "tool-chip active" : "tool-chip"} onClick={() => setStageFilter(s.key)}>{s.label}</button>
+          ))}
+        </div>
+        <label className="crm-sort">
+          <span>Sort</span>
+          <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+            <option value="followup">Follow-up date</option>
+            <option value="recent">Recently added</option>
+            <option value="name">Name</option>
+          </select>
+        </label>
+      </div>
+
+      {showAdd && (
         <article className="glass-panel tool-panel">
-          <p className="tool-hint">No contacts yet. Add the people you meet at Breakfast Club and Mingles — this list saves on your device so follow-ups never slip.</p>
+          <p className="section-label">New contact</p>
+          <div className="tool-form">
+            <label className="tool-field"><span>Name</span><span className="tool-input-wrap"><input value={name} placeholder="Who did you meet?" onChange={(e) => setName(e.target.value)} /></span></label>
+            <label className="tool-field"><span>Company</span><span className="tool-input-wrap"><input value={company} onChange={(e) => setCompany(e.target.value)} /></span></label>
+            <label className="tool-field"><span>Met at</span><span className="tool-input-wrap"><input value={metAt} placeholder="Breakfast Club, Mingle…" onChange={(e) => setMetAt(e.target.value)} /></span></label>
+            <label className="tool-field"><span>Follow up by</span><span className="tool-input-wrap"><input type="date" value={followUp} onChange={(e) => setFollowUp(e.target.value)} /></span></label>
+          </div>
+          <div className="crm-add-actions">
+            <button className="primary-button" onClick={addContact}>Add contact</button>
+            {uncontacted.length > 0 && (
+              <label className="crm-import">
+                <span>or import from SBRA directory</span>
+                <select value={importId} onChange={(e) => { setImportId(e.target.value); if (e.target.value) importFromDirectory(e.target.value); }}>
+                  <option value="">Choose a member…</option>
+                  {uncontacted.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}{businessById.get(m.businessId) ? ` — ${businessById.get(m.businessId)!.name}` : ""}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+        </article>
+      )}
+
+      {visible.length === 0 ? (
+        <article className="glass-panel tool-panel">
+          <p className="tool-hint">
+            {contacts.length === 0
+              ? "No contacts yet. Add the people you meet at Breakfast Club and Mingles, or import them from the SBRA directory — everything saves on this device."
+              : "No contacts match your search or filter."}
+          </p>
         </article>
       ) : (
-        sorted.map((c) => {
-          const isOverdue = !c.done && c.followUp && c.followUp < today;
+        visible.map((c) => {
+          const isOverdue = c.stage !== "dormant" && c.followUp && c.followUp < today;
+          const last = c.activities[0];
           return (
-            <article className={c.done ? "glass-panel tool-panel crm-card done" : "glass-panel tool-panel crm-card"} key={c.id}>
+            <button className="glass-panel tool-panel crm-card" key={c.id} onClick={() => setSelectedId(c.id)}>
               <div className="crm-head">
-                <div>
-                  <h4>{c.name}{c.company && <span className="crm-company"> · {c.company}</span>}</h4>
-                  {c.metAt && <span className="tool-hint">Met at {c.metAt}</span>}
+                <div className="crm-head-main">
+                  {c.priority && <span className="crm-star-mini" aria-label="Priority">★</span>}
+                  <div>
+                    <h4>{c.name || "Unnamed"}{c.company && <span className="crm-company"> · {c.company}</span>}</h4>
+                    <span className="tool-hint">
+                      {c.title ? `${c.title} · ` : ""}{last ? `Last: ${crmActivityMeta[last.type].label} ${last.date}` : c.metAt ? `Met at ${c.metAt}` : "No activity yet"}
+                    </span>
+                  </div>
                 </div>
-                {c.followUp && (
+                <span className={`crm-stage-badge stage-${c.stage}`}>{crmStageLabel(c.stage)}</span>
+              </div>
+              {c.tags.length > 0 && (
+                <div className="crm-tags">{c.tags.map((t) => <span className="crm-tag" key={t}>{t}</span>)}</div>
+              )}
+              <div className="crm-card-foot">
+                {c.followUp ? (
                   <span className={isOverdue ? "crm-followup overdue" : "crm-followup"}>
-                    {c.done ? "Done" : isOverdue ? `Overdue · ${c.followUp}` : `Follow up ${c.followUp}`}
+                    {isOverdue ? `Overdue · ${c.followUp}` : `Follow up ${c.followUp}`}
                   </span>
-                )}
+                ) : <span className="tool-hint">No follow-up set</span>}
+                <span className="crm-open">Open →</span>
               </div>
-              {c.note && <p className="crm-note">{c.note}</p>}
-              <div className="tool-detail-actions">
-                <button className="secondary-button" onClick={() => toggleDone(c.id)}>{c.done ? "Reopen" : "Mark followed up"}</button>
-                <button className="secondary-button" onClick={() => removeContact(c.id)}>Remove</button>
-              </div>
-            </article>
+            </button>
           );
         })
       )}
