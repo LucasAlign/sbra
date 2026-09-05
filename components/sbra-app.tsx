@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from "react";
 import {
   createLiveComment,
   createLiveEvent,
@@ -1684,7 +1684,14 @@ export function SBRAApp() {
           />
         )}
         {activeView === "learn" && <LearnView />}
-        {activeView === "tools" && <ToolsView onGetHelp={() => selectNav("support")} />}
+        {activeView === "tools" && (
+          <ToolsView
+            referrals={referrals}
+            currentMemberId={currentMember?.id ?? ""}
+            memberById={memberById}
+            onGetHelp={() => selectNav("support")}
+          />
+        )}
         {activeView === "support" && (
           <SupportView
             requests={requests}
@@ -2521,7 +2528,21 @@ function BusinessModal({
   );
 }
 
-function ToolsView({ onGetHelp }: { onGetHelp: () => void }) {
+// Tools that have a working build. Anything not listed falls back to the
+// "coming soon" placeholder so the hub stays complete while we flesh tools out.
+const BUILT_TOOLS = new Set(["referral-roi", "pricing-margin", "loan-cashflow"]);
+
+function ToolsView({
+  referrals,
+  currentMemberId,
+  memberById,
+  onGetHelp
+}: {
+  referrals: Referral[];
+  currentMemberId: string;
+  memberById: Map<string, Member>;
+  onGetHelp: () => void;
+}) {
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [openTool, setOpenTool] = useState<ToolDef | null>(null);
 
@@ -2532,15 +2553,22 @@ function ToolsView({ onGetHelp }: { onGetHelp: () => void }) {
       : toolCategories.filter((category) => category.key === activeCategory);
 
   if (openTool) {
-    return (
-      <section className="tools-page">
-        <button className="tool-back" onClick={() => setOpenTool(null)}>
-          ← All tools
-        </button>
+    const back = (
+      <button className="tool-back" onClick={() => setOpenTool(null)}>
+        ← All tools
+      </button>
+    );
+
+    let body: ReactElement;
+    if (openTool.id === "referral-roi") {
+      body = <ReferralRoiTool referrals={referrals} currentMemberId={currentMemberId} memberById={memberById} />;
+    } else if (openTool.id === "pricing-margin") {
+      body = <PricingMarginTool />;
+    } else if (openTool.id === "loan-cashflow") {
+      body = <LoanCashFlowTool />;
+    } else {
+      body = (
         <article className="glass-panel tool-detail">
-          <span className="tool-detail-icon" aria-hidden="true">{openTool.icon}</span>
-          <p className="section-label">{openTool.tagline}</p>
-          <h3>{openTool.name}</h3>
           <p className="tool-detail-copy">{openTool.description}</p>
           <div className="tool-detail-note">
             <strong>Coming soon.</strong> This tool is on the SBRA roadmap — the working version
@@ -2551,6 +2579,20 @@ function ToolsView({ onGetHelp }: { onGetHelp: () => void }) {
             <button className="secondary-button" onClick={() => setOpenTool(null)}>Back to tools</button>
           </div>
         </article>
+      );
+    }
+
+    return (
+      <section className="tools-page">
+        {back}
+        <div className="tool-detail-head">
+          <span className="tool-detail-icon" aria-hidden="true">{openTool.icon}</span>
+          <div>
+            <p className="section-label">{openTool.tagline}</p>
+            <h3>{openTool.name}</h3>
+          </div>
+        </div>
+        {body}
       </section>
     );
   }
@@ -2597,16 +2639,248 @@ function ToolsView({ onGetHelp }: { onGetHelp: () => void }) {
             {category.tools.map((tool) => (
               <button className="glass-panel tool-card" key={tool.id} onClick={() => setOpenTool(tool)}>
                 <span className="tool-card-icon" aria-hidden="true">{tool.icon}</span>
-                <span className="tool-card-status">{tool.status === "beta" ? "Beta" : "Soon"}</span>
+                <span className={BUILT_TOOLS.has(tool.id) ? "tool-card-status ready" : "tool-card-status"}>
+                  {BUILT_TOOLS.has(tool.id) ? "Ready" : "Soon"}
+                </span>
                 <h5>{tool.name}</h5>
                 <p>{tool.tagline}</p>
-                <span className="tool-card-open">Open →</span>
+                <span className="tool-card-open">{BUILT_TOOLS.has(tool.id) ? "Open →" : "Preview →"}</span>
               </button>
             ))}
           </div>
         </section>
       ))}
     </section>
+  );
+}
+
+// Shared helpers for the calculator tools.
+function usd(n: number) {
+  if (!Number.isFinite(n)) return "$0";
+  return `$${Math.round(n).toLocaleString()}`;
+}
+function toNum(value: string) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function ToolField({
+  label,
+  value,
+  onChange,
+  prefix,
+  suffix,
+  placeholder,
+  step
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  prefix?: string;
+  suffix?: string;
+  placeholder?: string;
+  step?: string;
+}) {
+  return (
+    <label className="tool-field">
+      <span>{label}</span>
+      <span className="tool-input-wrap">
+        {prefix && <span className="tool-affix">{prefix}</span>}
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step={step ?? "any"}
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {suffix && <span className="tool-affix suffix">{suffix}</span>}
+      </span>
+    </label>
+  );
+}
+
+function ReferralRoiTool({
+  referrals,
+  currentMemberId,
+  memberById
+}: {
+  referrals: Referral[];
+  currentMemberId: string;
+  memberById: Map<string, Member>;
+}) {
+  const stats = useMemo(() => {
+    const given = referrals.filter((r) => r.giverId === currentMemberId);
+    const received = referrals.filter((r) => r.receiverId === currentMemberId);
+    const givenWon = given.filter((r) => r.status === "closed_won");
+    const receivedWon = received.filter((r) => r.status === "closed_won");
+    const creditEarned = givenWon.reduce((sum, r) => sum + (r.closedValue ?? 0), 0);
+    const businessWon = receivedWon.reduce((sum, r) => sum + (r.closedValue ?? 0), 0);
+    const receivedDecided = received.filter(
+      (r) => r.status === "closed_won" || r.status === "closed_lost"
+    ).length;
+    const winRate = receivedDecided > 0 ? Math.round((receivedWon.length / receivedDecided) * 100) : 0;
+    const avgWon =
+      receivedWon.length > 0 ? businessWon / receivedWon.length : givenWon.length > 0 ? creditEarned / givenWon.length : 0;
+    return {
+      givenCount: given.length,
+      receivedCount: received.length,
+      givenWonCount: givenWon.length,
+      creditEarned,
+      businessWon,
+      winRate,
+      avgWon
+    };
+  }, [referrals, currentMemberId]);
+
+  const memberName = memberById.get(currentMemberId)?.name.split(" ")[0];
+
+  // Projection inputs — seeded from the member's real activity where we can.
+  const [perMonth, setPerMonth] = useState(String(Math.max(1, stats.givenCount)));
+  const [avgValue, setAvgValue] = useState(String(Math.round(stats.avgWon) || 2500));
+  const [closeRate, setCloseRate] = useState(String(stats.winRate || 30));
+  const [dues, setDues] = useState("600");
+
+  const projectedClosed = (toNum(perMonth) * 12 * toNum(closeRate)) / 100;
+  const projectedValue = projectedClosed * toNum(avgValue);
+  const duesNum = toNum(dues);
+  const roiMultiple = duesNum > 0 ? projectedValue / duesNum : 0;
+
+  return (
+    <div className="tool-body">
+      <article className="glass-panel tool-panel">
+        <p className="section-label">Your club activity{memberName ? ` · ${memberName}` : ""}</p>
+        <div className="tool-metric-grid">
+          <div className="tool-metric"><strong>{stats.givenCount}</strong><span>Referrals given</span></div>
+          <div className="tool-metric"><strong>{stats.receivedCount}</strong><span>Referrals received</span></div>
+          <div className="tool-metric"><strong>{usd(stats.creditEarned)}</strong><span>Credit earned (given)</span></div>
+          <div className="tool-metric"><strong>{usd(stats.businessWon)}</strong><span>Business you closed</span></div>
+        </div>
+        {stats.givenCount === 0 && stats.receivedCount === 0 && (
+          <p className="tool-hint">No referral activity yet — the projection below shows what the club could be worth as you get active.</p>
+        )}
+      </article>
+
+      <article className="glass-panel tool-panel">
+        <p className="section-label">Project your annual ROI</p>
+        <div className="tool-form">
+          <ToolField label="Referrals you give / month" value={perMonth} onChange={setPerMonth} step="1" />
+          <ToolField label="Average closed deal value" value={avgValue} onChange={setAvgValue} prefix="$" />
+          <ToolField label="Close rate" value={closeRate} onChange={setCloseRate} suffix="%" />
+          <ToolField label="Annual SBRA dues" value={dues} onChange={setDues} prefix="$" />
+        </div>
+        <div className="tool-results">
+          <div className="result-tile"><span>Projected closed deals / yr</span><strong>{Math.round(projectedClosed).toLocaleString()}</strong></div>
+          <div className="result-tile"><span>Projected annual value</span><strong>{usd(projectedValue)}</strong></div>
+          <div className="result-tile accent"><span>Return on dues</span><strong>{roiMultiple > 0 ? `${roiMultiple.toFixed(1)}×` : "—"}</strong></div>
+        </div>
+        <p className="tool-hint">Estimates only — based on the assumptions above, not a guarantee. Tune the inputs to model your own year.</p>
+      </article>
+    </div>
+  );
+}
+
+function PricingMarginTool() {
+  const [cost, setCost] = useState("40");
+  const [margin, setMargin] = useState("45");
+  const [fixed, setFixed] = useState("");
+
+  const costNum = toNum(cost);
+  const marginNum = Math.min(toNum(margin), 99.9); // margin of 100% would divide by zero
+  const price = marginNum > 0 ? costNum / (1 - marginNum / 100) : costNum;
+  const profitPerUnit = price - costNum;
+  const markup = costNum > 0 ? (profitPerUnit / costNum) * 100 : 0;
+  const fixedNum = toNum(fixed);
+  const breakEvenUnits = profitPerUnit > 0 ? Math.ceil(fixedNum / profitPerUnit) : 0;
+
+  return (
+    <div className="tool-body">
+      <article className="glass-panel tool-panel">
+        <p className="section-label">Your numbers</p>
+        <div className="tool-form">
+          <ToolField label="Unit cost" value={cost} onChange={setCost} prefix="$" />
+          <ToolField label="Target margin" value={margin} onChange={setMargin} suffix="%" />
+          <ToolField label="Fixed costs / month (optional)" value={fixed} onChange={setFixed} prefix="$" placeholder="e.g. 3000" />
+        </div>
+        <div className="tool-results">
+          <div className="result-tile accent"><span>Sell at</span><strong>{usd(price)}</strong></div>
+          <div className="result-tile"><span>Profit / unit</span><strong>{usd(profitPerUnit)}</strong></div>
+          <div className="result-tile"><span>Markup</span><strong>{markup > 0 ? `${Math.round(markup)}%` : "—"}</strong></div>
+          {fixedNum > 0 && (
+            <div className="result-tile"><span>Break-even units / mo</span><strong>{profitPerUnit > 0 ? breakEvenUnits.toLocaleString() : "—"}</strong></div>
+          )}
+        </div>
+        <p className="tool-hint">Price = cost ÷ (1 − margin). Break-even = fixed costs ÷ profit per unit.</p>
+      </article>
+    </div>
+  );
+}
+
+function LoanCashFlowTool() {
+  const [amount, setAmount] = useState("50000");
+  const [rate, setRate] = useState("9");
+  const [term, setTerm] = useState("60");
+  const [cash, setCash] = useState("");
+  const [revenue, setRevenue] = useState("");
+  const [expenses, setExpenses] = useState("");
+
+  const principal = toNum(amount);
+  const months = Math.max(1, Math.round(toNum(term)));
+  const monthlyRate = toNum(rate) / 100 / 12;
+  const payment =
+    monthlyRate > 0
+      ? (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -months))
+      : principal / months;
+  const totalRepaid = payment * months;
+  const totalInterest = totalRepaid - principal;
+
+  const revNum = toNum(revenue);
+  const expNum = toNum(expenses);
+  const showCashFlow = revNum > 0 || expNum > 0;
+  const netMonthly = revNum - expNum - payment;
+  const cashNum = toNum(cash);
+  const runway = netMonthly < 0 && cashNum > 0 ? Math.floor(cashNum / -netMonthly) : 0;
+
+  return (
+    <div className="tool-body">
+      <article className="glass-panel tool-panel">
+        <p className="section-label">Loan terms</p>
+        <div className="tool-form">
+          <ToolField label="Loan amount" value={amount} onChange={setAmount} prefix="$" />
+          <ToolField label="Annual interest rate" value={rate} onChange={setRate} suffix="%" />
+          <ToolField label="Term" value={term} onChange={setTerm} suffix="mo" step="1" />
+        </div>
+        <div className="tool-results">
+          <div className="result-tile accent"><span>Monthly payment</span><strong>{usd(payment)}</strong></div>
+          <div className="result-tile"><span>Total interest</span><strong>{usd(totalInterest)}</strong></div>
+          <div className="result-tile"><span>Total repaid</span><strong>{usd(totalRepaid)}</strong></div>
+        </div>
+      </article>
+
+      <article className="glass-panel tool-panel">
+        <p className="section-label">Cash-flow check (optional)</p>
+        <div className="tool-form">
+          <ToolField label="Cash on hand" value={cash} onChange={setCash} prefix="$" placeholder="e.g. 20000" />
+          <ToolField label="Monthly revenue" value={revenue} onChange={setRevenue} prefix="$" placeholder="e.g. 18000" />
+          <ToolField label="Monthly expenses" value={expenses} onChange={setExpenses} prefix="$" placeholder="e.g. 12000" />
+        </div>
+        {showCashFlow ? (
+          <div className="tool-results">
+            <div className={netMonthly >= 0 ? "result-tile positive" : "result-tile negative"}>
+              <span>Monthly cash flow after payment</span>
+              <strong>{netMonthly >= 0 ? "+" : "−"}{usd(Math.abs(netMonthly))}</strong>
+            </div>
+            <div className="result-tile">
+              <span>Runway</span>
+              <strong>{netMonthly >= 0 ? "Cash-flow positive" : runway > 0 ? `${runway} mo` : "—"}</strong>
+            </div>
+          </div>
+        ) : (
+          <p className="tool-hint">Add your revenue and expenses to see whether this loan is comfortable month to month.</p>
+        )}
+      </article>
+    </div>
   );
 }
 
