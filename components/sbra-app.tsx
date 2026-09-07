@@ -562,6 +562,15 @@ export function SBRAApp() {
   const currentMember = liveProfile ?? (role === "admin" ? demoAdminMember : members[0]);
   const currentBusiness = currentMember ? businessById.get(currentMember.businessId) : undefined;
 
+  // What members actually see in the feed: moderator-hidden posts are dropped,
+  // and admin-pinned posts float to the top (newest pin first). Admin moderation
+  // works off the raw `posts` list so hidden posts stay reachable there.
+  const feedPosts = useMemo(() => {
+    const visible = posts.filter((post) => !post.hidden);
+    const rank = (post: CommunityPost) => (post.pinned ? 1 : 0);
+    return [...visible].sort((a, b) => rank(b) - rank(a));
+  }, [posts]);
+
   useEffect(() => {
     activeNavRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
   }, [activeView, role]);
@@ -1648,7 +1657,7 @@ export function SBRAApp() {
 
         {activeView === "community" && (
           <CommunityView
-            posts={posts}
+            posts={feedPosts}
             referrals={referrals}
             memberById={memberById}
             businessById={businessById}
@@ -1770,6 +1779,13 @@ export function SBRAApp() {
             adminNote={adminNote}
             onAdminAction={setAdminNote}
             onImport={handleImport}
+            currentMember={currentMember}
+            onUpdateMembers={setMembers}
+            onUpdateBusinesses={setBusinesses}
+            onUpdatePosts={setPosts}
+            onUpdateComments={setComments}
+            onUpdateReactions={setReactions}
+            onUpdateRequests={setRequests}
           />
         )}
       </main>

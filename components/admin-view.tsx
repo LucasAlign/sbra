@@ -1,18 +1,35 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import type {
   Business,
   Comment,
   CommunityPost,
   Member,
+  MembershipTier,
   Reaction,
   Referral,
   Rsvp,
   SbraEvent,
-  SupportRequest
+  SupportRequest,
+  UserRole
 } from "@/lib/types";
-import { tierLabels } from "@/lib/types";
+import { supportStatuses, tierLabels } from "@/lib/types";
+
+// Best-effort unique id for records created in the admin console.
+function newId(prefix: string): string {
+  const rand = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+  return `${prefix}-${rand}`;
+}
+
+type AdminTab = "reports" | "members" | "moderation" | "support" | "broadcast";
+const ADMIN_TABS: { key: AdminTab; label: string }[] = [
+  { key: "reports", label: "Reports" },
+  { key: "members", label: "Members & businesses" },
+  { key: "moderation", label: "Moderation" },
+  { key: "support", label: "Support queue" },
+  { key: "broadcast", label: "Broadcast" }
+];
 
 // ---------------------------------------------------------------------------
 // Admin reports. Everything below is computed from the live app state so the
@@ -326,7 +343,14 @@ export function AdminView({
   importNote,
   adminNote,
   onAdminAction,
-  onImport
+  onImport,
+  currentMember,
+  onUpdateMembers,
+  onUpdateBusinesses,
+  onUpdatePosts,
+  onUpdateComments,
+  onUpdateReactions,
+  onUpdateRequests
 }: {
   businesses: Business[];
   members: Member[];
@@ -341,7 +365,15 @@ export function AdminView({
   adminNote: string;
   onAdminAction: (note: string) => void;
   onImport: (file: File | undefined) => void;
+  currentMember?: Member;
+  onUpdateMembers: Dispatch<SetStateAction<Member[]>>;
+  onUpdateBusinesses: Dispatch<SetStateAction<Business[]>>;
+  onUpdatePosts: Dispatch<SetStateAction<CommunityPost[]>>;
+  onUpdateComments: Dispatch<SetStateAction<Comment[]>>;
+  onUpdateReactions: Dispatch<SetStateAction<Reaction[]>>;
+  onUpdateRequests: Dispatch<SetStateAction<SupportRequest[]>>;
 }) {
+  const [tab, setTab] = useState<AdminTab>("reports");
   const [range, setRange] = useState<RangeKey>("90");
   const now = Date.now();
   const rangeStart = now - Number(range) * DAY_MS;
@@ -471,8 +503,170 @@ export function AdminView({
 
   const rangeLabel = RANGES.find((entry) => entry.key === range)?.label ?? "";
 
+  // -------------------------------------------------------------------------
+  // Operational tools (live mutations of app state). Persistence lands with the
+  // backend swap; today these update the in-memory seed like the rest of the app.
+  // -------------------------------------------------------------------------
+
+  // Members & businesses ----------------------------------------------------
+  const [memberQuery, setMemberQuery] = useState("");
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [newMember, setNewMember] = useState({ name: "", title: "", email: "", phone: "", businessId: "" });
+
+  const pendingCount = members.filter((member) => member.pending).length;
+  const memberRows = useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    return members
+      .map((member) => ({ member, business: businessById.get(member.businessId) }))
+      .filter(({ member, business }) =>
+        !q ||
+        `${member.name} ${member.email} ${member.title} ${business?.name ?? ""}`.toLowerCase().includes(q)
+      )
+      .sort((a, b) => Number(Boolean(b.member.pending)) - Number(Boolean(a.member.pending)) || a.member.name.localeCompare(b.member.name));
+  }, [members, memberQuery, businessById]);
+
+  function setMemberRole(memberId: string, role: UserRole) {
+    onUpdateMembers((prev) => prev.map((member) => (member.id === memberId ? { ...member, role } : member)));
+    onAdminAction(`Role updated to ${role}.`);
+  }
+  function toggleOwner(memberId: string) {
+    onUpdateMembers((prev) => prev.map((member) => (member.id === memberId ? { ...member, isOwner: !member.isOwner } : member)));
+  }
+  function approveMember(memberId: string) {
+    onUpdateMembers((prev) => prev.map((member) => (member.id === memberId ? { ...member, pending: false } : member)));
+    onAdminAction("Member approved and activated.");
+  }
+  function removeMember(memberId: string) {
+    const member = members.find((entry) => entry.id === memberId);
+    if (!member) return;
+    if (!window.confirm(`Remove ${member.name}? This cannot be undone.`)) return;
+    onUpdateMembers((prev) => prev.filter((entry) => entry.id !== memberId));
+    onAdminAction(`${member.name} removed.`);
+  }
+  function setTier(businessId: string, tier: MembershipTier) {
+    onUpdateBusinesses((prev) => prev.map((business) => (business.id === businessId ? { ...business, tier } : business)));
+    onAdminAction(`Membership tier set to ${tierLabels[tier]}.`);
+  }
+  function addPendingMember() {
+    const name = newMember.name.trim();
+    if (!name || !newMember.businessId) {
+      onAdminAction("A name and a business are required to add a member.");
+      return;
+    }
+    const member: Member = {
+      id: newId("mem"),
+      businessId: newMember.businessId,
+      name,
+      title: newMember.title.trim() || "Team member",
+      email: newMember.email.trim(),
+      phone: newMember.phone.trim(),
+      bio: "",
+      isOwner: false,
+      role: "member",
+      pending: true
+    };
+    onUpdateMembers((prev) => [member, ...prev]);
+    setNewMember({ name: "", title: "", email: "", phone: "", businessId: "" });
+    setShowAddMember(false);
+    onAdminAction(`${name} added to the approval queue.`);
+  }
+
+  // Moderation --------------------------------------------------------------
+  const commentsByPost = useMemo(() => {
+    const map = new Map<string, Comment[]>();
+    for (const comment of comments) {
+      const list = map.get(comment.postId) ?? [];
+      list.push(comment);
+      map.set(comment.postId, list);
+    }
+    return map;
+  }, [comments]);
+
+  function togglePostHidden(postId: string) {
+    onUpdatePosts((prev) => prev.map((post) => (post.id === postId ? { ...post, hidden: !post.hidden } : post)));
+  }
+  function deletePost(postId: string) {
+    if (!window.confirm("Delete this post and its comments and reactions? This cannot be undone.")) return;
+    onUpdatePosts((prev) => prev.filter((post) => post.id !== postId));
+    onUpdateComments((prev) => prev.filter((comment) => comment.postId !== postId));
+    onUpdateReactions((prev) => prev.filter((reaction) => reaction.postId !== postId));
+    onAdminAction("Post removed.");
+  }
+  function deleteComment(commentId: string) {
+    onUpdateComments((prev) => prev.filter((comment) => comment.id !== commentId));
+    onUpdatePosts((prev) =>
+      prev.map((post) => {
+        const owns = comments.find((comment) => comment.id === commentId)?.postId === post.id;
+        return owns ? { ...post, comments: Math.max(0, post.comments - 1) } : post;
+      })
+    );
+    onAdminAction("Comment removed.");
+  }
+
+  // Support queue -----------------------------------------------------------
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  function setRequestStatus(id: string, status: string) {
+    onUpdateRequests((prev) =>
+      prev.map((request) =>
+        request.id === id
+          ? { ...request, status, resolvedAt: /resolved|closed/i.test(status) ? Date.now() : undefined }
+          : request
+      )
+    );
+  }
+  function sendReply(id: string) {
+    const reply = (replyDrafts[id] ?? "").trim();
+    if (!reply) return;
+    onUpdateRequests((prev) => prev.map((request) => (request.id === id ? { ...request, adminReply: reply } : request)));
+    setReplyDrafts((drafts) => ({ ...drafts, [id]: "" }));
+    onAdminAction("Reply sent to the member.");
+  }
+
+  // Broadcast ---------------------------------------------------------------
+  const [broadcastBody, setBroadcastBody] = useState("");
+  const [broadcastPinned, setBroadcastPinned] = useState(true);
+  function postBroadcast() {
+    const body = broadcastBody.trim();
+    if (!body) return;
+    const post: CommunityPost = {
+      id: newId("post"),
+      authorId: currentMember?.id,
+      author: currentMember?.name ?? "SBRA Team",
+      businessName: "Berks County Collab",
+      timeAgo: "Just now",
+      category: "Announcement",
+      tone: "blue",
+      body,
+      reactions: 0,
+      comments: 0,
+      createdAt: Date.now(),
+      pinned: broadcastPinned
+    };
+    onUpdatePosts((prev) => [post, ...prev]);
+    setBroadcastBody("");
+    onAdminAction(broadcastPinned ? "Announcement posted and pinned to the feed." : "Announcement posted to the feed.");
+  }
+
   return (
     <section className="admin-view">
+      <div className="glass-panel admin-tabs" role="tablist" aria-label="Admin sections">
+        {ADMIN_TABS.map((entry) => (
+          <button
+            key={entry.key}
+            role="tab"
+            aria-selected={tab === entry.key}
+            className={tab === entry.key ? "admin-tab active" : "admin-tab"}
+            onClick={() => setTab(entry.key)}
+          >
+            {entry.label}
+            {entry.key === "members" && pendingCount > 0 && <span className="admin-tab-badge">{pendingCount}</span>}
+            {entry.key === "support" && openRequests.length > 0 && <span className="admin-tab-badge">{openRequests.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {tab === "reports" && (
+    <>
       <div className="glass-panel reports-toolbar">
         <div>
           <p className="section-label">Admin tools</p>
@@ -900,57 +1094,296 @@ export function AdminView({
           )}
         </ReportCard>
       </div>
+    </>
+      )}
 
-      <div className="admin-grid">
-        <section className="glass-panel report-card admin-import-card">
-          <p className="section-label">Access controlled</p>
-          <h3>Admin Data Import</h3>
-          <p className="admin-copy">
-            Only Admin and staff users can import rosters, approve accounts, assign membership tiers, moderate posts, and
-            export reports. Members never see this navigation.
-          </p>
-          <div className="role-grid">
+      {tab === "members" && (
+        <div className="admin-panel">
+          <div className="glass-panel admin-panel-head">
             <div>
-              <strong>Admin / Staff</strong>
-              <span>Import, tiers, reports, moderation</span>
+              <p className="section-label">Roster</p>
+              <h3>Members &amp; businesses</h3>
+              <p className="report-subtitle">
+                {members.length} people · {businesses.length} businesses
+                {pendingCount > 0 ? ` · ${pendingCount} awaiting approval` : ""}
+              </p>
             </div>
-            <div>
-              <strong>Member</strong>
-              <span>Directory, referrals, events, support</span>
+            <div className="admin-panel-actions">
+              <input
+                className="admin-search"
+                type="search"
+                placeholder="Search people or businesses…"
+                value={memberQuery}
+                onChange={(event) => setMemberQuery(event.target.value)}
+              />
+              <button type="button" className="primary-button" onClick={() => setShowAddMember((open) => !open)}>
+                {showAddMember ? "Close" : "Add member"}
+              </button>
+              <label className="secondary-button file-inline">
+                Import roster
+                <input type="file" accept=".csv,.xlsx,.xls" onChange={(event) => onImport(event.target.files?.[0])} />
+              </label>
             </div>
           </div>
-          <label className="import-button">
-            <span className="button-icon">U</span>
-            Import CSV/Excel
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={(event) => onImport(event.target.files?.[0])} />
-          </label>
-          <div className="import-note">{importNote}</div>
-        </section>
+          {importNote && <div className="glass-panel import-note admin-inline-note">{importNote}</div>}
 
-        <section className="glass-panel report-card">
-          <p className="section-label">Admin tools</p>
-          {[
-            ["Approve new member accounts", "A", "Account queue opened: pending members need verification."],
-            ["Assign membership tiers", "T", "Tier manager opened: set solo / small / growth / enterprise per business."],
-            ["Review imported roster data", "R", "Roster review opened: validate columns before saving."],
-            ["Export referral impact report", "E", "Impact report queued with referrals, closed value, and engagement."],
-            ["Review flagged content", "F", "Moderation queue opened: no high-priority flags in this seed demo."]
-          ].map(([label, icon, note]) => (
-            <button
-              className="admin-action"
-              key={label as string}
-              disabled
-              title="Coming soon"
-              onClick={() => onAdminAction(note as string)}
-            >
-              <span className="nav-icon">{icon as string}</span>
-              {label as string}
-              <span className="coming-soon-badge">Coming soon</span>
-            </button>
-          ))}
+          {showAddMember && (
+            <div className="glass-panel admin-add-form">
+              <div className="admin-add-grid">
+                <label>
+                  <span>Name*</span>
+                  <input value={newMember.name} onChange={(event) => setNewMember((prev) => ({ ...prev, name: event.target.value }))} />
+                </label>
+                <label>
+                  <span>Business*</span>
+                  <select value={newMember.businessId} onChange={(event) => setNewMember((prev) => ({ ...prev, businessId: event.target.value }))}>
+                    <option value="">Select a business…</option>
+                    {[...businesses].sort((a, b) => a.name.localeCompare(b.name)).map((business) => (
+                      <option key={business.id} value={business.id}>{business.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Title</span>
+                  <input value={newMember.title} onChange={(event) => setNewMember((prev) => ({ ...prev, title: event.target.value }))} />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input type="email" value={newMember.email} onChange={(event) => setNewMember((prev) => ({ ...prev, email: event.target.value }))} />
+                </label>
+                <label>
+                  <span>Phone</span>
+                  <input value={newMember.phone} onChange={(event) => setNewMember((prev) => ({ ...prev, phone: event.target.value }))} />
+                </label>
+              </div>
+              <div className="admin-add-actions">
+                <span className="report-note">New members join the approval queue as “pending”.</span>
+                <button type="button" className="primary-button" onClick={addPendingMember}>Add to queue</button>
+              </div>
+            </div>
+          )}
+
+          <div className="glass-panel report-card">
+            <div className="table-scroll">
+              <table className="report-table admin-table">
+                <thead>
+                  <tr>
+                    <th>Person</th>
+                    <th>Business</th>
+                    <th>Tier</th>
+                    <th>Role</th>
+                    <th>Owner</th>
+                    <th>Status</th>
+                    <th aria-label="Actions" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {memberRows.map(({ member, business }) => (
+                    <tr key={member.id} className={member.pending ? "row-pending" : ""}>
+                      <td>
+                        <strong>{member.name}</strong>
+                        <small>{member.title}{member.email ? ` · ${member.email}` : ""}</small>
+                      </td>
+                      <td>{business?.name ?? <em>Unassigned</em>}</td>
+                      <td>
+                        {business ? (
+                          <select
+                            className="admin-select"
+                            value={business.tier}
+                            onChange={(event) => setTier(business.id, event.target.value as MembershipTier)}
+                          >
+                            {(Object.keys(tierLabels) as MembershipTier[]).map((tier) => (
+                              <option key={tier} value={tier}>{tierLabels[tier]}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>
+                        <select
+                          className="admin-select"
+                          value={member.role ?? "member"}
+                          onChange={(event) => setMemberRole(member.id, event.target.value as UserRole)}
+                        >
+                          <option value="member">Member</option>
+                          <option value="staff">Staff</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={member.isOwner}
+                          onChange={() => toggleOwner(member.id)}
+                          aria-label={`Mark ${member.name} as owner`}
+                        />
+                      </td>
+                      <td>
+                        {member.pending ? <span className="admin-badge pending">Pending</span> : <span className="admin-badge active">Active</span>}
+                      </td>
+                      <td className="admin-row-actions">
+                        {member.pending && (
+                          <button type="button" className="mini-button approve" onClick={() => approveMember(member.id)}>Approve</button>
+                        )}
+                        <button type="button" className="mini-button danger" onClick={() => removeMember(member.id)}>Remove</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {memberRows.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="report-empty">No people match “{memberQuery}”.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="import-note admin-tool-note">{adminNote}</div>
+          </div>
+        </div>
+      )}
+
+      {tab === "moderation" && (
+        <div className="admin-panel">
+          <div className="glass-panel admin-panel-head">
+            <div>
+              <p className="section-label">Community moderation</p>
+              <h3>Posts &amp; comments</h3>
+              <p className="report-subtitle">
+                {posts.length} posts · {posts.filter((post) => post.hidden).length} hidden · {comments.length} comments
+              </p>
+            </div>
+          </div>
+          <div className="admin-moderation-list">
+            {posts.length === 0 && <div className="glass-panel report-card report-empty">No posts yet.</div>}
+            {posts.map((post) => {
+              const postComments = commentsByPost.get(post.id) ?? [];
+              return (
+                <section className={post.hidden ? "glass-panel report-card mod-post hidden" : "glass-panel report-card mod-post"} key={post.id}>
+                  <header className="mod-post-head">
+                    <div>
+                      <strong>{post.author}</strong>
+                      <small>{post.businessName} · {post.category} · {post.timeAgo}</small>
+                    </div>
+                    <div className="mod-post-flags">
+                      {post.pinned && <span className="admin-badge pinned">Pinned</span>}
+                      {post.hidden && <span className="admin-badge hidden">Hidden</span>}
+                    </div>
+                  </header>
+                  <p className="mod-post-body">{post.body}</p>
+                  <div className="mod-post-meta">
+                    <span>{post.reactions} reactions · {postComments.length} comments</span>
+                    <div className="mod-post-actions">
+                      <button type="button" className="mini-button" onClick={() => togglePostHidden(post.id)}>
+                        {post.hidden ? "Unhide" : "Hide"}
+                      </button>
+                      <button type="button" className="mini-button danger" onClick={() => deletePost(post.id)}>Delete</button>
+                    </div>
+                  </div>
+                  {postComments.length > 0 && (
+                    <ul className="mod-comments">
+                      {postComments.map((comment) => (
+                        <li key={comment.id}>
+                          <div>
+                            <strong>{comment.authorName}</strong>
+                            <span>{comment.body}</span>
+                          </div>
+                          <button type="button" className="mini-button danger" onClick={() => deleteComment(comment.id)}>Delete</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              );
+            })}
+          </div>
           <div className="import-note admin-tool-note">{adminNote}</div>
-        </section>
-      </div>
+        </div>
+      )}
+
+      {tab === "support" && (
+        <div className="admin-panel">
+          <div className="glass-panel admin-panel-head">
+            <div>
+              <p className="section-label">Support</p>
+              <h3>Support queue</h3>
+              <p className="report-subtitle">
+                {openRequests.length} open · {requests.length - openRequests.length} resolved
+              </p>
+            </div>
+          </div>
+          <div className="admin-moderation-list">
+            {requests.length === 0 && <div className="glass-panel report-card report-empty">No support requests.</div>}
+            {requests.map((request) => {
+              const resolved = /resolved|closed/i.test(request.status);
+              return (
+                <section className={resolved ? "glass-panel report-card mod-post resolved" : "glass-panel report-card mod-post"} key={request.id}>
+                  <header className="mod-post-head">
+                    <div>
+                      <strong>{request.title}</strong>
+                      <small>{request.category}</small>
+                    </div>
+                    <select
+                      className="admin-select"
+                      value={supportStatuses.includes(request.status as typeof supportStatuses[number]) ? request.status : "Open"}
+                      onChange={(event) => setRequestStatus(request.id, event.target.value)}
+                    >
+                      {supportStatuses.map((status) => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  </header>
+                  <p className="mod-post-body">{request.detail}</p>
+                  {request.adminReply && (
+                    <div className="support-reply"><strong>Your reply:</strong> {request.adminReply}</div>
+                  )}
+                  <div className="support-reply-form">
+                    <input
+                      type="text"
+                      placeholder="Reply to the member…"
+                      value={replyDrafts[request.id] ?? ""}
+                      onChange={(event) => setReplyDrafts((drafts) => ({ ...drafts, [request.id]: event.target.value }))}
+                      onKeyDown={(event) => { if (event.key === "Enter") sendReply(request.id); }}
+                    />
+                    <button type="button" className="mini-button" onClick={() => sendReply(request.id)}>Send</button>
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+          <div className="import-note admin-tool-note">{adminNote}</div>
+        </div>
+      )}
+
+      {tab === "broadcast" && (
+        <div className="admin-panel">
+          <div className="glass-panel admin-panel-head">
+            <div>
+              <p className="section-label">Broadcast</p>
+              <h3>Post an announcement</h3>
+              <p className="report-subtitle">Publishes to the community feed as {currentMember?.name ?? "SBRA Team"}.</p>
+            </div>
+          </div>
+          <div className="glass-panel report-card admin-broadcast">
+            <textarea
+              className="admin-broadcast-input"
+              placeholder="Share an announcement with all members — a program update, a deadline, an event reminder…"
+              value={broadcastBody}
+              onChange={(event) => setBroadcastBody(event.target.value)}
+            />
+            <div className="admin-broadcast-actions">
+              <label className="broadcast-pin">
+                <input type="checkbox" checked={broadcastPinned} onChange={(event) => setBroadcastPinned(event.target.checked)} />
+                Pin to top of feed
+              </label>
+              <button type="button" className="primary-button" onClick={postBroadcast} disabled={!broadcastBody.trim()}>
+                Post announcement
+              </button>
+            </div>
+            <div className="import-note admin-tool-note">{adminNote}</div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
