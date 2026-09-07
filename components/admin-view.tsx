@@ -22,7 +22,7 @@ function newId(prefix: string): string {
   return `${prefix}-${rand}`;
 }
 
-type AdminTab = "reports" | "members" | "moderation" | "support" | "broadcast";
+export type AdminTab = "reports" | "members" | "moderation" | "support" | "broadcast";
 const ADMIN_TABS: { key: AdminTab; label: string }[] = [
   { key: "reports", label: "Reports" },
   { key: "members", label: "Members & businesses" },
@@ -352,7 +352,8 @@ export function AdminView({
   onUpdateReactions,
   onUpdateRequests,
   persistEnabled,
-  onResetData
+  onResetData,
+  initialTab
 }: {
   businesses: Business[];
   members: Member[];
@@ -376,8 +377,12 @@ export function AdminView({
   onUpdateRequests: Dispatch<SetStateAction<SupportRequest[]>>;
   persistEnabled: boolean;
   onResetData: () => void;
+  initialTab?: AdminTab;
 }) {
-  const [tab, setTab] = useState<AdminTab>("reports");
+  const [tab, setTab] = useState<AdminTab>(initialTab ?? "reports");
+  // Members tab focus filter: default to the pending queue when logging in with
+  // approvals waiting, so the queue is the first thing an admin sees.
+  const [memberFilter, setMemberFilter] = useState<"all" | "pending">(initialTab === "members" ? "pending" : "all");
   const [range, setRange] = useState<RangeKey>("90");
   const now = Date.now();
   const rangeStart = now - Number(range) * DAY_MS;
@@ -522,12 +527,13 @@ export function AdminView({
     const q = memberQuery.trim().toLowerCase();
     return members
       .map((member) => ({ member, business: businessById.get(member.businessId) }))
+      .filter(({ member }) => memberFilter === "all" || member.pending)
       .filter(({ member, business }) =>
         !q ||
         `${member.name} ${member.email} ${member.title} ${business?.name ?? ""}`.toLowerCase().includes(q)
       )
       .sort((a, b) => Number(Boolean(b.member.pending)) - Number(Boolean(a.member.pending)) || a.member.name.localeCompare(b.member.name));
-  }, [members, memberQuery, businessById]);
+  }, [members, memberQuery, memberFilter, businessById]);
 
   function setMemberRole(memberId: string, role: UserRole) {
     onUpdateMembers((prev) => prev.map((member) => (member.id === memberId ? { ...member, role } : member)));
@@ -672,6 +678,23 @@ export function AdminView({
           </button>
         ))}
       </div>
+
+      {pendingCount > 0 && tab !== "members" && (
+        <div className="glass-panel admin-approval-banner" role="status">
+          <span className="admin-approval-icon" aria-hidden="true">👋</span>
+          <div>
+            <strong>{pendingCount} member{pendingCount === 1 ? "" : "s"} awaiting approval</strong>
+            <small>New logins need review before they can access the community.</small>
+          </div>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => { setTab("members"); setMemberFilter("pending"); }}
+          >
+            Review queue
+          </button>
+        </div>
+      )}
 
       {tab === "reports" && (
     <>
@@ -1117,6 +1140,22 @@ export function AdminView({
               </p>
             </div>
             <div className="admin-panel-actions">
+              <div className="admin-filter" role="group" aria-label="Filter members">
+                <button
+                  type="button"
+                  className={memberFilter === "all" ? "active" : ""}
+                  onClick={() => setMemberFilter("all")}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className={memberFilter === "pending" ? "active" : ""}
+                  onClick={() => setMemberFilter("pending")}
+                >
+                  Pending{pendingCount > 0 ? ` (${pendingCount})` : ""}
+                </button>
+              </div>
               <input
                 className="admin-search"
                 type="search"
@@ -1248,7 +1287,11 @@ export function AdminView({
                   ))}
                   {memberRows.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="report-empty">No people match “{memberQuery}”.</td>
+                      <td colSpan={7} className="report-empty">
+                        {memberFilter === "pending"
+                          ? "No members awaiting approval. You're all caught up."
+                          : `No people match “${memberQuery}”.`}
+                      </td>
                     </tr>
                   )}
                 </tbody>

@@ -235,7 +235,50 @@ const legacyMemberSeed: Member[] = [
 // Legacy constants above preserve the original demo fixture shape for reference while
 // stable IDs in the generated data keep referrals, posts, and RSVPs connected.
 export const businessSeed: Business[] = sbraBusinessSeed;
-export const memberSeed: Member[] = sbraMemberSeed;
+
+// New member logins awaiting admin approval. Kept separate from the synced
+// directory so the sync script never clobbers them; they show up in the admin
+// approval queue (and are hidden from member-facing surfaces until approved).
+const pendingSignupSeed: Member[] = [
+  {
+    id: "pending-priya-nadeau",
+    businessId: "american-insuring-group",
+    name: "Priya Nadeau",
+    title: "Account Manager",
+    email: "priya@americaninsuring.com",
+    phone: "610-273-4884",
+    bio: "",
+    isOwner: false,
+    role: "member",
+    pending: true
+  },
+  {
+    id: "pending-marcus-webb",
+    businessId: "ace-janitorial-llc",
+    name: "Marcus Webb",
+    title: "Owner",
+    email: "marcus@acejanitorial.com",
+    phone: "484-201-7752",
+    bio: "",
+    isOwner: true,
+    role: "member",
+    pending: true
+  },
+  {
+    id: "pending-dana-osei",
+    businessId: "422-business-advisor",
+    name: "Dana Osei",
+    title: "Operations Lead",
+    email: "dana@422advisors.com",
+    phone: "610-655-3390",
+    bio: "",
+    isOwner: false,
+    role: "member",
+    pending: true
+  }
+];
+
+export const memberSeed: Member[] = [...sbraMemberSeed, ...pendingSignupSeed];
 
 export const learningModules: Module[] = [
   {

@@ -23,7 +23,7 @@ import {
   watchSupportRequests,
   type LiveUserProfile
 } from "@/lib/data";
-import { AdminView } from "@/components/admin-view";
+import { AdminView, type AdminTab } from "@/components/admin-view";
 import type { Session } from "next-auth";
 import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
 import * as backendActions from "@/app/actions";
@@ -559,9 +559,12 @@ export function SBRAApp() {
     return map;
   }, [businesses]);
 
+  // Directory / team listings exclude members still awaiting admin approval —
+  // they surface only in the admin approval queue until activated.
   const membersByBusiness = useMemo(() => {
     const map = new Map<string, Member[]>();
     members.forEach((member) => {
+      if (member.pending) return;
       const list = map.get(member.businessId) ?? [];
       list.push(member);
       map.set(member.businessId, list);
@@ -1842,6 +1845,7 @@ export function SBRAApp() {
             onUpdateRequests={setRequests}
             persistEnabled={persistLocal}
             onResetData={resetDemoData}
+            initialTab={(members.some((member) => member.pending) ? "members" : "reports") as AdminTab}
           />
         )}
       </main>
