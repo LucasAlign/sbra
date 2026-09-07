@@ -350,7 +350,9 @@ export function AdminView({
   onUpdatePosts,
   onUpdateComments,
   onUpdateReactions,
-  onUpdateRequests
+  onUpdateRequests,
+  persistEnabled,
+  onResetData
 }: {
   businesses: Business[];
   members: Member[];
@@ -372,6 +374,8 @@ export function AdminView({
   onUpdateComments: Dispatch<SetStateAction<Comment[]>>;
   onUpdateReactions: Dispatch<SetStateAction<Reaction[]>>;
   onUpdateRequests: Dispatch<SetStateAction<SupportRequest[]>>;
+  persistEnabled: boolean;
+  onResetData: () => void;
 }) {
   const [tab, setTab] = useState<AdminTab>("reports");
   const [range, setRange] = useState<RangeKey>("90");
@@ -546,6 +550,10 @@ export function AdminView({
   function setTier(businessId: string, tier: MembershipTier) {
     onUpdateBusinesses((prev) => prev.map((business) => (business.id === businessId ? { ...business, tier } : business)));
     onAdminAction(`Membership tier set to ${tierLabels[tier]}.`);
+  }
+  function handleReset() {
+    if (!window.confirm("Reset all demo data to the original seed? This clears every saved admin and member edit on this device.")) return;
+    onResetData();
   }
   function addPendingMember() {
     const name = newMember.name.trim();
@@ -1123,7 +1131,15 @@ export function AdminView({
                 Import roster
                 <input type="file" accept=".csv,.xlsx,.xls" onChange={(event) => onImport(event.target.files?.[0])} />
               </label>
+              <button type="button" className="secondary-button" onClick={handleReset}>
+                Reset demo data
+              </button>
             </div>
+          </div>
+          <div className="glass-panel import-note admin-inline-note admin-persist-note">
+            {persistEnabled
+              ? "Changes are saved to this device (localStorage) and survive a refresh. “Reset demo data” restores the seed."
+              : "A live backend is connected — changes are saved there, not to this device."}
           </div>
           {importNote && <div className="glass-panel import-note admin-inline-note">{importNote}</div>}
 

@@ -29,6 +29,7 @@ import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-a
 import * as backendActions from "@/app/actions";
 import { isBackendEnabled } from "@/lib/backend";
 import { loadTool, saveTool, downloadToolData, importToolData, previewToolData, TOOL_KEYS, type ImportPreview } from "@/lib/tool-storage";
+import { APP_KEYS, membersKey, businessesKey, loadCollection, saveCollection, clearAppData } from "@/lib/app-storage";
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import { latinoBusinessSeed, latinoMemberSeed } from "@/lib/latino-directory";
@@ -474,6 +475,9 @@ export function SBRAApp() {
   const liveServices = useMemo(() => getLiveServices(), []);
   const backendEnabled = Boolean(liveServices);
   const dbEnabled = useMemo(() => isBackendEnabled(), []);
+  // Seed-first: persist in-app edits (admin + member) to localStorage. Disabled
+  // when a live backend owns the data so the two never fight. Constant per load.
+  const persistLocal = !dbEnabled && !liveServices;
   // Session is fed in by <SessionBridge>, mounted only in backend mode so that
   // useSession() (and its /api/auth/session fetch) never runs in seed mode.
   const [session, setSession] = useState<Session | null>(null);
@@ -498,10 +502,18 @@ export function SBRAApp() {
   // Keeps the active destination scrolled into view within the horizontally
   // scrollable mobile nav bar, so the selected tab is always visible.
   const activeNavRef = useRef<HTMLButtonElement | null>(null);
-  const [members, setMembers] = useState<Member[]>(memberSeed);
-  const [businesses, setBusinesses] = useState<Business[]>(businessSeed);
-  const [posts, setPosts] = useState(communityPosts);
-  const [requests, setRequests] = useState(supportRequests);
+  const [members, setMembers] = useState<Member[]>(() =>
+    persistLocal ? loadCollection(membersKey(activeOrganizationId), memberSeed) : memberSeed
+  );
+  const [businesses, setBusinesses] = useState<Business[]>(() =>
+    persistLocal ? loadCollection(businessesKey(activeOrganizationId), businessSeed) : businessSeed
+  );
+  const [posts, setPosts] = useState<CommunityPost[]>(() =>
+    persistLocal ? loadCollection(APP_KEYS.posts, communityPosts) : communityPosts
+  );
+  const [requests, setRequests] = useState<SupportRequest[]>(() =>
+    persistLocal ? loadCollection(APP_KEYS.requests, supportRequests) : supportRequests
+  );
   const [referrals, setReferrals] = useState<Referral[]>(referralSeed);
   const [referralComposerOpen, setReferralComposerOpen] = useState(false);
   const [referralDraft, setReferralDraft] = useState<ReferralDraft>(emptyReferralDraft);
@@ -521,8 +533,12 @@ export function SBRAApp() {
   const [postDraft, setPostDraft] = useState("");
   const [postCategory, setPostCategory] = useState<string>("General");
   const [postAttachments, setPostAttachments] = useState<DraftPostAttachment[]>([]);
-  const [comments, setComments] = useState<Comment[]>(commentSeed);
-  const [reactions, setReactions] = useState<Reaction[]>(reactionSeed);
+  const [comments, setComments] = useState<Comment[]>(() =>
+    persistLocal ? loadCollection(APP_KEYS.comments, commentSeed) : commentSeed
+  );
+  const [reactions, setReactions] = useState<Reaction[]>(() =>
+    persistLocal ? loadCollection(APP_KEYS.reactions, reactionSeed) : reactionSeed
+  );
   const [openComments, setOpenComments] = useState<string[]>([]);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
@@ -570,6 +586,28 @@ export function SBRAApp() {
     const rank = (post: CommunityPost) => (post.pinned ? 1 : 0);
     return [...visible].sort((a, b) => rank(b) - rank(a));
   }, [posts]);
+
+  // Persist in-app edits to localStorage (seed-first). The roster is keyed by the
+  // active organization so each directory keeps its own edits; the community
+  // collections are shared. Skipped entirely when a live backend owns the data.
+  useEffect(() => {
+    if (persistLocal) saveCollection(membersKey(activeOrganizationId), members);
+  }, [members, activeOrganizationId, persistLocal]);
+  useEffect(() => {
+    if (persistLocal) saveCollection(businessesKey(activeOrganizationId), businesses);
+  }, [businesses, activeOrganizationId, persistLocal]);
+  useEffect(() => {
+    if (persistLocal) saveCollection(APP_KEYS.posts, posts);
+  }, [posts, persistLocal]);
+  useEffect(() => {
+    if (persistLocal) saveCollection(APP_KEYS.comments, comments);
+  }, [comments, persistLocal]);
+  useEffect(() => {
+    if (persistLocal) saveCollection(APP_KEYS.reactions, reactions);
+  }, [reactions, persistLocal]);
+  useEffect(() => {
+    if (persistLocal) saveCollection(APP_KEYS.requests, requests);
+  }, [requests, persistLocal]);
 
   useEffect(() => {
     activeNavRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
@@ -1337,9 +1375,12 @@ export function SBRAApp() {
 
   function selectOrganization(organizationId: string) {
     const latino = organizationId === "berks-latino-chamber";
+    const seedBusinesses = latino ? latinoBusinessSeed : businessSeed;
+    const seedMembers = latino ? latinoMemberSeed : memberSeed;
     setActiveOrganizationId(organizationId);
-    setBusinesses(latino ? latinoBusinessSeed : businessSeed);
-    setMembers(latino ? latinoMemberSeed : memberSeed);
+    // Restore this org's locally persisted roster (admin edits) if present.
+    setBusinesses(persistLocal ? loadCollection(businessesKey(organizationId), seedBusinesses) : seedBusinesses);
+    setMembers(persistLocal ? loadCollection(membersKey(organizationId), seedMembers) : seedMembers);
     setActiveView(latino ? "directory" : "community");
     setSearch("");
     setCategoryFilter("all");
@@ -1348,6 +1389,19 @@ export function SBRAApp() {
     setAlertsOpen(false);
     setSettingsOpen(false);
     setGlobalSearchOpen(false);
+  }
+
+  // Wipe locally persisted edits and restore the seed data (admin escape hatch).
+  function resetDemoData() {
+    clearAppData(communityOrganizations.map((organization) => organization.id));
+    const latino = activeOrganizationId === "berks-latino-chamber";
+    setBusinesses(latino ? latinoBusinessSeed : businessSeed);
+    setMembers(latino ? latinoMemberSeed : memberSeed);
+    setPosts(communityPosts);
+    setComments(commentSeed);
+    setReactions(reactionSeed);
+    setRequests(supportRequests);
+    setAdminNote("Demo data reset to the original seed.");
   }
 
   if (authLoading) {
@@ -1786,6 +1840,8 @@ export function SBRAApp() {
             onUpdateComments={setComments}
             onUpdateReactions={setReactions}
             onUpdateRequests={setRequests}
+            persistEnabled={persistLocal}
+            onResetData={resetDemoData}
           />
         )}
       </main>
