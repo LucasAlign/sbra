@@ -28,6 +28,9 @@ test("Postgres: administrator transfer keeps an admin, audits, and the log is im
     target.username = "collab_runtime"; target.password = "test-runtime-only";
     client = postgres(target.toString(), { max: 4 });
     const db = drizzle(client, { schema });
+    // Fixtures and verification run via the privileged owner connection; the
+    // transfer/roster/audit operations under test run as the runtime role (db).
+    const adminDb = drizzle(admin, { schema });
 
     const alice = await resolvePerson(db, { provider: "google", subject: "t-alice" }, "Alice");
     const bob = await resolvePerson(db, { provider: "google", subject: "t-bob" }, "Bob");
@@ -36,15 +39,15 @@ test("Postgres: administrator transfer keeps an admin, audits, and the log is im
 
     // Distinct fixture ids so this file coexists with the other integration
     // suites in the same disposable database.
-    await db.insert(schema.networks).values({ id: "tn", slug: "tn", name: "Network" });
-    await db.insert(schema.organizations).values({ id: "top", name: "Operator", kind: "association" });
-    await db.insert(schema.communities).values({ id: "tc", networkId: "tn", operatorId: "top", slug: "tc", name: "tc", shortName: "tc", kind: "organizational", status: "active" });
-    await db.insert(schema.personCommunityMemberships).values([
+    await adminDb.insert(schema.networks).values({ id: "tn", slug: "tn", name: "Network" });
+    await adminDb.insert(schema.organizations).values({ id: "top", name: "Operator", kind: "association" });
+    await adminDb.insert(schema.communities).values({ id: "tc", networkId: "tn", operatorId: "top", slug: "tc", name: "tc", shortName: "tc", kind: "organizational", status: "active" });
+    await adminDb.insert(schema.personCommunityMemberships).values([
       { personId: alice.id, communityId: "tc", status: "active" },
       { personId: bob.id, communityId: "tc", status: "active" },
       { personId: carol.id, communityId: "tc", status: "active" },
     ]);
-    await db.insert(schema.roleGrants).values({ id: "t-admin", personId: alice.id, communityId: "tc", role: "community_admin", grantedBy: alice.id });
+    await adminDb.insert(schema.roleGrants).values({ id: "t-admin", personId: alice.id, communityId: "tc", role: "community_admin", grantedBy: alice.id });
 
     // Guards.
     await assert.rejects(transferAdministrator(db, alice.id, "tc", alice.id)); // not to self
@@ -61,7 +64,7 @@ test("Postgres: administrator transfer keeps an admin, audits, and the log is im
     await assert.rejects(readMembershipAdmin(db, alice.id, "tc")); // alice lost admin
 
     // Exactly one active community_admin grant remains.
-    const activeAdmins = await db.select().from(schema.roleGrants).where(and(
+    const activeAdmins = await adminDb.select().from(schema.roleGrants).where(and(
       eq(schema.roleGrants.communityId, "tc"), eq(schema.roleGrants.role, "community_admin")));
     assert.equal(activeAdmins.filter(g => g.revokedAt === null).length, 1);
 
@@ -81,15 +84,17 @@ test("Postgres: administrator transfer keeps an admin, audits, and the log is im
     // create a duplicate grant for a successor who is later re-appointed.
     await transferAdministrator(db, bob.id, "tc", alice.id);
     await transferAdministrator(db, alice.id, "tc", bob.id);
-    const bobGrants = await db.select().from(schema.roleGrants).where(and(
+    const bobGrants = await adminDb.select().from(schema.roleGrants).where(and(
       eq(schema.roleGrants.personId, bob.id), eq(schema.roleGrants.communityId, "tc"),
       eq(schema.roleGrants.role, "community_admin")));
     assert.equal(bobGrants.filter(g => g.revokedAt === null).length, 1);
 
-    // Audit rows are immutable at the DB level, even for the app role.
-    const [row] = await db.select({ id: schema.membershipAudit.id }).from(schema.membershipAudit).limit(1);
-    await assert.rejects(db.update(schema.membershipAudit).set({ action: "membership.restored" }).where(eq(schema.membershipAudit.id, row.id)));
-    await assert.rejects(db.delete(schema.membershipAudit).where(eq(schema.membershipAudit.id, row.id)));
+    // Audit rows are immutable: the BEFORE UPDATE/DELETE trigger raises even for
+    // the owner (which bypasses RLS), so the row is actually targeted. (RLS gives
+    // the runtime role a second layer: it has no UPDATE/DELETE policy on audit.)
+    const [row] = await adminDb.select({ id: schema.membershipAudit.id }).from(schema.membershipAudit).limit(1);
+    await assert.rejects(adminDb.update(schema.membershipAudit).set({ action: "membership.restored" }).where(eq(schema.membershipAudit.id, row.id)));
+    await assert.rejects(adminDb.delete(schema.membershipAudit).where(eq(schema.membershipAudit.id, row.id)));
   } finally {
     if (client) await client.end();
     await admin.end();

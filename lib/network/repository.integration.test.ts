@@ -31,23 +31,27 @@ test("Postgres: identities, constraints, directory isolation, and grant revocati
     target.username = "collab_runtime"; target.password = "test-runtime-only";
     client = postgres(target.toString(), { max: 4 });
     const db = drizzle(client, { schema });
+    // With RLS enabled, provisioning-style fixtures, direct state manipulation,
+    // and verification reads run through the privileged owner connection; only the
+    // app operations under test run as the restricted runtime role (db).
+    const adminDb = drizzle(admin, { schema });
     const persons = await Promise.all(Array.from({ length: 5 }, () => resolvePerson(db, { provider: "google", subject: "alice" }, "Alice")));
     assert.equal(new Set(persons.map(p => p.id)).size, 1);
     const alice = persons[0];
     const bob = await resolvePerson(db, { provider: "google", subject: "bob" }, "Alice");
     assert.notEqual(alice.id, bob.id); // Same display name does not link accounts.
-    await db.insert(schema.networks).values([{ id: "n", slug: "n", name: "Network" }, { id: "other", slug: "other", name: "Other" }]);
-    await db.insert(schema.organizations).values([
+    await adminDb.insert(schema.networks).values([{ id: "n", slug: "n", name: "Network" }, { id: "other", slug: "other", name: "Other" }]);
+    await adminDb.insert(schema.organizations).values([
       { id: "operator", name: "Operator", kind: "association" },
       { id: "shared", name: "Shared business", kind: "business" },
       { id: "private-b", name: "B only", kind: "business" },
     ]);
-    await db.insert(schema.communities).values(["a", "b"].map(id => ({ id, networkId: "n", operatorId: "operator", slug: id, name: id, shortName: id, kind: "organizational", status: "active" })));
-    await db.insert(schema.personCommunityMemberships).values([
+    await adminDb.insert(schema.communities).values(["a", "b"].map(id => ({ id, networkId: "n", operatorId: "operator", slug: id, name: id, shortName: id, kind: "organizational", status: "active" })));
+    await adminDb.insert(schema.personCommunityMemberships).values([
       { personId: alice.id, communityId: "a", status: "active" },
       { personId: bob.id, communityId: "b", status: "active" },
     ]);
-    await db.insert(schema.organizationCommunityMemberships).values([
+    await adminDb.insert(schema.organizationCommunityMemberships).values([
       { organizationId: "shared", communityId: "a", status: "active", tier: "secret-a" },
       { organizationId: "shared", communityId: "b", status: "active", tier: "secret-b" },
       { organizationId: "private-b", communityId: "b", status: "active" },
@@ -58,24 +62,26 @@ test("Postgres: identities, constraints, directory isolation, and grant revocati
     await assert.rejects(readDirectory(db, alice.id, "b"));
     await assert.rejects(readDirectory(db, alice.id, "unknown"));
     await assert.rejects(editOrganizationDescription(db, alice.id, "shared", "unauthorized"));
-    await db.insert(schema.organizationAffiliations).values({ personId: alice.id, organizationId: "shared", status: "active" });
-    await db.insert(schema.roleGrants).values({ id: "grant", personId: alice.id, organizationId: "shared", role: "business_admin", grantedBy: alice.id });
+    await adminDb.insert(schema.organizationAffiliations).values({ personId: alice.id, organizationId: "shared", status: "active" });
+    await adminDb.insert(schema.roleGrants).values({ id: "grant", personId: alice.id, organizationId: "shared", role: "business_admin", grantedBy: alice.id });
     await editOrganizationDescription(db, alice.id, "shared", "Updated canonical profile");
     assert.equal((await readDirectory(db, bob.id, "b")).organizations.find(o => o.id === "shared")?.description, "Updated canonical profile");
-    await db.update(schema.roleGrants).set({ revokedAt: new Date() }).where(eq(schema.roleGrants.id, "grant"));
+    await adminDb.update(schema.roleGrants).set({ revokedAt: new Date() }).where(eq(schema.roleGrants.id, "grant"));
     await assert.rejects(editOrganizationDescription(db, alice.id, "shared", "revoked"));
-    await db.update(schema.personCommunityMemberships).set({ status: "suspended" }).where(eq(schema.personCommunityMemberships.personId, alice.id));
+    await adminDb.update(schema.personCommunityMemberships).set({ status: "suspended" }).where(eq(schema.personCommunityMemberships.personId, alice.id));
     await assert.rejects(readDirectory(db, alice.id, "a"));
-    await db.insert(schema.regions).values({ id: "other-region", networkId: "other", slug: "other", name: "Other" });
-    await assert.rejects(db.insert(schema.communityRegions).values({ communityId: "a", networkId: "n", regionId: "other-region" }));
-    await assert.rejects(db.insert(schema.roleGrants).values({ id: "invalid", personId: alice.id, role: "business_admin", communityId: "a", grantedBy: alice.id }));
+    await adminDb.insert(schema.regions).values({ id: "other-region", networkId: "other", slug: "other", name: "Other" });
+    // Composite-FK and role-scope CHECK constraints (asserted via the owner
+    // connection, so RLS write policies do not mask the constraint under test).
+    await assert.rejects(adminDb.insert(schema.communityRegions).values({ communityId: "a", networkId: "n", regionId: "other-region" }));
+    await assert.rejects(adminDb.insert(schema.roleGrants).values({ id: "invalid", personId: alice.id, role: "business_admin", communityId: "a", grantedBy: alice.id }));
 
     // Community onboarding grants membership only, and is isolated from the
     // organization-admin grant above and from Bob's existing membership in B.
-    await db.update(schema.personCommunityMemberships).set({ status: "active" }).where(eq(schema.personCommunityMemberships.personId, alice.id));
-    await db.insert(schema.roleGrants).values({ id: "admin-a", personId: alice.id, communityId: "a", role: "community_admin", grantedBy: alice.id });
+    await adminDb.update(schema.personCommunityMemberships).set({ status: "active" }).where(eq(schema.personCommunityMemberships.personId, alice.id));
+    await adminDb.insert(schema.roleGrants).values({ id: "admin-a", personId: alice.id, communityId: "a", role: "community_admin", grantedBy: alice.id });
     const charlie = await resolvePerson(db, { provider: "google", subject: "charlie" }, "Charlie");
-    const access = await db.select({ admin: communityAdminAccess(alice.id, schema.communities.id) }).from(schema.communities).where(eq(schema.communities.id, "a"));
+    const access = await adminDb.select({ admin: communityAdminAccess(alice.id, schema.communities.id) }).from(schema.communities).where(eq(schema.communities.id, "a"));
     assert.equal(access[0].admin, true);
     await assert.rejects(invitePerson(db, bob.id, "a", charlie.id));
     await assert.rejects(invitePerson(db, alice.id, "b", charlie.id));
@@ -99,7 +105,7 @@ test("Postgres: identities, constraints, directory isolation, and grant revocati
     await assert.rejects(changeMembership(db, alice.id, "a", alice.id, "suspended"));
 
     const expired = await invitePerson(db, alice.id, "a", charlie.id);
-    await db.update(schema.communityInvitations).set({ createdAt: new Date(Date.now() - 8 * 86400000), expiresAt: new Date(Date.now() - 1000) })
+    await adminDb.update(schema.communityInvitations).set({ createdAt: new Date(Date.now() - 8 * 86400000), expiresAt: new Date(Date.now() - 1000) })
       .where(eq(schema.communityInvitations.id, expired.id));
     await assert.rejects(acceptInvitation(db, charlie.id, expired.id));
     const revoked = await invitePerson(db, alice.id, "a", charlie.id);
@@ -107,11 +113,11 @@ test("Postgres: identities, constraints, directory isolation, and grant revocati
     await revokeInvitation(db, alice.id, "a", revoked.id);
     await assert.rejects(acceptInvitation(db, charlie.id, revoked.id));
     const staleIssuer = await invitePerson(db, alice.id, "a", charlie.id);
-    await db.update(schema.roleGrants).set({ revokedAt: new Date() }).where(eq(schema.roleGrants.id, "admin-a"));
+    await adminDb.update(schema.roleGrants).set({ revokedAt: new Date() }).where(eq(schema.roleGrants.id, "admin-a"));
     await assert.rejects(acceptInvitation(db, charlie.id, staleIssuer.id));
     await assert.rejects(readMembershipAdmin(db, alice.id, "a"));
     await assert.rejects(changeMembership(db, alice.id, "a", bob.id, "suspended"));
-    const acceptedAudit = await db.select().from(schema.membershipAudit).where(eq(schema.membershipAudit.action, "invitation.accepted"));
+    const acceptedAudit = await adminDb.select().from(schema.membershipAudit).where(eq(schema.membershipAudit.action, "invitation.accepted"));
     assert.equal(acceptedAudit.length, 1);
     assert.equal(acceptedAudit[0].targetId, bob.id);
     assert.equal(acceptedAudit[0].communityId, "a");

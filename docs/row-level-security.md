@@ -41,26 +41,55 @@ the table owner**. That split is the design:
 The integration tests create exactly this `collab_runtime` role and run every
 app operation through it, so the suite verifies the restricted-role behavior.
 
+## Cross-table checks without recursion
+
+Membership-scoped policies must ask "is the actor an admin of this community?",
+which reads `role_grants` and `person_community_memberships` — tables that are
+themselves under RLS. Referencing an RLS table inside its own (or another's)
+policy risks infinite recursion. To avoid it, the checks live in **`SECURITY
+DEFINER` helper functions** ([migration 0004](../drizzle/network/0004_rls_relational.sql))
+that run as the table owner and therefore bypass RLS internally:
+`collab_actor()`, `collab_is_active_member(community)`,
+`collab_is_community_admin(community)`, and `collab_can_admin_org(org)`.
+
+Two subtleties the policies account for:
+
+- **`SELECT ... FOR UPDATE` also enforces the UPDATE policy's `USING` clause.**
+  Admin operations lock the community row, so `communities` carries a lock-only
+  UPDATE policy (`USING (true) WITH CHECK (false)`): the row can be locked, but
+  the runtime role still cannot alter catalog rows.
+- **Accepting an invitation** runs under the *accepter's* context but must verify
+  the *issuer* is still an admin — a cross-actor read RLS would hide. A dedicated
+  `SECURITY DEFINER` helper (`collab_person_is_admin_locked`) performs that
+  lock-and-check, bypassing RLS for that one integrity read.
+
 ## Coverage so far
 
-- **`people`** ([migration 0003](../drizzle/network/0003_rls_people.sql)):
-  reads open (names are directory-visible); inserts allowed (login creates
-  people); **updates locked to the actor's own row**, and deletes denied to the
-  runtime role. This backstops the profile edit, which now runs through
-  `withActor`.
+- **`people`** ([0003](../drizzle/network/0003_rls_people.sql)): reads open;
+  inserts allowed (login); updates locked to the actor's own row; deletes denied.
+- **`person_community_memberships`, `role_grants`, `community_invitations`**
+  ([0004](../drizzle/network/0004_rls_relational.sql)): visible to the row's own
+  person or an admin of the community; writes limited the same way.
+- **`organization_community_memberships`**: visible to active members of the
+  community (the directory); no runtime writes.
+- **`organization_affiliations`**: visible to the affiliated person; no runtime
+  writes yet (M2).
+- **`organizations`**: profiles readable; updatable only by a Business Admin of
+  the org (`collab_can_admin_org`); create/delete provisioning-only.
+- **`membership_audit`**: readable by community admins; insertable by an admin or
+  by the actor recording their own action; update/delete blocked by both the
+  immutability trigger (0002) and the absence of a policy.
+- **Catalog (`communities`, `networks`, `regions`, `community_regions`)**:
+  readable by the app; only the privileged provisioning path may change it.
 
-## Extending RLS (follow-up in M1)
+Every runtime data path in `repository.ts`, `membership.ts`, and the workspace
+loader now runs through `withActor`, so these policies apply to real traffic.
 
-Each additional table needs (a) actor-keyed policies that are a superset of the
-app's own checks (so correct queries keep working) and (b) its runtime data paths
-routed through `withActor`. Notable cases:
+## Still deferred
 
-- **`person_identities`** (provider subjects — the most sensitive table): own-row
-  visibility conflicts with today's login lookup and the invitation existence
-  check, so those reads must move to the privileged path or a `SECURITY DEFINER`
-  function before this table's RLS can be locked down.
-- **`role_grants`, `person_community_memberships`,
-  `organization_community_memberships`, `community_invitations`,
-  `membership_audit`**: scope visibility to communities where the actor has an
-  active membership (or admin grant); route `membership.ts` and the directory
-  reads through `withActor` and update the integration suites to set context.
+- **`person_identities`** (provider subjects): login must look up an identity
+  *before* an actor context exists, and the invitation flow checks a recipient's
+  identity — both cross the own-row boundary. Locking this table down needs those
+  reads moved to the privileged path (a separate login/provisioning connection)
+  or a `SECURITY DEFINER` lookup. It has no enumeration endpoint today, so
+  app-level scoping holds until then.

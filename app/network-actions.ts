@@ -3,24 +3,27 @@
 import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import * as s from "@/lib/db/network-schema";
 import { requirePerson } from "@/lib/network/server";
+import { withActor } from "@/lib/db/context";
 import { identityAccess, discoveryPublishing, organizationsMembership } from "@/lib/modules";
 import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin, transferAdministrator, readAudit } from "@/lib/network/membership";
 
 export async function loadWorkspace() {
   const { db, person } = await requirePerson();
-  const memberships = await db.select({ id: s.communities.id, name: s.communities.name,
-    shortName: s.communities.shortName, status: s.personCommunityMemberships.status,
-    canAdmin: communityAdminAccess(person.id, s.communities.id) })
-    .from(s.personCommunityMemberships).innerJoin(s.communities, eq(s.communities.id, s.personCommunityMemberships.communityId))
-    .where(and(eq(s.personCommunityMemberships.personId, person.id), eq(s.communities.status, "active")))
-    .orderBy(asc(s.communities.name)).limit(100);
-  const invitations = await db.select({ id: s.communityInvitations.id, communityName: s.communities.name,
-    expiresAt: s.communityInvitations.expiresAt }).from(s.communityInvitations)
-    .innerJoin(s.communities, eq(s.communities.id, s.communityInvitations.communityId)).where(and(
-      eq(s.communityInvitations.recipientId, person.id), eq(s.communities.status, "active"),
-      isNull(s.communityInvitations.acceptedAt), isNull(s.communityInvitations.revokedAt),
-      gt(s.communityInvitations.expiresAt, sql`now()`))).orderBy(asc(s.communityInvitations.createdAt)).limit(100);
-  return { person, memberships, invitations };
+  return withActor(db, person.id, async tx => {
+    const memberships = await tx.select({ id: s.communities.id, name: s.communities.name,
+      shortName: s.communities.shortName, status: s.personCommunityMemberships.status,
+      canAdmin: communityAdminAccess(person.id, s.communities.id) })
+      .from(s.personCommunityMemberships).innerJoin(s.communities, eq(s.communities.id, s.personCommunityMemberships.communityId))
+      .where(and(eq(s.personCommunityMemberships.personId, person.id), eq(s.communities.status, "active")))
+      .orderBy(asc(s.communities.name)).limit(100);
+    const invitations = await tx.select({ id: s.communityInvitations.id, communityName: s.communities.name,
+      expiresAt: s.communityInvitations.expiresAt }).from(s.communityInvitations)
+      .innerJoin(s.communities, eq(s.communities.id, s.communityInvitations.communityId)).where(and(
+        eq(s.communityInvitations.recipientId, person.id), eq(s.communities.status, "active"),
+        isNull(s.communityInvitations.acceptedAt), isNull(s.communityInvitations.revokedAt),
+        gt(s.communityInvitations.expiresAt, sql`now()`))).orderBy(asc(s.communityInvitations.createdAt)).limit(100);
+    return { person, memberships, invitations };
+  });
 }
 
 export async function loadDirectory(communityId: string, after?: string) {

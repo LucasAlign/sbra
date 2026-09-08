@@ -153,11 +153,23 @@ restricted role; admin transfer + audit covered by integration tests.
   restricted role, that a person cannot edit another's profile or write with no
   context, while reads and own-row edits still work. Verified: tsc clean,
   `test:network` 17/17, `test:network:integration` 5/5.
-- **Remaining in M1:** extend RLS table-by-table (identities, grants,
-  memberships, invitations, audit — see the RLS doc's follow-up list), then
-  private import staging + verified claims (operator vouch; disputes to the
-  community admin). Import provenance retention is the one open decision, and it
-  only gates the import-staging piece.
+- **RLS extended across the relational graph** (migration
+  [`0004`](../drizzle/network/0004_rls_relational.sql)): memberships, role grants,
+  invitations, org/community links, affiliations, organizations, the audit log,
+  and the catalog are all under membership-scoped policies. Cross-table admin
+  checks use `SECURITY DEFINER` helpers to avoid policy recursion; every runtime
+  path in `repository.ts`, `membership.ts`, and the workspace loader now runs
+  through `withActor`, and the integration suites provision fixtures via the
+  privileged owner connection. A direct negative test
+  ([`rls-relational.integration.test.ts`](../lib/db/rls-relational.integration.test.ts))
+  proves that raw queries omitting the app's WHERE clauses still cannot cross
+  tenant boundaries. `person_identities` is the one table deferred (login reads it
+  before an actor context exists — see the RLS doc). Verified: tsc clean,
+  `test:network` 17/17, `test:network:integration` 6/6.
+- **Remaining in M1:** private import staging + verified claims (operator vouch;
+  disputes to the community admin), and — as a smaller follow-up — locking down
+  `person_identities` via a privileged login path. Import provenance retention is
+  the one open decision, and it only gates the import-staging piece.
 
 ---
 

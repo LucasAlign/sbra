@@ -30,6 +30,9 @@ test("Postgres Discovery + Organizations adapters: scoped directory and gated ed
     target.username = "collab_runtime"; target.password = "test-runtime-only";
     client = postgres(target.toString(), { max: 4 });
     const db = drizzle(client, { schema });
+    // Fixtures via the privileged owner connection; adapter operations run as the
+    // restricted runtime role.
+    const adminDb = drizzle(admin, { schema });
     const identity = new PostgresIdentityAccess(db);
     const directory = new PostgresDiscoveryPublishing(db);
     const orgs = new PostgresOrganizationsMembership(db);
@@ -40,17 +43,17 @@ test("Postgres Discovery + Organizations adapters: scoped directory and gated ed
     const net = `net-${crypto.randomUUID()}`;
     const community = `c-${crypto.randomUUID()}`;
     const org = `org-${crypto.randomUUID()}`;
-    await db.insert(schema.networks).values({ id: net, slug: net, name: "Net" });
-    await db.insert(schema.organizations).values([
+    await adminDb.insert(schema.networks).values({ id: net, slug: net, name: "Net" });
+    await adminDb.insert(schema.organizations).values([
       { id: "op-" + net, name: "Operator", kind: "association" },
       { id: org, name: "Brightside Bakery", kind: "business" },
     ]);
-    await db.insert(schema.communities).values({ id: community, networkId: net, operatorId: "op-" + net, slug: community, name: "C", shortName: "C", kind: "organizational", status: "active" });
-    await db.insert(schema.personCommunityMemberships).values([
+    await adminDb.insert(schema.communities).values({ id: community, networkId: net, operatorId: "op-" + net, slug: community, name: "C", shortName: "C", kind: "organizational", status: "active" });
+    await adminDb.insert(schema.personCommunityMemberships).values([
       { personId: owner.personId, communityId: community, status: "active" },
       { personId: member.personId, communityId: community, status: "active" },
     ]);
-    await db.insert(schema.organizationCommunityMemberships).values({ organizationId: org, communityId: community, status: "active" });
+    await adminDb.insert(schema.organizationCommunityMemberships).values({ organizationId: org, communityId: community, status: "active" });
 
     // Directory read through the adapter: active members see the org, public fields only.
     const listing = await directory.readDirectory(member, community);
@@ -62,8 +65,8 @@ test("Postgres Discovery + Organizations adapters: scoped directory and gated ed
     // ModuleError — unifying the error class across adapters is a later cleanup.)
     await assert.rejects(orgs.editOrganizationDescription(member, org, "membership is not ownership"));
 
-    await db.insert(schema.organizationAffiliations).values({ personId: owner.personId, organizationId: org, status: "active" });
-    await db.insert(schema.roleGrants).values({ id: `g-${crypto.randomUUID()}`, personId: owner.personId, organizationId: org, role: "business_admin", grantedBy: owner.personId });
+    await adminDb.insert(schema.organizationAffiliations).values({ personId: owner.personId, organizationId: org, status: "active" });
+    await adminDb.insert(schema.roleGrants).values({ id: `g-${crypto.randomUUID()}`, personId: owner.personId, organizationId: org, role: "business_admin", grantedBy: owner.personId });
     await orgs.editOrganizationDescription(owner, org, "Fresh bread daily");
     assert.equal((await directory.readDirectory(member, community)).organizations[0].description, "Fresh bread daily");
   } finally {

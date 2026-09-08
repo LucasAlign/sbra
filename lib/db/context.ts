@@ -19,7 +19,18 @@ type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 export function withActor<T>(db: Database, personId: string, work: (tx: Transaction) => Promise<T>): Promise<T> {
   if (!personId) throw new Error("An actor is required for a scoped transaction.");
   return db.transaction(async tx => {
-    await tx.execute(sql`select set_config('collab.person_id', ${personId}, true)`);
+    await setActor(tx, personId);
     return work(tx);
   });
+}
+
+/**
+ * Set the actor on a transaction that is already open (e.g. one a data-access
+ * function starts itself). Same transaction-local, pool-safe guarantee as
+ * `withActor`; use this when you manage the transaction and `withActor` when you
+ * don't.
+ */
+export async function setActor(tx: Transaction, personId: string): Promise<void> {
+  if (!personId) throw new Error("An actor is required for a scoped transaction.");
+  await tx.execute(sql`select set_config('collab.person_id', ${personId}, true)`);
 }

@@ -3,6 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type * as fullSchema from "../db/schema";
 import * as s from "../db/network-schema";
+import { setActor, withActor } from "../db/context";
 import { boundedText } from "./identity";
 
 type Database = PostgresJsDatabase<typeof fullSchema>;
@@ -47,6 +48,7 @@ async function audit(tx: Transaction, communityId: string, actorId: string, targ
 export async function invitePerson(db: Database, actorId: string, communityId: string, recipientId: string) {
   boundedText(recipientId, 200);
   return db.transaction(async tx => {
+    await setActor(tx, actorId);
     await lockCommunity(tx, communityId); await requireAdmin(tx, actorId, communityId);
     // Only a person with a verified provider identity can receive an invitation.
     const [recipient] = await tx.select({ id: s.personIdentities.personId }).from(s.personIdentities)
@@ -70,6 +72,7 @@ export async function invitePerson(db: Database, actorId: string, communityId: s
 export async function acceptInvitation(db: Database, personId: string, invitationId: string) {
   boundedText(invitationId, 200);
   return db.transaction(async tx => {
+    await setActor(tx, personId);
     const [reference] = await tx.select({ communityId: s.communityInvitations.communityId }).from(s.communityInvitations)
       .where(and(eq(s.communityInvitations.id, invitationId), eq(s.communityInvitations.recipientId, personId)));
     if (!reference) throw new Error("Invitation unavailable.");
@@ -78,7 +81,13 @@ export async function acceptInvitation(db: Database, personId: string, invitatio
       eq(s.communityInvitations.recipientId, personId), isNull(s.communityInvitations.revokedAt),
       isNull(s.communityInvitations.acceptedAt), gt(s.communityInvitations.expiresAt, sql`now()`))).for("update");
     if (!invitation) throw new Error("Invitation unavailable or expired.");
-    await requireAdmin(tx, invitation.issuedBy, invitation.communityId);
+    // The accepter (whose actor context is set) must confirm the issuer is still
+    // an admin, but row-level security hides the issuer's grants from a
+    // non-admin. This SECURITY DEFINER helper performs the same lock-and-check as
+    // requireAdmin for the issuer, bypassing RLS for that integrity read only.
+    const issuerCheck = await tx.execute(
+      sql`select collab_person_is_admin_locked(${invitation.issuedBy}, ${invitation.communityId}) as ok`);
+    if (!(issuerCheck as unknown as { ok: boolean }[])[0]?.ok) throw new Error("Invitation unavailable or expired.");
     const [membership] = await tx.select().from(s.personCommunityMemberships).where(and(
       eq(s.personCommunityMemberships.personId, personId), eq(s.personCommunityMemberships.communityId, invitation.communityId))).for("update");
     if (membership?.status === "suspended") throw new Error("Contact the community administrator to restore your membership.");
@@ -93,6 +102,7 @@ export async function acceptInvitation(db: Database, personId: string, invitatio
 export async function revokeInvitation(db: Database, actorId: string, communityId: string, invitationId: string) {
   boundedText(invitationId, 200);
   await db.transaction(async tx => {
+    await setActor(tx, actorId);
     await lockCommunity(tx, communityId); await requireAdmin(tx, actorId, communityId);
     const [invitation] = await tx.update(s.communityInvitations).set({ revokedAt: sql`now()` }).where(and(
       eq(s.communityInvitations.id, invitationId), eq(s.communityInvitations.communityId, communityId),
@@ -106,6 +116,7 @@ export async function changeMembership(db: Database, actorId: string, communityI
   boundedText(personId, 200);
   if (status !== "active" && status !== "suspended") throw new Error("Invalid membership status.");
   await db.transaction(async tx => {
+    await setActor(tx, actorId);
     await lockCommunity(tx, communityId); await requireAdmin(tx, actorId, communityId);
     // This workflow manages members, not administrative appointments. It cannot
     // strand a community by suspending its final admin or resurrect old grants.
@@ -128,6 +139,7 @@ export async function transferAdministrator(db: Database, actorId: string, commu
   boundedText(successorId, 200);
   if (successorId === actorId) throw new Error("Choose a different member to receive administration.");
   await db.transaction(async tx => {
+    await setActor(tx, actorId);
     // The community lock serializes admin operations; requireAdmin confirms the
     // initiator still holds an unexpired grant under that lock.
     await lockCommunity(tx, communityId); await requireAdmin(tx, actorId, communityId);
@@ -156,26 +168,30 @@ export async function transferAdministrator(db: Database, actorId: string, commu
 export async function readAudit(db: Database, actorId: string, communityId: string) {
   boundedText(communityId, 200);
   // Read-only and scoped: only an active administrator of an active community may
-  // view its audit trail. No locks — this never mutates.
-  const [allowed] = await db.select({ ok: communityAdminAccess(actorId, communityId) })
-    .from(s.communities).where(and(eq(s.communities.id, communityId), eq(s.communities.status, "active")));
-  if (!allowed?.ok) throw new Error("The audit log is not available to your account.");
-  const actor = alias(s.people, "audit_actor");
-  const target = alias(s.people, "audit_target");
-  const entries = await db.select({ id: s.membershipAudit.id, action: s.membershipAudit.action,
-    createdAt: s.membershipAudit.createdAt, actorName: actor.name, targetName: target.name })
-    .from(s.membershipAudit)
-    .leftJoin(actor, eq(actor.id, s.membershipAudit.actorId))
-    .innerJoin(target, eq(target.id, s.membershipAudit.targetId))
-    .where(eq(s.membershipAudit.communityId, communityId))
-    .orderBy(desc(s.membershipAudit.createdAt), desc(s.membershipAudit.id)).limit(100);
-  return { entries };
+  // view its audit trail. Runs under the actor context so RLS independently
+  // restricts the audit rows to this community's administrators.
+  return withActor(db, actorId, async tx => {
+    const [allowed] = await tx.select({ ok: communityAdminAccess(actorId, communityId) })
+      .from(s.communities).where(and(eq(s.communities.id, communityId), eq(s.communities.status, "active")));
+    if (!allowed?.ok) throw new Error("The audit log is not available to your account.");
+    const actor = alias(s.people, "audit_actor");
+    const target = alias(s.people, "audit_target");
+    const entries = await tx.select({ id: s.membershipAudit.id, action: s.membershipAudit.action,
+      createdAt: s.membershipAudit.createdAt, actorName: actor.name, targetName: target.name })
+      .from(s.membershipAudit)
+      .leftJoin(actor, eq(actor.id, s.membershipAudit.actorId))
+      .innerJoin(target, eq(target.id, s.membershipAudit.targetId))
+      .where(eq(s.membershipAudit.communityId, communityId))
+      .orderBy(desc(s.membershipAudit.createdAt), desc(s.membershipAudit.id)).limit(100);
+    return { entries };
+  });
 }
 
 export async function readMembershipAdmin(db: Database, actorId: string, communityId: string, after?: string) {
   boundedText(communityId, 200); if (after !== undefined) boundedText(after, 200);
   // Hold authority locks through all projections to prevent partial data on revocation.
   return db.transaction(async tx => {
+    await setActor(tx, actorId);
     await lockCommunity(tx, communityId); await requireAdmin(tx, actorId, communityId);
     const members = await tx.select({ id: s.people.id, name: s.people.name, status: s.personCommunityMemberships.status,
       administrator: sql<boolean>`exists (select 1 from ${s.roleGrants} g where g.person_id = ${s.people.id}
