@@ -72,25 +72,30 @@ within a milestone, tasks can be reordered.
 **Exit:** integration suite runs in CI on a disposable DB; one existing feature
 (profile name edit) flows through a module interface end-to-end in both adapters.
 
-**Progress (2026-09-08):** first increment landed.
+**Status: complete (2026-09-08).**
 - Module seam under [`lib/modules/`](../lib/modules): `types.ts` (public vs.
-  private response contracts), `identity-access.ts` (Identity & Access interface +
-  demo and Postgres adapters), `contracts.ts` (interfaces for the other four
-  modules, to be filled in their milestones), and `index.ts` (registry selecting
-  the adapter family by `isBackendEnabled()`).
-- Profile-name edit now flows through the module in both adapters: the demo
-  adapter (unit-tested) and the Postgres adapter (wired into
-  [`updatePersonName`](../app/network-actions.ts) via
-  [`requirePerson`](../lib/network/server.ts), integration-tested under the
-  restricted `collab_runtime` role).
+  private response contracts), `contracts.ts` (all five module interfaces),
+  `identity-access.ts`, `discovery-publishing.ts`, `organizations-membership.ts`
+  (each with a demo + Postgres adapter), a shared `demo-world.ts` for the demo
+  adapters, and `index.ts` (registry selecting the adapter family by
+  `isBackendEnabled()`). Relationships and Community Operations are interface-only
+  until their milestones (M6/M7).
+- Three existing features now flow through modules in both adapters:
+  **profile-name edit** (Identity & Access), **directory read** (Discovery &
+  Publishing), and **organization-description edit** (Organizations & Membership)
+  — [`network-actions.ts`](../app/network-actions.ts) calls the modules via
+  [`requirePerson`](../lib/network/server.ts). Demo adapters are unit-tested;
+  Postgres adapters are integration-tested under the restricted `collab_runtime`
+  role.
 - Dev-DB runway: [`docs/local-postgres.md`](./local-postgres.md), a CI workflow
   ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) that runs typecheck
   + both suites against a disposable Postgres service, and `COLLAB_TEST_DATABASE_URL`
   documented in [`.env.example`](../.env.example). Verified locally: typecheck
-  clean, `test:network` 12/12, `test:network:integration` 2/2 on a throwaway DB.
-- **Remaining in M0:** migrate the next existing feature (directory read /
-  organization edit) behind the Discovery & Publishing and Organizations &
-  Membership adapters to prove the seam beyond identity.
+  clean, `test:network` 17/17, `test:network:integration` 3/3 on a throwaway DB.
+- **Follow-up (not blocking):** unify the error class across adapters (the demo
+  adapters raise `ModuleError`; the Postgres adapters currently surface the
+  legacy repository's plain `Error`) when the remaining repository logic moves
+  behind the modules.
 
 ---
 
@@ -275,7 +280,10 @@ monitoring clean; prototype/seed mode removed from the entry point.
 
 ## Immediate next step
 
-Start **M0** (domain seams + local Postgres runway). It unblocks every later
-milestone, is low-risk, and makes the integration suite runnable in CI so all
-subsequent backend work is verifiable. In parallel, I need answers to the M1/M2
-policy questions above to keep the critical path moving.
+**M0 is complete.** Start **M1** (finish Phase 0 hardening: administrator
+transfer, audit coverage + viewer, row-level security under `collab_runtime`, and
+private import staging). This is the last work before real tenant data can land.
+
+To keep the critical path moving, M1/M2 need two policy answers:
+- **Profile-claim dispute owner & process** (gates M1).
+- **Business-claim verification bar for MVP** (gates M2).

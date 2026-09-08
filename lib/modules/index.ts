@@ -8,16 +8,25 @@
 import { isBackendEnabled } from "../backend";
 import { getDb } from "../db/client";
 import { DemoIdentityAccess, PostgresIdentityAccess, type IdentityAccessModule } from "./identity-access";
+import { DemoDiscoveryPublishing, PostgresDiscoveryPublishing } from "./discovery-publishing";
+import { DemoOrganizationsMembership, PostgresOrganizationsMembership } from "./organizations-membership";
+import type { DiscoveryPublishingModule, OrganizationsMembershipModule } from "./contracts";
+import { createDemoWorld, type DemoWorld } from "./demo-world";
+import { DEMO_ACTOR_ID, DEMO_IDENTITY } from "./ids";
 import { ModuleError, type ModuleMode } from "./types";
 
 export function moduleMode(): ModuleMode {
   return isBackendEnabled() ? "postgres" : "demo";
 }
 
-// A single demo person represents the signed-in actor in seed mode so the
-// profile-name edit round-trips without a database. Seeded here; per-process.
-export const DEMO_ACTOR_ID = "demo-person";
-const DEMO_IDENTITY = { provider: "demo", subject: "demo" };
+// One shared demo world backs every demo adapter so seed mode is internally
+// consistent (the actor who admins a business also sees it in the directory).
+// Per-process; rebuilt on reset.
+let demoWorld: DemoWorld | null = null;
+function world(): DemoWorld {
+  if (!demoWorld) demoWorld = createDemoWorld();
+  return demoWorld;
+}
 
 let demoIdentityAccess: DemoIdentityAccess | null = null;
 function getDemoIdentityAccess(): DemoIdentityAccess {
@@ -32,15 +41,29 @@ function getDemoIdentityAccess(): DemoIdentityAccess {
 /** Reset demo-adapter state. Test-only. */
 export function resetDemoModules(): void {
   demoIdentityAccess = null;
+  demoWorld = null;
+}
+
+function db() {
+  const handle = getDb();
+  if (!handle) throw new ModuleError("The community service is not configured.");
+  return handle;
 }
 
 export function identityAccess(): IdentityAccessModule {
-  if (moduleMode() === "demo") return getDemoIdentityAccess();
-  const db = getDb();
-  if (!db) throw new ModuleError("The community service is not configured.");
-  return new PostgresIdentityAccess(db);
+  return moduleMode() === "demo" ? getDemoIdentityAccess() : new PostgresIdentityAccess(db());
+}
+
+export function discoveryPublishing(): DiscoveryPublishingModule {
+  return moduleMode() === "demo" ? new DemoDiscoveryPublishing(world()) : new PostgresDiscoveryPublishing(db());
+}
+
+export function organizationsMembership(): OrganizationsMembershipModule {
+  return moduleMode() === "demo" ? new DemoOrganizationsMembership(world()) : new PostgresOrganizationsMembership(db());
 }
 
 export { ModuleError } from "./types";
+export { DEMO_ACTOR_ID } from "./ids";
 export type { ModuleActor, PrivateProfile, PublicProfile, ModuleMode } from "./types";
 export type { IdentityAccessModule, ProviderIdentity } from "./identity-access";
+export type { DiscoveryPublishingModule, OrganizationsMembershipModule } from "./contracts";

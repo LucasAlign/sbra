@@ -3,8 +3,7 @@
 import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import * as s from "@/lib/db/network-schema";
 import { requirePerson } from "@/lib/network/server";
-import { identityAccess } from "@/lib/modules";
-import { readDirectory, editOrganizationDescription } from "@/lib/network/repository";
+import { identityAccess, discoveryPublishing, organizationsMembership } from "@/lib/modules";
 import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin } from "@/lib/network/membership";
 
 export async function loadWorkspace() {
@@ -25,8 +24,8 @@ export async function loadWorkspace() {
 }
 
 export async function loadDirectory(communityId: string, after?: string) {
-  const { db, person } = await requirePerson();
-  return readDirectory(db, person.id, communityId, after);
+  const { actor } = await requirePerson();
+  return discoveryPublishing().readDirectory(actor, communityId, after);
 }
 
 export async function updatePersonName(name: string) {
@@ -35,8 +34,8 @@ export async function updatePersonName(name: string) {
 }
 
 export async function updateOrganizationDescription(organizationId: string, description: string) {
-  const { db, person } = await requirePerson();
-  return editOrganizationDescription(db, person.id, organizationId, description);
+  const { actor } = await requirePerson();
+  return organizationsMembership().editOrganizationDescription(actor, organizationId, description);
 }
 
 export async function createCommunityInvitation(communityId: string, recipientId: string) {
