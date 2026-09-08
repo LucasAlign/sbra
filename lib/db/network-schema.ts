@@ -97,4 +97,4 @@ export const membershipAudit = pgTable("membership_audit", {
   targetId: text("target_id").notNull().references(() => people.id),
   action: text("action").notNull(), createdAt: createdAt(),
 }, t => [index().on(t.communityId, t.createdAt), check("membership_audit_action", sql`${t.action} in
-  ('invitation.created', 'invitation.revoked', 'invitation.accepted', 'membership.suspended', 'membership.restored', 'community.provisioned')`)]);
+  ('invitation.created', 'invitation.revoked', 'invitation.accepted', 'membership.suspended', 'membership.restored', 'community.provisioned', 'administrator.transferred')`)]);

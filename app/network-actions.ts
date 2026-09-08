@@ -4,7 +4,7 @@ import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import * as s from "@/lib/db/network-schema";
 import { requirePerson } from "@/lib/network/server";
 import { identityAccess, discoveryPublishing, organizationsMembership } from "@/lib/modules";
-import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin } from "@/lib/network/membership";
+import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin, transferAdministrator, readAudit } from "@/lib/network/membership";
 
 export async function loadWorkspace() {
   const { db, person } = await requirePerson();
@@ -61,4 +61,14 @@ export async function setCommunityMembership(communityId: string, targetPersonId
 export async function loadMembershipAdmin(communityId: string, after?: string) {
   const { db, person } = await requirePerson();
   return readMembershipAdmin(db, person.id, communityId, after);
+}
+
+export async function transferCommunityAdministrator(communityId: string, successorId: string) {
+  const { db, person } = await requirePerson();
+  return transferAdministrator(db, person.id, communityId, successorId);
+}
+
+export async function loadCommunityAudit(communityId: string) {
+  const { db, person } = await requirePerson();
+  return readAudit(db, person.id, communityId);
 }

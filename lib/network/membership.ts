@@ -1,4 +1,5 @@
-import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type * as fullSchema from "../db/schema";
 import * as s from "../db/network-schema";
@@ -121,6 +122,54 @@ export async function changeMembership(db: Database, actorId: string, communityI
       isNull(s.communityInvitations.acceptedAt), isNull(s.communityInvitations.revokedAt)));
     await audit(tx, communityId, actorId, personId, status === "active" ? "membership.restored" : "membership.suspended");
   });
+}
+
+export async function transferAdministrator(db: Database, actorId: string, communityId: string, successorId: string) {
+  boundedText(successorId, 200);
+  if (successorId === actorId) throw new Error("Choose a different member to receive administration.");
+  await db.transaction(async tx => {
+    // The community lock serializes admin operations; requireAdmin confirms the
+    // initiator still holds an unexpired grant under that lock.
+    await lockCommunity(tx, communityId); await requireAdmin(tx, actorId, communityId);
+    // The successor must already be an active member of this community. Locking
+    // their row prevents a concurrent suspension from racing the appointment.
+    const [membership] = await tx.select({ status: s.personCommunityMemberships.status })
+      .from(s.personCommunityMemberships).where(and(
+        eq(s.personCommunityMemberships.personId, successorId),
+        eq(s.personCommunityMemberships.communityId, communityId))).for("update");
+    if (membership?.status !== "active") throw new Error("The successor must be an active member of this community.");
+    // Grant the successor an admin role before revoking the initiator's, so the
+    // community is never left without an administrator. Skip if they already hold one.
+    const [existing] = await tx.select({ id: s.roleGrants.id }).from(s.roleGrants).where(and(
+      eq(s.roleGrants.personId, successorId), eq(s.roleGrants.communityId, communityId),
+      eq(s.roleGrants.role, "community_admin"), isNull(s.roleGrants.revokedAt))).for("update");
+    if (!existing) await tx.insert(s.roleGrants).values({ id: crypto.randomUUID(), personId: successorId,
+      communityId, role: "community_admin", grantedBy: actorId });
+    // Revoke the initiator's active community_admin grant(s) for this community.
+    await tx.update(s.roleGrants).set({ revokedAt: sql`now()` }).where(and(
+      eq(s.roleGrants.personId, actorId), eq(s.roleGrants.communityId, communityId),
+      eq(s.roleGrants.role, "community_admin"), isNull(s.roleGrants.revokedAt)));
+    await audit(tx, communityId, actorId, successorId, "administrator.transferred");
+  });
+}
+
+export async function readAudit(db: Database, actorId: string, communityId: string) {
+  boundedText(communityId, 200);
+  // Read-only and scoped: only an active administrator of an active community may
+  // view its audit trail. No locks — this never mutates.
+  const [allowed] = await db.select({ ok: communityAdminAccess(actorId, communityId) })
+    .from(s.communities).where(and(eq(s.communities.id, communityId), eq(s.communities.status, "active")));
+  if (!allowed?.ok) throw new Error("The audit log is not available to your account.");
+  const actor = alias(s.people, "audit_actor");
+  const target = alias(s.people, "audit_target");
+  const entries = await db.select({ id: s.membershipAudit.id, action: s.membershipAudit.action,
+    createdAt: s.membershipAudit.createdAt, actorName: actor.name, targetName: target.name })
+    .from(s.membershipAudit)
+    .leftJoin(actor, eq(actor.id, s.membershipAudit.actorId))
+    .innerJoin(target, eq(target.id, s.membershipAudit.targetId))
+    .where(eq(s.membershipAudit.communityId, communityId))
+    .orderBy(desc(s.membershipAudit.createdAt), desc(s.membershipAudit.id)).limit(100);
+  return { entries };
 }
 
 export async function readMembershipAdmin(db: Database, actorId: string, communityId: string, after?: string) {

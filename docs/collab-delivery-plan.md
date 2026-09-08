@@ -120,6 +120,30 @@ within a milestone, tasks can be reordered.
 **Exit:** isolation acceptance scenarios (architecture §6) pass against the
 restricted role; admin transfer + audit covered by integration tests.
 
+**Progress (2026-09-08):** administrator transfer + audit landed.
+- `transferAdministrator` in [`lib/network/membership.ts`](../lib/network/membership.ts):
+  under the community lock it grants the successor (an active member) a
+  `community_admin` role *before* revoking the initiator's, so the community is
+  never left without an admin; the transfer is audited. Guards: no self-transfer,
+  successor must be an active member, initiator must be an admin, and grants are
+  idempotent (no duplicates on re-appointment). Exposed as
+  `transferCommunityAdministrator` and surfaced in
+  [`community-membership-admin.tsx`](../components/community-membership-admin.tsx).
+- Audit: new `administrator.transferred` action; migration
+  [`0002`](../drizzle/network/0002_abnormal_sphinx.sql) makes `membership_audit`
+  append-only via a BEFORE UPDATE/DELETE trigger (no role, `collab_runtime`
+  included, can rewrite history). `readAudit` gives admins a scoped, read-only
+  view (100 most recent), wired to a `loadCommunityAudit` action and an audit-log
+  panel in the admin UI.
+- Integration test [`admin-transfer.integration.test.ts`](../lib/network/admin-transfer.integration.test.ts)
+  covers the transfer invariants, last-admin protection, audit contents, viewer
+  scoping, and DB-level immutability, all under the restricted role. Verified:
+  tsc clean, `test:network` 17/17, `test:network:integration` 4/4.
+- **Remaining in M1:** row-level security under a restricted runtime role
+  (transaction-local context, pool-safe) with a separate privileged provisioning
+  path; private import staging + verified claims. Row-level security and import
+  staging still need the profile-claim dispute-owner decision before they ship.
+
 ---
 
 ### M2 — Canonical business claiming & profiles (Phase 1 begins)
