@@ -20,7 +20,12 @@ test("Postgres: identities, constraints, directory isolation, and grant revocati
   try {
     await migrate(drizzle(admin), { migrationsFolder: "./drizzle/network" });
     await migrate(drizzle(admin), { migrationsFolder: "./drizzle/network" });
-    await admin`create role collab_runtime login password 'test-runtime-only' nosuperuser nobypassrls`;
+    // Idempotent so the suite re-runs against the same disposable container.
+    await admin`do $$ begin
+      if not exists (select from pg_roles where rolname = 'collab_runtime') then
+        create role collab_runtime login password 'test-runtime-only' nosuperuser nobypassrls;
+      end if;
+    end $$`;
     await admin`grant usage on schema public to collab_runtime`;
     await admin`grant select, insert, update, delete on all tables in schema public to collab_runtime`;
     target.username = "collab_runtime"; target.password = "test-runtime-only";

@@ -3,7 +3,7 @@
 import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import * as s from "@/lib/db/network-schema";
 import { requirePerson } from "@/lib/network/server";
-import { boundedText } from "@/lib/network/identity";
+import { identityAccess } from "@/lib/modules";
 import { readDirectory, editOrganizationDescription } from "@/lib/network/repository";
 import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin } from "@/lib/network/membership";
 
@@ -30,9 +30,8 @@ export async function loadDirectory(communityId: string, after?: string) {
 }
 
 export async function updatePersonName(name: string) {
-  const value = boundedText(name, 200);
-  const { db, person } = await requirePerson();
-  await db.update(s.people).set({ name: value }).where(eq(s.people.id, person.id));
+  const { actor } = await requirePerson();
+  await identityAccess().updateProfileName(actor, name);
 }
 
 export async function updateOrganizationDescription(organizationId: string, description: string) {

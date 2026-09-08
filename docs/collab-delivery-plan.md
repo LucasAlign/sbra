@@ -72,6 +72,26 @@ within a milestone, tasks can be reordered.
 **Exit:** integration suite runs in CI on a disposable DB; one existing feature
 (profile name edit) flows through a module interface end-to-end in both adapters.
 
+**Progress (2026-09-08):** first increment landed.
+- Module seam under [`lib/modules/`](../lib/modules): `types.ts` (public vs.
+  private response contracts), `identity-access.ts` (Identity & Access interface +
+  demo and Postgres adapters), `contracts.ts` (interfaces for the other four
+  modules, to be filled in their milestones), and `index.ts` (registry selecting
+  the adapter family by `isBackendEnabled()`).
+- Profile-name edit now flows through the module in both adapters: the demo
+  adapter (unit-tested) and the Postgres adapter (wired into
+  [`updatePersonName`](../app/network-actions.ts) via
+  [`requirePerson`](../lib/network/server.ts), integration-tested under the
+  restricted `collab_runtime` role).
+- Dev-DB runway: [`docs/local-postgres.md`](./local-postgres.md), a CI workflow
+  ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) that runs typecheck
+  + both suites against a disposable Postgres service, and `COLLAB_TEST_DATABASE_URL`
+  documented in [`.env.example`](../.env.example). Verified locally: typecheck
+  clean, `test:network` 12/12, `test:network:integration` 2/2 on a throwaway DB.
+- **Remaining in M0:** migrate the next existing feature (directory read /
+  organization edit) behind the Discovery & Publishing and Organizations &
+  Membership adapters to prove the seam beyond identity.
+
 ---
 
 ### M1 — Finish Phase 0 hardening
