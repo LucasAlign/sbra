@@ -1482,6 +1482,7 @@ export function SBRAApp() {
         {activeView === "directory" && (
           <DirectoryView
             businesses={filteredBusinesses}
+            savingsBusinesses={businesses}
             membersByBusiness={membersByBusiness}
             categories={categories}
             categoryFilter={categoryFilter}
@@ -2175,6 +2176,7 @@ function AttachmentPreview({ attachment }: { attachment: PostAttachment }) {
 
 function DirectoryView({
   businesses,
+  savingsBusinesses,
   membersByBusiness,
   categories,
   categoryFilter,
@@ -2185,6 +2187,7 @@ function DirectoryView({
   spanish = false
 }: {
   businesses: Business[];
+  savingsBusinesses: Business[];
   membersByBusiness: Map<string, Member[]>;
   categories: string[];
   categoryFilter: string;
@@ -2194,8 +2197,14 @@ function DirectoryView({
   onOpenBusiness: (business: Business) => void;
   spanish?: boolean;
 }) {
+  const [offersOnly, setOffersOnly] = useState(false);
+  const visibleBusinesses = offersOnly ? businesses.filter((business) => business.memberOffer) : businesses;
+
   return (
     <section>
+      {!spanish && (
+        <SavingsShowcase businesses={savingsBusinesses} onBrowseOffers={() => setOffersOnly(true)} />
+      )}
       <div className="glass-panel toolbar">
         <input
           aria-label={spanish ? "Buscar negocios miembros" : "Search member businesses"}
@@ -2211,9 +2220,15 @@ function DirectoryView({
             </option>
           ))}
         </select>
+        {!spanish && (
+          <label className={offersOnly ? "toggle-chip active" : "toggle-chip"}>
+            <input type="checkbox" checked={offersOnly} onChange={(event) => setOffersOnly(event.target.checked)} />
+            Member offers
+          </label>
+        )}
       </div>
       <div className="biz-grid">
-        {businesses.map((business) => {
+        {visibleBusinesses.map((business) => {
           const primaryContact = (membersByBusiness.get(business.id) ?? []).find((member) => member.isOwner)
             ?? (membersByBusiness.get(business.id) ?? [])[0];
           const teamSize = membersByBusiness.get(business.id)?.length ?? 0;
@@ -2240,6 +2255,12 @@ function DirectoryView({
                 <span className="section-label">{spanish ? "Conexiones buscadas" : "Referrals wanted"}</span>
                 <p>{business.referralsWanted || (spanish ? "Abierto a nuevas conexiones." : "Open to all introductions.")}</p>
               </div>
+              {business.memberOffer && (
+                <div className="biz-member-offer">
+                  <span>Member savings</span>
+                  <p>{formatMemberOffer(business.memberOffer)}</p>
+                </div>
+              )}
               <div className="biz-card-foot">
                 <span>{primaryContact ? primaryContact.name : "Member"}</span>
                 <strong>{spanish ? "Ver perfil →" : "View profile →"}</strong>
@@ -2247,8 +2268,61 @@ function DirectoryView({
             </button>
           );
         })}
-        {businesses.length === 0 && <div className="empty-state">{spanish ? "No hay negocios que coincidan con estos filtros." : "No member businesses match these filters yet."}</div>}
+        {visibleBusinesses.length === 0 && <div className="empty-state">{spanish ? "No hay negocios que coincidan con estos filtros." : "No member businesses match these filters yet."}</div>}
       </div>
+    </section>
+  );
+}
+
+function formatMemberOffer(offer: string) {
+  return offer
+    .replace(/<br\s*\/?\s*>/gi, " — ")
+    .replace(/Monetary Value of Discount or Offer\*?:\s*/i, "")
+    .replace(/^Member Offer:\s*/i, "")
+    .trim();
+}
+
+function SavingsShowcase({ businesses, onBrowseOffers }: { businesses: Business[]; onBrowseOffers: () => void }) {
+  const offerBusinesses = businesses.filter((business) => business.memberOffer?.trim());
+  const maxPercent = offerBusinesses.reduce((highest, business) => {
+    const percentages = [...(business.memberOffer ?? "").matchAll(/(\d+)%/g)].map((match) => Number(match[1]));
+    return Math.max(highest, ...percentages, 0);
+  }, 0);
+  const namedAnnualValue = offerBusinesses.reduce((total, business) => {
+    const offer = business.memberOffer ?? "";
+    const monthly = offer.match(/\$(\d+(?:\.\d+)?)\s+monthly discount/i);
+    const statedValue = offer.match(/VALUE\s+\$(\d+(?:\.\d+)?)/i);
+    return total + (monthly ? Number(monthly[1]) * 12 : 0) + (statedValue ? Number(statedValue[1]) : 0);
+  }, 0);
+  const featuredIds = ["binary-it-solutions", "keystone-web", "small-for-small"];
+  const featuredOffers = featuredIds
+    .map((id) => offerBusinesses.find((business) => business.id === id))
+    .filter((business): business is Business => Boolean(business));
+
+  return (
+    <section className="glass-panel savings-showcase" aria-labelledby="savings-showcase-title">
+      <div className="savings-showcase-copy">
+        <p className="section-label">The value of membership</p>
+        <h3 id="savings-showcase-title">Your membership can pay you back.</h3>
+        <p>SBRA members help one another grow with preferred pricing, complimentary consultations, referral rewards, and services included at no cost.</p>
+        <button className="primary-button" type="button" onClick={onBrowseOffers}>Browse member offers</button>
+      </div>
+      <div className="savings-metrics" aria-label="Available member savings">
+        <span><strong>{offerBusinesses.length}</strong><small>published offers</small></span>
+        <span><strong>{maxPercent}%</strong><small>highest listed discount</small></span>
+        <span><strong>${namedAnnualValue.toLocaleString()}+</strong><small>in stated offer value</small></span>
+      </div>
+      <div className="featured-savings">
+        {featuredOffers.map((business) => (
+          <button type="button" className="featured-saving" key={business.id} onClick={onBrowseOffers}>
+            <span className="mini-avatar business-logo">
+              {business.logo ? <img src={business.logo} alt="" /> : initials(business.name)}
+            </span>
+            <span><strong>{business.name}</strong><small>{formatMemberOffer(business.memberOffer ?? "")}</small></span>
+          </button>
+        ))}
+      </div>
+      <p className="savings-disclaimer">Published member offers shown as listed. Eligibility, terms, and purchase requirements may apply; percentage-based savings depend on what you use.</p>
     </section>
   );
 }
