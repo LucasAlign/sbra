@@ -12,6 +12,8 @@ import {
   timestamp
 } from "drizzle-orm/pg-core";
 
+export * from "./network-schema";
+
 export const businesses = pgTable("businesses", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

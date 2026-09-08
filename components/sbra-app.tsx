@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { LoginIntroduction } from "./login-introduction";
 import {
   createLiveComment,
   createLiveEvent,
@@ -26,7 +27,6 @@ import {
 import type { Session } from "next-auth";
 import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
 import * as backendActions from "@/app/actions";
-import { isBackendEnabled } from "@/lib/backend";
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import { latinoBusinessSeed, latinoMemberSeed } from "@/lib/latino-directory";
@@ -292,7 +292,7 @@ function splitList(value: string) {
 export function SBRAApp() {
   const liveServices = useMemo(() => getLiveServices(), []);
   const backendEnabled = Boolean(liveServices);
-  const dbEnabled = useMemo(() => isBackendEnabled(), []);
+  const dbEnabled = false; // Live persistence is handled by NetworkWorkspace.
   // Session is fed in by <SessionBridge>, mounted only in backend mode so that
   // useSession() (and its /api/auth/session fetch) never runs in seed mode.
   const [session, setSession] = useState<Session | null>(null);
@@ -459,40 +459,6 @@ export function SBRAApp() {
       stopComments?.();
     };
   }, [liveServices, role]);
-
-  // When the real backend is enabled (NEXT_PUBLIC_BACKEND_ENABLED=1 + DATABASE_URL),
-  // replace the seed collections with live data from Postgres on mount.
-  useEffect(() => {
-    if (!dbEnabled) return;
-    let active = true;
-    void backendActions.bootstrap().then((data) => {
-      if (!active || !data) return;
-      setBusinesses(data.businesses);
-      setMembers(data.members);
-      setReferrals(data.referrals);
-      setEvents(data.events);
-      setRsvps(data.rsvps);
-      setPosts(data.posts);
-      setComments(data.comments);
-      setReactions(data.reactions);
-    });
-    return () => {
-      active = false;
-    };
-  }, [dbEnabled]);
-
-  // In backend/auth mode, a signed-in Auth.js session enters the app and is
-  // matched to a member by email (open self-signup lands as a generic member).
-  useEffect(() => {
-    if (!dbEnabled || role || !session?.user?.email) return;
-    const email = session.user.email.toLowerCase();
-    const matched = members.find((member) => member.email.toLowerCase() === email);
-    if (matched) {
-      setLiveProfile({ ...matched, uid: matched.id, role: "member" });
-    }
-    setRole("member");
-    setActiveView("community");
-  }, [dbEnabled, session, role, members]);
 
   const visibleNav = (isLatino ? latinoNavItems : navItems).filter((item) => !item.adminOnly || role === "admin");
   const primaryNav = visibleNav.filter((item) => primaryNavKeys.includes(item.key));
@@ -1151,9 +1117,9 @@ export function SBRAApp() {
       <main className="login-screen">
         <section className="glass-panel login-card">
           <h1 className="login-brand-lockup">
-            <img src="/berks-county-collab.png" alt="Berks County Collab" width={1254} height={1254} />
+            <img src="/collab-logo.png" alt="Collab — Your community. A wider connection." width={1254} height={1254} />
           </h1>
-          <h2 className="login-heading">Local networks. One community.</h2>
+          <h2 className="login-heading">Your chamber. A wider business network.</h2>
           <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
           <p className="login-copy">Loading your community...</p>
         </section>
@@ -1167,11 +1133,11 @@ export function SBRAApp() {
         {dbEnabled && <SessionBridge onSession={setSession} />}
         <section className="glass-panel login-card">
           <h1 className="login-brand-lockup">
-            <img src="/berks-county-collab.png" alt="Berks County Collab" width={1254} height={1254} />
+            <img src="/collab-logo.png" alt="Collab — Your community. A wider connection." width={1254} height={1254} />
           </h1>
-          <h2 className="login-heading">Your local business community, connected.</h2>
+          <h2 className="login-heading">Your chamber. A wider business network.</h2>
+          <LoginIntroduction />
           <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
-          <p className="tagline">Be Better. Grow Faster.</p>
           <p className="login-copy">{liveNote}</p>
           <div className="login-form">
             <div className="role-toggle" aria-label="Choose sign-in role">

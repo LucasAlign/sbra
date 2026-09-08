@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "community:provision": "tsx scripts/provision-community-admin.ts",
+    "test:network": "tsx --test lib/network/permissions.test.ts lib/network/identity.test.ts lib/network/legacy.test.ts",
+    "test:network:integration": "tsx --test lib/network/repository.integration.test.ts",
+    "db:network:generate": "drizzle-kit generate --config=drizzle.network.config.ts",
+    "db:network:migrate": "drizzle-kit migrate --config=drizzle.network.config.ts",
+    "db:network:seed": "tsx scripts/seed-network.ts",
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",

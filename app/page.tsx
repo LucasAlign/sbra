@@ -1,5 +1,7 @@
 import { SBRAApp } from "@/components/sbra-app";
+import { NetworkWorkspace } from "@/components/network-workspace";
+import { isBackendEnabled } from "@/lib/backend";
 
 export default function Home() {
-  return <SBRAApp />;
+  return isBackendEnabled() ? <NetworkWorkspace /> : <SBRAApp />;
 }

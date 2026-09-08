@@ -1,0 +1,7 @@
+.introduction { text-align: left; color: #142747; }
+.summary { font-size: 16px; line-height: 1.6; margin: 18px 0; }
+.benefits { display: grid; gap: 14px; margin: 22px 0; }
+.benefits > div { border-left: 3px solid #287487; padding-left: 14px; }
+.benefits dt { font-size: 15px; font-weight: 750; }
+.benefits dd { margin: 4px 0 0; font-size: 14px; line-height: 1.5; color: #496276; }
+.note { font-size: 13px; line-height: 1.6; color: #496276; margin: 18px 0; }
