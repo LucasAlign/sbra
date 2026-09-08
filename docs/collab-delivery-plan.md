@@ -116,7 +116,9 @@ within a milestone, tasks can be reordered.
   `source_records` / `external_entity_links` / `claim_requests` / `merge_history`;
   imports stay private, never assign ownership, never publish roster notes.
 
-**Needs a decision:** profile-claim dispute owner; import provenance retention.
+**Needs a decision:** ~~profile-claim dispute owner~~ (decided: the **community
+admin** of the community where the profile is listed reviews evidence and
+approves one claimant); import provenance retention (open).
 **Exit:** isolation acceptance scenarios (architecture §6) pass against the
 restricted role; admin transfer + audit covered by integration tests.
 
@@ -157,8 +159,10 @@ restricted role; admin transfer + audit covered by integration tests.
 - **Community listing overrides** (`community_listing_overrides`): local offer,
   description, visibility — without overwriting canonical fields.
 
-**Needs a decision:** what counts as sufficient claim verification for MVP
-(operator vouch vs. domain email vs. manual review).
+**Needs a decision:** ~~what counts as sufficient claim verification for MVP~~
+(decided: **operator vouch** — a community operator/admin manually confirms the
+person represents the business; domain-email and manual-review bars can be added
+later without changing the model).
 **Exit:** one person represents two businesses; a single profile edit shows in
 all listings while local overrides stay local (architecture acceptance scenario).
 
@@ -296,18 +300,21 @@ monitoring clean; prototype/seed mode removed from the entry point.
 | --- | --- |
 | Initial verified community operators (who's a real tenant at launch) | M8 |
 | Free vs. paid membership plans / dues model | M8 |
-| Business-claim verification bar for MVP | M2 |
-| Profile-claim dispute ownership & process | M1 |
+| ~~Business-claim verification bar for MVP~~ — **decided: operator vouch** | M2 |
+| ~~Profile-claim dispute ownership & process~~ — **decided: community admin decides** | M1 |
 | Who may publish to regional/network discovery | M9 |
 | Data retention periods & scoped export format | M8 |
 | AI opt-in defaults | M11 |
 
 ## Immediate next step
 
-**M0 is complete.** Start **M1** (finish Phase 0 hardening: administrator
-transfer, audit coverage + viewer, row-level security under `collab_runtime`, and
-private import staging). This is the last work before real tenant data can land.
+**M0 is complete; M1 admin transfer + audit are done.** The two gating policy
+decisions are answered: **community admin decides** profile-claim disputes, and
+**operator vouch** is the MVP business-claim verification bar.
 
-To keep the critical path moving, M1/M2 need two policy answers:
-- **Profile-claim dispute owner & process** (gates M1).
-- **Business-claim verification bar for MVP** (gates M2).
+Next in **M1**: row-level security under a restricted `collab_runtime` role
+(transaction-local, pool-safe context; separate privileged provisioning path),
+then private import staging + verified claims (built around operator vouch, with
+disputes routed to the community admin). Then **M2** (canonical business claiming)
+can begin. Import provenance retention is the one remaining open decision, and it
+only gates the import-staging piece.
