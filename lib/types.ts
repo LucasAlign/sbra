@@ -6,6 +6,7 @@ export type ViewKey =
   | "referrals"
   | "events"
   | "learn"
+  | "tools"
   | "support"
   | "profile"
   | "admin";
@@ -83,6 +84,7 @@ export type Referral = {
   closedValue?: number; // $ credited to the giver when closed_won
   thankYou?: string; // note from receiver to giver
   createdAt: number;
+  contactedAt?: number; // set when the receiver marks it contacted; resets staleness
   closedAt?: number;
 };
 
@@ -124,6 +126,7 @@ export type Member = {
   bio: string;
   isOwner: boolean;
   photo?: string;
+  pending?: boolean; // awaiting admin approval; undefined/false = active
 };
 
 export type CommunityPost = {
@@ -140,6 +143,8 @@ export type CommunityPost = {
   reactions: number;
   comments: number;
   createdAt?: number;
+  hidden?: boolean; // hidden from the member feed by a moderator
+  pinned?: boolean; // pinned to the top of the feed (admin broadcast)
 };
 
 export type ReactionType = "celebrate" | "support" | "insightful";
@@ -173,6 +178,9 @@ export type PostAttachment = {
   size?: number;
 };
 
+export const supportStatuses = ["Open", "In progress", "Resolved"] as const;
+export type SupportStatus = (typeof supportStatuses)[number];
+
 export type SupportRequest = {
   id: string;
   authorId?: string;
@@ -181,6 +189,8 @@ export type SupportRequest = {
   status: string;
   detail: string;
   createdAt?: number;
+  adminReply?: string; // staff response shown to the member
+  resolvedAt?: number;
 };
 
 export type Module = {
