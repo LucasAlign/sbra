@@ -12,6 +12,7 @@ import type * as fullSchema from "../db/schema";
 import * as s from "../db/network-schema";
 import { boundedText } from "../network/identity";
 import { resolvePerson } from "../network/repository";
+import { withActor } from "../db/context";
 import { ModuleActor, ModuleError, PrivateProfile } from "./types";
 
 type Database = PostgresJsDatabase<typeof fullSchema>;
@@ -52,8 +53,10 @@ export class PostgresIdentityAccess implements IdentityAccessModule {
 
   async updateProfileName(actor: ModuleActor, name: string): Promise<PrivateProfile> {
     const value = boundedText(name, 200);
-    const [row] = await this.db.update(s.people).set({ name: value })
-      .where(eq(s.people.id, actor.personId)).returning({ id: s.people.id, name: s.people.name });
+    // Run under the actor context so row-level security permits the own-row
+    // update and blocks any attempt to write another person's profile.
+    const [row] = await withActor(this.db, actor.personId, tx => tx.update(s.people).set({ name: value })
+      .where(eq(s.people.id, actor.personId)).returning({ id: s.people.id, name: s.people.name }));
     if (!row) throw new ModuleError("Your profile is not available. Please sign in again.");
     return row;
   }

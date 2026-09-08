@@ -141,10 +141,23 @@ restricted role; admin transfer + audit covered by integration tests.
   covers the transfer invariants, last-admin protection, audit contents, viewer
   scoping, and DB-level immutability, all under the restricted role. Verified:
   tsc clean, `test:network` 17/17, `test:network:integration` 4/4.
-- **Remaining in M1:** row-level security under a restricted runtime role
-  (transaction-local context, pool-safe) with a separate privileged provisioning
-  path; private import staging + verified claims. Row-level security and import
-  staging still need the profile-claim dispute-owner decision before they ship.
+- **Row-level security — foundation landed.** Pool-safe transaction-local actor
+  context in [`lib/db/context.ts`](../lib/db/context.ts) (`withActor`, via
+  `set_config(..., true)`); migration [`0003`](../drizzle/network/0003_rls_people.sql)
+  enables RLS on `people` (reads open, inserts for login, **updates locked to the
+  actor's own row**, deletes denied to the runtime role). The profile edit now
+  runs through `withActor`. The two-tier role model (privileged provisioning /
+  login vs. restricted `collab_runtime` app role) is documented in
+  [`docs/row-level-security.md`](./row-level-security.md). Integration test
+  [`rls.integration.test.ts`](../lib/db/rls.integration.test.ts) proves, under the
+  restricted role, that a person cannot edit another's profile or write with no
+  context, while reads and own-row edits still work. Verified: tsc clean,
+  `test:network` 17/17, `test:network:integration` 5/5.
+- **Remaining in M1:** extend RLS table-by-table (identities, grants,
+  memberships, invitations, audit — see the RLS doc's follow-up list), then
+  private import staging + verified claims (operator vouch; disputes to the
+  community admin). Import provenance retention is the one open decision, and it
+  only gates the import-staging piece.
 
 ---
 
