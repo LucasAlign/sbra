@@ -50,6 +50,20 @@
       "when": 1788922432170,
       "tag": "0006_rls_claims",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788950514261,
+      "tag": "0007_opportunities",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788950519029,
+      "tag": "0008_rls_opportunities",
+      "breakpoints": true
     }
   ]
 }

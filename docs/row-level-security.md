@@ -114,7 +114,19 @@ per-owner policies:
   so it reads through the `SECURITY DEFINER` `collab_lookup_identity`; the invite
   flow's recipient check goes through `collab_person_has_identity`. Both bypass
   RLS for exactly one existence read.
+- **`opportunities`, `opportunity_responses`** ([0008](../drizzle/network/0008_rls_opportunities.sql)):
+  an opportunity is selectable by its author, or by active members of the owning
+  community **once published** (`visibility = 'community'`); insert requires the
+  author be an active member; update is the author's. A response is selectable by
+  the responder, by the requester (the opportunity's author), or — only when
+  `shared` — by anyone who can see the opportunity; insert requires being able to
+  see it; update (including the `shared` flag) is the responder's. Two
+  `SECURITY DEFINER` audience helpers keep the response policies from re-entering
+  `opportunities`: `collab_opportunity_author(opp)` and
+  `collab_can_see_opportunity(opp)`. Net effect: responses are **private to
+  requester/responder unless shared**, and nothing leaks outside the opportunity's
+  published audience.
 
 Every runtime data path in `repository.ts`, `membership.ts`, `claims.ts`,
-`import-staging.ts`, and the workspace loader runs through `withActor`, so these
-policies apply to real traffic.
+`import-staging.ts`, `opportunities.ts`, and the workspace loader runs through
+`withActor`, so these policies apply to real traffic.

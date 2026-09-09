@@ -121,6 +121,71 @@ test("demo Claims: request -> admin vouch -> Business Admin grant", async () => 
   assert.equal(cleared.claims.length, 0);
 });
 
+// A third active member of the demo community, so response-audience scoping (a
+// fellow member who is neither requester nor responder) is observable.
+const third = { personId: "demo-person-sam", name: "Sam Member" };
+function worldWithThird() {
+  const world = createDemoWorld();
+  world.people.set(third.personId, { id: third.personId, name: third.name });
+  world.personMemberships.push({ personId: third.personId, communityId: DEMO_COMMUNITY_ID, status: "active" });
+  return world;
+}
+
+test("demo Opportunities: private until published, then visible to community members", async () => {
+  const world = worldWithThird();
+  const disc = new DemoDiscoveryPublishing(world);
+  const seen = (r: { opportunities: { id: string }[] }, id: string) => r.opportunities.some(o => o.id === id);
+
+  // Posting on behalf of an org you do not administer is rejected.
+  await assert.rejects(disc.postOpportunity(other, { communityId: DEMO_COMMUNITY_ID, kind: "need", title: "x", organizationId: "demo-brightside" }), ModuleError);
+  // Non-members cannot post.
+  await assert.rejects(disc.postOpportunity(stranger, { communityId: DEMO_COMMUNITY_ID, kind: "need", title: "x" }), ModuleError);
+
+  const { id } = await disc.postOpportunity(other, { communityId: DEMO_COMMUNITY_ID, kind: "need", title: "Need a printer", detail: "Flyers." });
+  // Private: only the author sees it.
+  assert.ok(seen(await disc.readOpportunities(other, DEMO_COMMUNITY_ID), id));
+  assert.ok(!seen(await disc.readOpportunities(actor, DEMO_COMMUNITY_ID), id));
+  assert.ok(!seen(await disc.readOpportunities(third, DEMO_COMMUNITY_ID), id));
+
+  // Only the author may publish.
+  await assert.rejects(disc.publishOpportunity(actor, id), ModuleError);
+  await disc.publishOpportunity(other, id);
+
+  // Published: members see it; a stranger never does.
+  assert.ok(seen(await disc.readOpportunities(actor, DEMO_COMMUNITY_ID), id));
+  assert.ok(seen(await disc.readOpportunities(third, DEMO_COMMUNITY_ID), id));
+  assert.ok(!seen(await disc.readOpportunities(stranger, DEMO_COMMUNITY_ID), id));
+});
+
+test("demo Opportunities: responses stay private to requester/responder unless shared", async () => {
+  const world = worldWithThird();
+  const disc = new DemoDiscoveryPublishing(world);
+  const has = (r: { responses: { id: string }[] }, id: string) => r.responses.some(x => x.id === id);
+  // Requester (other) posts and publishes; responder (actor) replies.
+  const { id: opp } = await disc.postOpportunity(other, { communityId: DEMO_COMMUNITY_ID, kind: "need", title: "Need a caterer" });
+  await disc.publishOpportunity(other, opp);
+  const { id: resp } = await disc.respondToOpportunity(actor, opp, "I cater events.");
+  // A stranger (outside the audience) cannot respond.
+  await assert.rejects(disc.respondToOpportunity(stranger, opp, "me"), ModuleError);
+
+  // Before sharing: responder and requester see it; a fellow member does not.
+  assert.ok(has(await disc.readResponses(actor, opp), resp));
+  assert.ok(has(await disc.readResponses(other, opp), resp));
+  assert.ok(!has(await disc.readResponses(third, opp), resp));
+
+  // Only the responder controls sharing.
+  await assert.rejects(disc.shareResponse(other, resp, true), ModuleError);
+  await disc.shareResponse(actor, resp, true);
+  // Shared: the fellow member now sees it; a stranger still does not.
+  assert.ok(has(await disc.readResponses(third, opp), resp));
+  assert.equal((await disc.readResponses(stranger, opp)).responses.length, 0);
+
+  // Re-responding edits the single response without changing its shared state.
+  const again = await disc.respondToOpportunity(actor, opp, "Updated: I cater events and meetings.");
+  assert.equal(again.id, resp);
+  assert.equal(world.responses.find(r => r.id === resp)?.shared, true);
+});
+
 test("demo Claims: only a community admin may review, and never their own claim", async () => {
   const world = createDemoWorld();
   const orgs = new DemoOrganizationsMembership(world);

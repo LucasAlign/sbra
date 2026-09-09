@@ -5,7 +5,7 @@
   "scripts": {
     "community:provision": "tsx scripts/provision-community-admin.ts",
     "test:network": "tsx --test lib/network/permissions.test.ts lib/network/identity.test.ts lib/network/legacy.test.ts lib/modules/identity-access.test.ts lib/modules/directory-and-orgs.test.ts",
-    "test:network:integration": "tsx --test --test-concurrency=1 lib/network/repository.integration.test.ts lib/network/admin-transfer.integration.test.ts lib/network/claims.integration.test.ts lib/network/import-staging.integration.test.ts lib/network/discovery.integration.test.ts lib/db/rls.integration.test.ts lib/db/rls-relational.integration.test.ts lib/modules/identity-access.integration.test.ts lib/modules/directory-and-orgs.integration.test.ts",
+    "test:network:integration": "tsx --test --test-concurrency=1 lib/network/repository.integration.test.ts lib/network/admin-transfer.integration.test.ts lib/network/claims.integration.test.ts lib/network/import-staging.integration.test.ts lib/network/discovery.integration.test.ts lib/network/opportunities.integration.test.ts lib/db/rls.integration.test.ts lib/db/rls-relational.integration.test.ts lib/modules/identity-access.integration.test.ts lib/modules/directory-and-orgs.integration.test.ts",
     "db:network:generate": "drizzle-kit generate --config=drizzle.network.config.ts",
     "db:network:migrate": "drizzle-kit migrate --config=drizzle.network.config.ts",
     "db:network:seed": "tsx scripts/seed-network.ts",

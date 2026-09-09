@@ -24,6 +24,14 @@ export type DemoClaim = {
   id: string; personId: string; organizationId: string; communityId: string;
   evidence: string; status: "pending" | "approved" | "rejected" | "withdrawn"; createdAt: Date;
 };
+export type DemoOpportunity = {
+  id: string; communityId: string; authorId: string; organizationId: string | null;
+  kind: "need" | "offer"; title: string; detail: string; geography: string;
+  status: "open" | "closed"; visibility: "private" | "community"; expiresAt: Date | null; createdAt: Date;
+};
+export type DemoResponse = {
+  id: string; opportunityId: string; authorId: string; body: string; shared: boolean; createdAt: Date;
+};
 
 export type DemoWorld = {
   people: Map<string, DemoPerson>;
@@ -35,6 +43,8 @@ export type DemoWorld = {
   grants: DemoGrant[];
   listingOverrides: DemoListingOverride[];
   claims: DemoClaim[];
+  opportunities: DemoOpportunity[];
+  responses: DemoResponse[];
 };
 
 const DEMO_OTHER_PERSON = "demo-person-jordan";
@@ -70,6 +80,8 @@ export function createDemoWorld(): DemoWorld {
     ],
     listingOverrides: [],
     claims: [],
+    opportunities: [],
+    responses: [],
   };
 }
 

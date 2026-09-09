@@ -54,14 +54,53 @@ export type DirectoryListing = PublicProfile & {
   description: string; kind: string; website: string; locations: string; serviceAreas: string; localOffer: string;
 };
 
-/** 3. Discovery & Publishing — authorized directory and published content. */
+/** A structured business need or offer (M4). */
+export type OpportunityKind = "need" | "offer";
+
+/** Fields to post a new opportunity. Private by default until published. */
+export type OpportunityInput = {
+  communityId: string; kind: OpportunityKind; title: string;
+  detail?: string; geography?: string; organizationId?: string | null; expiresAt?: Date | null;
+};
+
+/** An opportunity as an authorized viewer sees it. */
+export type Opportunity = {
+  id: string; communityId: string; authorId: string; authorName: string;
+  organizationId: string | null; organizationName: string | null;
+  kind: string; title: string; detail: string; geography: string;
+  status: string; visibility: string; expiresAt: Date | null; createdAt: Date; mine: boolean;
+};
+
+/** A response to an opportunity as an authorized viewer sees it. */
+export type OpportunityResponse = {
+  id: string; opportunityId: string; authorId: string; authorName: string;
+  body: string; shared: boolean; createdAt: Date; mine: boolean;
+};
+
+/** 3. Discovery & Publishing — authorized directory, opportunities & responses. */
 export interface DiscoveryPublishingModule {
   /** Paginated, audience-scoped directory of organizations for a community. */
   readDirectory(actor: ModuleActor, communityId: string, after?: string): Promise<{
     organizations: DirectoryListing[];
     nextCursor: string | null;
   }>;
-  // M4 adds: opportunities and responses with per-audience publication.
+  /** Post a structured need/offer in a community (private by default). */
+  postOpportunity(actor: ModuleActor, input: OpportunityInput): Promise<{ id: string }>;
+  /** Publish the actor's own opportunity to the owning community's members. */
+  publishOpportunity(actor: ModuleActor, opportunityId: string): Promise<void>;
+  /** Close the actor's own opportunity. */
+  closeOpportunity(actor: ModuleActor, opportunityId: string): Promise<void>;
+  /** Opportunities the actor may see in a community (their own + published ones). */
+  readOpportunities(actor: ModuleActor, communityId: string, after?: string): Promise<{
+    opportunities: Opportunity[];
+    nextCursor: string | null;
+  }>;
+  /** Respond to an opportunity the actor can see (one response per person). */
+  respondToOpportunity(actor: ModuleActor, opportunityId: string, body: string): Promise<{ id: string }>;
+  /** As the responder, share (or unshare) the actor's own response with the audience. */
+  shareResponse(actor: ModuleActor, responseId: string, shared: boolean): Promise<void>;
+  /** Responses the actor may see: their own, all as the requester, shared otherwise. */
+  readResponses(actor: ModuleActor, opportunityId: string): Promise<{ responses: OpportunityResponse[] }>;
 }
 
 /** 4. Relationships — member-driven connections, introductions, referrals (M6). */

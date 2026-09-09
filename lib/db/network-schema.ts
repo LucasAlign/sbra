@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, primaryKey, unique, check, foreignKey, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, primaryKey, unique, check, foreignKey, index } from "drizzle-orm/pg-core";
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const status = () => text("status", { enum: ["pending", "active", "suspended", "left"] }).notNull().default("pending");
@@ -176,3 +176,39 @@ export const mergeHistory = pgTable("merge_history", {
   createdAt: createdAt(),
 }, t => [check("merge_entity", sql`${t.entityType} in ('organization', 'person')`),
   check("merge_distinct", sql`${t.survivingId} <> ${t.mergedId}`)]);
+
+// --- Opportunities & requests (M4) -----------------------------------------
+// The core networking primitive: a structured business need ('need') or offer
+// ('offer'), authored in an owning community, optionally on behalf of a
+// represented organization. Private by default; publishing exposes it to the
+// owning community's active members ('community'). Responses stay private to the
+// requester (the opportunity author) and the responder unless the responder
+// shares theirs with that same audience.
+export const opportunities = pgTable("opportunities", {
+  id: text("id").primaryKey(),
+  communityId: text("community_id").notNull().references(() => communities.id),
+  authorId: text("author_id").notNull().references(() => people.id),
+  organizationId: text("organization_id").references(() => organizations.id),
+  kind: text("kind").notNull(),
+  title: text("title").notNull(),
+  detail: text("detail").notNull().default(""),
+  geography: text("geography").notNull().default(""),
+  status: text("status").notNull().default("open"),
+  visibility: text("visibility").notNull().default("private"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, t => [index().on(t.communityId, t.status), index().on(t.authorId),
+  check("opportunity_kind", sql`${t.kind} in ('need', 'offer')`),
+  check("opportunity_status", sql`${t.status} in ('open', 'closed')`),
+  check("opportunity_visibility", sql`${t.visibility} in ('private', 'community')`)]);
+
+// One response per person per opportunity (the responder edits their single
+// response, including whether it is shared beyond the requester).
+export const opportunityResponses = pgTable("opportunity_responses", {
+  id: text("id").primaryKey(),
+  opportunityId: text("opportunity_id").notNull().references(() => opportunities.id),
+  authorId: text("author_id").notNull().references(() => people.id),
+  body: text("body").notNull().default(""),
+  shared: boolean("shared").notNull().default(false),
+  createdAt: createdAt(),
+}, t => [unique().on(t.opportunityId, t.authorId), index().on(t.opportunityId)]);

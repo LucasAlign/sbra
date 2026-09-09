@@ -23,10 +23,10 @@ The plan's north star: **grow the backend app to feature parity with (and beyond
 the prototype, then cut over and retire seed mode.** The prototype stays as the
 live demo until the backend replaces it milestone by milestone.
 
-### Health snapshot (verified 2026-09-08)
+### Health snapshot (verified 2026-09-09)
 - `npx tsc --noEmit` — clean
-- `npm run test:network` — 21/21 pass
-- `npm run test:network:integration` — 9/9 pass against a disposable Postgres
+- `npm run test:network` — 23/23 pass
+- `npm run test:network:integration` — 10/10 pass against a disposable Postgres
   (`COLLAB_TEST_DATABASE_URL`); skipped otherwise
 - `npx next build` — clean (`/c/[slug]`, `/r/[slug]` server-rendered on demand)
 
@@ -280,6 +280,43 @@ paginates from Postgres with only allowlisted fields.
 **Exit:** a member posts an opportunity, another responds, and neither is visible
 outside its published audience.
 
+**Status: complete (2026-09-09).**
+- **Schema** (migration [`0007`](../drizzle/network/0007_opportunities.sql)):
+  `opportunities` (owning `community_id`, `author_id`, optional
+  `organization_id`, `kind` need/offer, `title`/`detail`/`geography`, `status`
+  open/closed, `visibility` private/community, `expires_at`) and
+  `opportunity_responses` (one per `opportunity_id` + `author_id`, `body`,
+  `shared`). The publication model is a `visibility` toggle: **private by
+  default**, and publishing flips it to `community` — the specific audience being
+  the owning community's active members.
+- **Logic** ([`lib/network/opportunities.ts`](../lib/network/opportunities.ts)):
+  `postOpportunity` (author must be an active member; a represented org must be one
+  they hold an active Business Admin grant for), `publishOpportunity` /
+  `closeOpportunity` (author only), `readOpportunities` (keyset-paginated,
+  RLS-scoped to what the actor may see), `respondToOpportunity` (one response per
+  person, only on an opportunity the actor can see), `shareResponse` (the
+  responder alone toggles sharing), and `readResponses`.
+- **RLS** (migration [`0008`](../drizzle/network/0008_rls_opportunities.sql), with
+  `collab_can_see_opportunity` / `collab_opportunity_author` SECURITY DEFINER
+  helpers): an opportunity is selectable by its author, or by active members once
+  published; insert/update are the author's. A response is selectable by the
+  responder, by the requester (opportunity author), or — only when `shared` — by
+  anyone who can see the opportunity; insert requires being able to see it;
+  update (including the shared flag) is the responder's. So a response is
+  **private to requester/responder unless shared**, and never leaks outside the
+  opportunity's audience.
+- Both adapter families implement it behind the **Discovery & Publishing** module
+  ([`lib/modules/discovery-publishing.ts`](../lib/modules/discovery-publishing.ts)),
+  surfaced through [`app/network-actions.ts`](../app/network-actions.ts). The
+  acceptance scenario is covered by
+  [`opportunities.integration.test.ts`](../lib/network/opportunities.integration.test.ts)
+  (private → publish → member visibility; responses private to requester/responder
+  until shared; outsider never sees the opportunity or its shared responses; RLS
+  backstops against forged/out-of-audience writes) and demo unit tests in
+  [`directory-and-orgs.test.ts`](../lib/modules/directory-and-orgs.test.ts).
+  Verified: tsc clean, `next build` clean, `test:network` 23/23,
+  `test:network:integration` 10/10 on a disposable Postgres.
+
 ---
 
 ### M5 — Events & RSVP (shared discovery)
@@ -394,17 +431,20 @@ monitoring clean; prototype/seed mode removed from the entry point.
 
 ## Immediate next step
 
-**M0–M3 are complete.** The foundation is hardened (admin transfer, immutable
+**M0–M4 are complete.** The foundation is hardened (admin transfer, immutable
 audit, full RLS under the restricted role, verified claiming with operator vouch,
 private import staging, `person_identities` lockdown); a signed-in person can
 claim and manage a real business with canonical edits that propagate everywhere
-and community-local listing overrides; and the directory is real, scoped, and
-routed — `/c/{slug}` and `/r/{slug}` resolve server-side to public community and
-region context (unknown/inactive slugs 404, never a tenant fallback), brand comes
-from config, and `SbraEvent` is now `CommunityEvent`.
+and community-local listing overrides; the directory is real, scoped, and routed
+(`/c/{slug}` and `/r/{slug}` resolve server-side to public community/region
+context, unknown/inactive slugs 404, brand from config); and the opportunities
+primitive is live — members post structured needs/offers that are private until
+published to their community, respond one-per-person, and keep responses private
+to requester/responder unless the responder shares them, all enforced in SQL and
+by row-level security.
 
-Next is **M4 — opportunities & requests**: `opportunities` +
-`opportunity_responses` with an owning community, optional represented
-organization, structured need/services, geography, status and expiry; a
-private-by-default publication model with per-audience publishing; and responses
-kept private to requester/author unless shared. No open decision gates M4.
+Next is **M5 — events & RSVP (shared discovery)**: `events` +
+`event_publications` + `rsvps` — one event owns many publications (no copies),
+a unique event+person RSVP, capacity enforced in a transaction, timezone-aware
+timestamps; shared event discovery across approved communities with private
+attendance. No open decision gates M5.

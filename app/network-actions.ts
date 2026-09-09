@@ -4,7 +4,7 @@ import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import * as s from "@/lib/db/network-schema";
 import { requirePerson } from "@/lib/network/server";
 import { withActor } from "@/lib/db/context";
-import { identityAccess, discoveryPublishing, organizationsMembership, type OrganizationProfile, type ListingOverride } from "@/lib/modules";
+import { identityAccess, discoveryPublishing, organizationsMembership, type OrganizationProfile, type ListingOverride, type OpportunityInput } from "@/lib/modules";
 import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin, transferAdministrator, readAudit } from "@/lib/network/membership";
 import { readImportBatches, recordMerge, stageImportBatch, linkSourceRecord } from "@/lib/network/import-staging";
 
@@ -30,6 +30,41 @@ export async function loadWorkspace() {
 export async function loadDirectory(communityId: string, after?: string) {
   const { actor } = await requirePerson();
   return discoveryPublishing().readDirectory(actor, communityId, after);
+}
+
+export async function postOpportunity(input: OpportunityInput) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().postOpportunity(actor, input);
+}
+
+export async function publishOpportunity(opportunityId: string) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().publishOpportunity(actor, opportunityId);
+}
+
+export async function closeOpportunity(opportunityId: string) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().closeOpportunity(actor, opportunityId);
+}
+
+export async function loadOpportunities(communityId: string, after?: string) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().readOpportunities(actor, communityId, after);
+}
+
+export async function respondToOpportunity(opportunityId: string, body: string) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().respondToOpportunity(actor, opportunityId, body);
+}
+
+export async function shareOpportunityResponse(responseId: string, shared: boolean) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().shareResponse(actor, responseId, shared);
+}
+
+export async function loadOpportunityResponses(opportunityId: string) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().readResponses(actor, opportunityId);
 }
 
 export async function updatePersonName(name: string) {

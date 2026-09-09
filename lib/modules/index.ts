@@ -67,4 +67,5 @@ export { DEMO_ACTOR_ID } from "./ids";
 export type { ModuleActor, PrivateProfile, PublicProfile, ModuleMode } from "./types";
 export type { IdentityAccessModule, ProviderIdentity } from "./identity-access";
 export type { DiscoveryPublishingModule, OrganizationsMembershipModule,
-  OrganizationProfile, ListingOverride, ClaimReview, DirectoryListing } from "./contracts";
+  OrganizationProfile, ListingOverride, ClaimReview, DirectoryListing,
+  Opportunity, OpportunityResponse, OpportunityInput, OpportunityKind } from "./contracts";
