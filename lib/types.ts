@@ -30,8 +30,9 @@ export const eventTypeLabels: Record<EventType, string> = {
   huddle: "Huddle"
 };
 
-// A scheduled SBRA gathering. Named SbraEvent to avoid shadowing the DOM Event.
-export type SbraEvent = {
+// A scheduled community gathering. Named CommunityEvent to avoid shadowing the
+// DOM Event.
+export type CommunityEvent = {
   id: string;
   title: string;
   type: EventType;

@@ -10,7 +10,7 @@ import type {
   Reaction,
   Referral,
   Rsvp,
-  SbraEvent,
+  CommunityEvent,
   SupportRequest,
   UserRole
 } from "@/lib/types";
@@ -358,7 +358,7 @@ export function AdminView({
   businesses: Business[];
   members: Member[];
   referrals: Referral[];
-  events: SbraEvent[];
+  events: CommunityEvent[];
   rsvps: Rsvp[];
   requests: SupportRequest[];
   posts: CommunityPost[];

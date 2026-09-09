@@ -1,6 +1,6 @@
 "use server";
 
-import type { Business, Comment, CommunityPost, Member, Referral, RsvpStatus, SbraEvent } from "@/lib/types";
+import type { Business, Comment, CommunityPost, Member, Referral, RsvpStatus, CommunityEvent } from "@/lib/types";
 
 // Compatibility exports for the seed-only prototype. Legacy records have no
 // trustworthy ownership scope. Never expose their old persistence paths.
@@ -15,7 +15,7 @@ export async function insertReferral(_referral: Referral): Promise<void> { unava
 export async function updateReferral(_id: string, _changes: Partial<Referral>): Promise<void> { unavailable(); }
 export async function setRsvp(_eventId: string, _memberId: string, _status: RsvpStatus): Promise<void> { unavailable(); }
 export async function setCheckIn(_eventId: string, _memberId: string, _checkedIn: boolean): Promise<void> { unavailable(); }
-export async function persistEvent(_event: SbraEvent): Promise<void> { unavailable(); }
+export async function persistEvent(_event: CommunityEvent): Promise<void> { unavailable(); }
 export async function persistMember(_member: Member): Promise<void> { unavailable(); }
 export async function insertMember(_member: Member): Promise<void> { unavailable(); }
 export async function insertBusinessWithOwner(_business: Business, _member: Member): Promise<void> { unavailable(); }

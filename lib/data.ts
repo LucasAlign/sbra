@@ -21,7 +21,7 @@ import type {
   ReferralKind,
   Rsvp,
   RsvpStatus,
-  SbraEvent,
+  CommunityEvent,
   SupportRequest,
   UserRole
 } from "@/lib/types";
@@ -120,13 +120,13 @@ export async function updateLiveReferral(
 }
 
 export function watchEvents(
-  _onEvents: (events: SbraEvent[]) => void,
+  _onEvents: (events: CommunityEvent[]) => void,
   _onError: (error: DataError) => void
 ): () => void {
   return () => {};
 }
 
-export async function createLiveEvent(_input: Omit<SbraEvent, "id">): Promise<SbraEvent | null> {
+export async function createLiveEvent(_input: Omit<CommunityEvent, "id">): Promise<CommunityEvent | null> {
   return null;
 }
 

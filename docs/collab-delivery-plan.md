@@ -26,8 +26,9 @@ live demo until the backend replaces it milestone by milestone.
 ### Health snapshot (verified 2026-09-08)
 - `npx tsc --noEmit` — clean
 - `npm run test:network` — 21/21 pass
-- `npm run test:network:integration` — 8/8 pass against a disposable Postgres
+- `npm run test:network:integration` — 9/9 pass against a disposable Postgres
   (`COLLAB_TEST_DATABASE_URL`); skipped otherwise
+- `npx next build` — clean (`/c/[slug]`, `/r/[slug]` server-rendered on demand)
 
 ## How we'll work
 
@@ -241,6 +242,31 @@ all listings while local overrides stay local (architecture acceptance scenario)
 **Exit:** an unknown slug errors (never falls back to another tenant); directory
 paginates from Postgres with only allowlisted fields.
 
+**Status: complete (2026-09-09).**
+- **Slug routing, server-side** ([`lib/network/discovery.ts`](../lib/network/discovery.ts)):
+  `resolveCommunityBySlug` maps `/c/{slug}` → exactly one **active** community and
+  `resolveRegionBySlug` maps `/r/{slug}` → that region's active communities. Both
+  return a **public projection only** (slug, name, shortName, description, logo,
+  locale, kind — no operator/network internals) and read the catalog under RLS
+  `USING (true)` without an actor context (pre-auth routing). An unknown or
+  non-active slug **throws** — it never falls back to another tenant; the routes
+  ([`app/c/[slug]/page.tsx`](../app/c/[slug]/page.tsx),
+  [`app/r/[slug]/page.tsx`](../app/r/[slug]/page.tsx)) turn that into a 404.
+- **Community landing** ([`components/community-directory.tsx`](../components/community-directory.tsx))
+  renders brand/locale/logo from the resolved context and loads the existing
+  membership-gated, keyset-paginated `readDirectory` (public, allowlisted fields).
+- **Brand from config, not tenant id:** the prototype's hardcoded `isLatino`
+  branch is retired in favor of [`lib/brand.ts`](../lib/brand.ts) `brandFor(locale)`
+  — `spanish` drives copy, `directoryOnly` selects the curated directory
+  experience — so brand follows the community record. `SbraEvent` is renamed
+  `CommunityEvent` throughout; Berks/SBRA seed and brand content are preserved.
+- Integration test [`discovery.integration.test.ts`](../lib/network/discovery.integration.test.ts):
+  a known slug resolves to exactly its community (public keys only), unknown and
+  draft slugs error, regional discovery is scoped to its region and excludes
+  drafts/other regions. Verified: tsc clean, `next build` clean, `test:network`
+  21/21, `test:network:integration` 9/9; seed-mode brand refactor confirmed in
+  the browser (SBRA → full toolkit; Cámara Latina → Spanish, directory-only).
+
 ---
 
 ### M4 — Opportunities & requests
@@ -368,15 +394,17 @@ monitoring clean; prototype/seed mode removed from the entry point.
 
 ## Immediate next step
 
-**M0, M1, and M2 are complete.** The foundation is hardened (admin transfer,
-immutable audit, full RLS under the restricted role, verified claiming with
-operator vouch, private import staging, `person_identities` lockdown) and a
-signed-in person can claim and manage a real business, with canonical edits that
-propagate everywhere and community-local listing overrides.
+**M0–M3 are complete.** The foundation is hardened (admin transfer, immutable
+audit, full RLS under the restricted role, verified claiming with operator vouch,
+private import staging, `person_identities` lockdown); a signed-in person can
+claim and manage a real business with canonical edits that propagate everywhere
+and community-local listing overrides; and the directory is real, scoped, and
+routed — `/c/{slug}` and `/r/{slug}` resolve server-side to public community and
+region context (unknown/inactive slugs 404, never a tenant fallback), brand comes
+from config, and `SbraEvent` is now `CommunityEvent`.
 
-Next is **M3 — authorized directory & community context**: expand the public
-directory projection with keyset pagination and bounded pages, route `/c/{slug}`
-and `/r/{slug}` to community/region IDs server-side, and retire the brand
-conditionals (`isLatino`, seed-array swaps) and the generic `SbraEvent` name
-while preserving Berks/SBRA seed content. No open decision gates M3; import
-provenance retention now sits with M8 backfill.
+Next is **M4 — opportunities & requests**: `opportunities` +
+`opportunity_responses` with an owning community, optional represented
+organization, structured need/services, geography, status and expiry; a
+private-by-default publication model with per-audience publishing; and responses
+kept private to requester/author unless shared. No open decision gates M4.

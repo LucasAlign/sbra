@@ -32,6 +32,7 @@ import { loadTool, saveTool, downloadToolData, importToolData, previewToolData, 
 import { APP_KEYS, membersKey, businessesKey, loadCollection, saveCollection, clearAppData } from "@/lib/app-storage";
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
+import { brandFor } from "@/lib/brand";
 import { latinoBusinessSeed, latinoMemberSeed } from "@/lib/latino-directory";
 import {
   businessSeed,
@@ -66,7 +67,7 @@ import {
   type ReferralStatus,
   type Rsvp,
   type RsvpStatus,
-  type SbraEvent,
+  type CommunityEvent,
   type SupportRequest,
   type UserRole,
   type ViewKey
@@ -497,7 +498,10 @@ export function SBRAApp() {
   const [pendingToolId, setPendingToolId] = useState<string | null>(null);
   const [activeOrganizationId, setActiveOrganizationId] = useState("sbra");
   const activeOrganization = getCommunityOrganization(activeOrganizationId);
-  const isLatino = activeOrganizationId === "berks-latino-chamber";
+  // Brand/experience come from the community's own config (locale), not a
+  // hardcoded tenant id: `brand.spanish` drives copy, `brand.directoryOnly`
+  // selects the curated directory experience.
+  const brand = brandFor(activeOrganization.locale);
   // Keeps the active destination scrolled into view within the horizontally
   // scrollable mobile nav bar, so the selected tab is always visible.
   const activeNavRef = useRef<HTMLButtonElement | null>(null);
@@ -517,7 +521,7 @@ export function SBRAApp() {
   const [referralComposerOpen, setReferralComposerOpen] = useState(false);
   const [referralDraft, setReferralDraft] = useState<ReferralDraft>(emptyReferralDraft);
   const [closingReferral, setClosingReferral] = useState<Referral | null>(null);
-  const [events, setEvents] = useState<SbraEvent[]>(eventSeed);
+  const [events, setEvents] = useState<CommunityEvent[]>(eventSeed);
   const [rsvps, setRsvps] = useState<Rsvp[]>(rsvpSeed);
   const [eventComposerOpen, setEventComposerOpen] = useState(false);
   const [eventDraft, setEventDraft] = useState<EventDraft>(emptyEventDraft);
@@ -693,7 +697,7 @@ export function SBRAApp() {
     };
   }, [liveServices, role]);
 
-  const visibleNav = (isLatino ? latinoNavItems : navItems).filter((item) => !item.adminOnly || role === "admin");
+  const visibleNav = (brand.directoryOnly ? latinoNavItems : navItems).filter((item) => !item.adminOnly || role === "admin");
   const primaryNav = visibleNav.filter((item) => primaryNavKeys.includes(item.key));
   const moreNav = visibleNav.filter((item) => !primaryNavKeys.includes(item.key));
   // Admins get their tools pinned to the top of the sidebar, above Home. The
@@ -1223,7 +1227,7 @@ export function SBRAApp() {
       return;
     }
 
-    const newEvent: SbraEvent = { id: `evt-${Date.now()}`, ...base };
+    const newEvent: CommunityEvent = { id: `evt-${Date.now()}`, ...base };
     setEvents((records) => [newEvent, ...records]);
     // creator auto-RSVPs as going
     const creatorRsvp: Rsvp = {
@@ -1493,16 +1497,16 @@ export function SBRAApp() {
             </div>
           ) : <LogoBlock />}
           <div>
-            <h1>{isLatino ? "Red de la Cámara Latina" : `${activeOrganization.shortName} Network`}</h1>
+            <h1>{brand.spanish ? "Red de la Cámara Latina" : `${activeOrganization.shortName} Network`}</h1>
           </div>
         </div>
 
         <label className="organization-switcher">
-          <span>{isLatino ? "Comunidad" : "Community"}</span>
+          <span>{brand.spanish ? "Comunidad" : "Community"}</span>
           <select
             value={activeOrganizationId}
             onChange={(event) => selectOrganization(event.target.value)}
-            aria-label={isLatino ? "Elegir organización comunitaria" : "Choose community organization"}
+            aria-label={brand.spanish ? "Elegir organización comunitaria" : "Choose community organization"}
           >
             {communityOrganizations.map((organization) => (
               <option
@@ -1521,27 +1525,27 @@ export function SBRAApp() {
           {sidebarNav.map((item) => (
             <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />
           ))}
-          {!isLatino && <button className={moreOpen || sidebarMoreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
+          {!brand.directoryOnly && <button className={moreOpen || sidebarMoreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
             <span className="nav-icon">•••</span><span><strong>More</strong><small>Learn, support &amp; profile</small></span>
           </button>}
-          {!isLatino && moreOpen && <div className="more-menu">{sidebarMoreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
+          {!brand.directoryOnly && moreOpen && <div className="more-menu">{sidebarMoreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
         </nav>
 
         <section className="theme-card">
-          <p className="section-label">{isLatino ? "Sesión activa" : "Signed in"}</p>
+          <p className="section-label">{brand.spanish ? "Sesión activa" : "Signed in"}</p>
           <div className="role-grid compact">
             <div>
-              <strong>{isLatino ? (role === "admin" ? "Administrador" : "Miembro") : roleLabel}</strong>
+              <strong>{brand.spanish ? (role === "admin" ? "Administrador" : "Miembro") : roleLabel}</strong>
               <span>
                 {liveProfile?.email ||
                   (role === "admin" ? "Reports, import, moderation" : currentBusiness?.name || "Member")}
               </span>
             </div>
           </div>
-          <div className="live-note">{isLatino ? "Directorio público de miembros de la Cámara Latina." : liveNote}</div>
+          <div className="live-note">{brand.spanish ? "Directorio público de miembros de la Cámara Latina." : liveNote}</div>
           <button className="secondary-button logout-button" onClick={() => void signOutCurrentUser()}>
             <span className="button-icon">O</span>
-            {isLatino ? "Cerrar sesión" : "Sign out"}
+            {brand.spanish ? "Cerrar sesión" : "Sign out"}
           </button>
         </section>
       </aside>
@@ -1549,22 +1553,22 @@ export function SBRAApp() {
       <main className="main-panel">
         <header className="glass-panel topbar">
           <div>
-            <p className="eyebrow">{isLatino ? `${activeOrganization.shortName} · Bienvenido` : `${activeOrganization.shortName} · Welcome back, ${currentMember?.name.split(" ")[0] || "there"}`}</p>
-            <h2>{isLatino ? "Directorio de miembros" : viewTitles[activeView]}</h2>
+            <p className="eyebrow">{brand.spanish ? `${activeOrganization.shortName} · Bienvenido` : `${activeOrganization.shortName} · Welcome back, ${currentMember?.name.split(" ")[0] || "there"}`}</p>
+            <h2>{brand.spanish ? "Directorio de miembros" : viewTitles[activeView]}</h2>
           </div>
           <div className="top-actions">
-            <span className="session-pill">{isLatino ? (role === "admin" ? "Administrador" : "Miembro") : roleLabel}</span>
+            <span className="session-pill">{brand.spanish ? (role === "admin" ? "Administrador" : "Miembro") : roleLabel}</span>
             <button
               className={globalSearchOpen ? "icon-button active" : "icon-button"}
-              aria-label={isLatino ? "Buscar" : "Search"}
+              aria-label={brand.spanish ? "Buscar" : "Search"}
               onClick={() => {
                 setGlobalSearchOpen((open) => !open);
                 setAlertsOpen(false);
               }}
             >
-              {isLatino ? "Buscar" : "Search"}
+              {brand.spanish ? "Buscar" : "Search"}
             </button>
-            {!isLatino && <button
+            {!brand.directoryOnly && <button
               className={alertsOpen ? "icon-button active" : "icon-button"}
               aria-label="Notifications"
               onClick={() => {
@@ -1574,7 +1578,7 @@ export function SBRAApp() {
             >
               <UtilityIcon icon="bell" />
             </button>}
-            {!isLatino && <button
+            {!brand.directoryOnly && <button
               className={settingsOpen ? "icon-button active" : "icon-button"}
               aria-label="Settings"
               onClick={() => {
@@ -1585,7 +1589,7 @@ export function SBRAApp() {
             >
               <UtilityIcon icon="settings" />
             </button>}
-            {!isLatino && <button className="primary-button" onClick={() => setComposerOpen(true)}>
+            {!brand.directoryOnly && <button className="primary-button" onClick={() => setComposerOpen(true)}>
               <span className="button-icon">+</span>
               New Post
             </button>}
@@ -1593,9 +1597,9 @@ export function SBRAApp() {
           {globalSearchOpen && (
             <div className="top-popover search-popover">
               <input
-                aria-label={isLatino ? "Buscar en el directorio" : "Search Berks County Collab"}
+                aria-label={brand.spanish ? "Buscar en el directorio" : "Search Berks County Collab"}
                 autoFocus
-                placeholder={isLatino ? "Buscar negocios, miembros o servicios..." : "Search businesses, members, posts, support..."}
+                placeholder={brand.spanish ? "Buscar negocios, miembros o servicios..." : "Search businesses, members, posts, support..."}
                 value={globalSearch}
                 onChange={(event) => setGlobalSearch(event.target.value)}
               />
@@ -1606,12 +1610,12 @@ export function SBRAApp() {
                     <span>{result.detail}</span>
                   </button>
                 ))}
-                {globalSearch.trim() && globalResults.length === 0 && <p>{isLatino ? "No hay resultados." : "No matches yet."}</p>}
-                {!globalSearch.trim() && <p>{isLatino ? "Busca un negocio, miembro o servicio." : "Try a business, member, service, support topic, or module."}</p>}
+                {globalSearch.trim() && globalResults.length === 0 && <p>{brand.spanish ? "No hay resultados." : "No matches yet."}</p>}
+                {!globalSearch.trim() && <p>{brand.spanish ? "Busca un negocio, miembro o servicio." : "Try a business, member, service, support topic, or module."}</p>}
               </div>
             </div>
           )}
-          {!isLatino && alertsOpen && (
+          {!brand.directoryOnly && alertsOpen && (
             <div className="top-popover alerts-popover">
               <p className="section-label">Notifications</p>
               <div className="popover-list">
@@ -1624,7 +1628,7 @@ export function SBRAApp() {
               </div>
             </div>
           )}
-          {!isLatino && settingsOpen && (
+          {!brand.directoryOnly && settingsOpen && (
             <div className="top-popover settings-popover">
               <p className="section-label">Settings</p>
               <div className="settings-list">
@@ -1649,11 +1653,11 @@ export function SBRAApp() {
           <section className="glass-panel home-tools" aria-labelledby="home-tools-title">
             <div className="home-tools-head">
               <div>
-                <p className="section-label">{isLatino ? "Herramientas" : "Business tools"}</p>
-                <h3 id="home-tools-title">{isLatino ? "Todas tus herramientas, un clic" : "Your full toolkit — open any tool"}</h3>
+                <p className="section-label">{brand.spanish ? "Herramientas" : "Business tools"}</p>
+                <h3 id="home-tools-title">{brand.spanish ? "Todas tus herramientas, un clic" : "Your full toolkit — open any tool"}</h3>
               </div>
               <button className="link-button" onClick={() => selectNav("tools")}>
-                {isLatino ? "Abrir centro de herramientas →" : "Open Tools hub →"}
+                {brand.spanish ? "Abrir centro de herramientas →" : "Open Tools hub →"}
               </button>
             </div>
             <div className="home-tools-row">
@@ -1675,7 +1679,7 @@ export function SBRAApp() {
           </section>
         )}
 
-        <AdBanner ads={isLatino ? latinoAds : mockAds} spanish={isLatino} />
+        <AdBanner ads={brand.directoryOnly ? latinoAds : mockAds} spanish={brand.spanish} />
 
         {activeView === "community" && (
           <CommunityView
@@ -1724,7 +1728,7 @@ export function SBRAApp() {
             onCategoryFilter={setCategoryFilter}
             onSearch={setSearch}
             onOpenBusiness={openBusiness}
-            spanish={isLatino}
+            spanish={brand.spanish}
           />
         )}
         {activeView === "referrals" && (
@@ -1831,7 +1835,7 @@ export function SBRAApp() {
             <span>{item.label}</span>
           </button>
         ))}
-        {!isLatino && <button className={moreNav.some((item) => item.key === activeView) ? "active" : ""} onClick={() => setMoreOpen((open) => !open)} aria-label="More">
+        {!brand.directoryOnly && <button className={moreNav.some((item) => item.key === activeView) ? "active" : ""} onClick={() => setMoreOpen((open) => !open)} aria-label="More">
           <span className="mobile-icon">•••</span><span>More</span>
         </button>}
       </nav>
@@ -1842,7 +1846,7 @@ export function SBRAApp() {
           business={activeBusiness}
           members={membersByBusiness.get(activeBusiness.id) ?? []}
           onClose={() => setActiveBusiness(null)}
-          spanish={isLatino}
+          spanish={brand.spanish}
         />
       )}
 
@@ -5784,7 +5788,7 @@ function EventsView({
   onToggleCheckIn,
   canCreate
 }: {
-  events: SbraEvent[];
+  events: CommunityEvent[];
   rsvps: Rsvp[];
   memberById: Map<string, Member>;
   currentMemberId: string;
@@ -5839,7 +5843,7 @@ function EventCard({
   onRsvp,
   onToggleCheckIn
 }: {
-  event: SbraEvent;
+  event: CommunityEvent;
   eventRsvps: Rsvp[];
   myRsvp?: Rsvp;
   host?: Member;

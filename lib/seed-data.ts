@@ -7,7 +7,7 @@ import type {
   Reaction,
   Referral,
   Rsvp,
-  SbraEvent,
+  CommunityEvent,
   SupportRequest
 } from "@/lib/types";
 import { sbraBusinessSeed, sbraMemberSeed } from "@/lib/sbra-directory.generated";
@@ -426,7 +426,7 @@ export const referralSeed: Referral[] = [
 ];
 
 // SBRA events. Times are generated relative to "now" so the seed always looks upcoming.
-export const eventSeed: SbraEvent[] = [
+export const eventSeed: CommunityEvent[] = [
   {
     id: "evt-breakfast",
     title: "Breakfast Referral Club",
