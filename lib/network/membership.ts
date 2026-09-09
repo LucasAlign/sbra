@@ -51,9 +51,10 @@ export async function invitePerson(db: Database, actorId: string, communityId: s
     await setActor(tx, actorId);
     await lockCommunity(tx, communityId); await requireAdmin(tx, actorId, communityId);
     // Only a person with a verified provider identity can receive an invitation.
-    const [recipient] = await tx.select({ id: s.personIdentities.personId }).from(s.personIdentities)
-      .where(eq(s.personIdentities.personId, recipientId)).limit(1);
-    if (!recipient) throw new Error("Check the recipient's Collab account ID.");
+    // RLS hides another person's identity rows, so this cross-actor existence
+    // check goes through the SECURITY DEFINER helper.
+    const has = await tx.execute(sql`select collab_person_has_identity(${recipientId}) as ok`);
+    if (!(has as unknown as { ok: boolean }[])[0]?.ok) throw new Error("Check the recipient's Collab account ID.");
     const [membership] = await tx.select().from(s.personCommunityMemberships)
       .where(and(eq(s.personCommunityMemberships.personId, recipientId), eq(s.personCommunityMemberships.communityId, communityId))).for("update");
     if (membership?.status === "active" || membership?.status === "suspended") throw new Error("This account already has a membership. Manage it in the roster.");

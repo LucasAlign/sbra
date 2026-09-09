@@ -44,13 +44,20 @@ export class DemoDiscoveryPublishing implements DiscoveryPublishingModule {
     const orgIds = this.world.orgMemberships
       .filter(m => m.communityId === communityId && m.status === "active")
       .map(m => m.organizationId)
+      // A 'hidden' community override drops the org from this listing.
+      .filter(id => this.world.listingOverrides.find(
+        o => o.organizationId === id && o.communityId === communityId)?.visibility !== "hidden")
       .filter(id => (after ? id > after : true))
       .sort();
     // Fetch one extra row to know whether another page exists.
     const page = orgIds.slice(0, PAGE + 1).map(id => {
       const org = this.world.organizations.get(id)!;
-      // Public projection only — never spread the stored row.
-      return { id: org.id, name: org.name, description: org.description, kind: org.kind };
+      const override = this.world.listingOverrides.find(o => o.organizationId === id && o.communityId === communityId);
+      // Public projection only — never spread the stored row. Local override wins
+      // for presentation; canonical description is the fallback.
+      return { id: org.id, name: org.name, kind: org.kind, website: org.website,
+        locations: org.locations, serviceAreas: org.serviceAreas,
+        description: override?.headline || org.description, localOffer: override?.localOffer ?? "" };
     });
     return {
       organizations: page.slice(0, PAGE),

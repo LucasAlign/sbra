@@ -17,19 +17,48 @@
 
 import type { ModuleActor, PublicProfile } from "./types";
 
+/** Canonical, editable organization profile fields (M2). Edited once, shown everywhere. */
+export type OrganizationProfile = {
+  name?: string; kind?: string; description?: string; website?: string; locations?: string; serviceAreas?: string;
+};
+
+/** Per-community presentation layered over the canonical org, never overwriting it (M2). */
+export type ListingOverride = { headline?: string; localOffer?: string; visibility?: "listed" | "hidden" };
+
+/** A pending business claim as an administrator reviews it. */
+export type ClaimReview = {
+  id: string; personId: string; personName: string;
+  organizationId: string; organizationName: string; evidence: string; createdAt: Date;
+};
+
 /** 2. Organizations & Membership — canonical orgs, affiliations, community rosters. */
 export interface OrganizationsMembershipModule {
   /** Edit an organization's canonical description (requires an active Business Admin grant). */
   editOrganizationDescription(actor: ModuleActor, organizationId: string, description: string): Promise<void>;
-  // M1/M2 add: claim requests, profile fields, listing overrides, roster admin,
-  // invitations, and membership status changes (currently in lib/network/membership.ts).
+  /** Edit any canonical profile fields (requires an active Business Admin grant). */
+  editOrganizationProfile(actor: ModuleActor, organizationId: string, fields: OrganizationProfile): Promise<void>;
+  /** Set a community-local listing override for an org the actor administers. */
+  setListingOverride(actor: ModuleActor, organizationId: string, communityId: string, fields: ListingOverride): Promise<void>;
+  /** File a claim to represent a business listed in a community (operator vouch). */
+  requestClaim(actor: ModuleActor, organizationId: string, communityId: string, evidence: string): Promise<{ id: string }>;
+  /** Withdraw the actor's own pending claim. */
+  withdrawClaim(actor: ModuleActor, claimId: string): Promise<void>;
+  /** As a community admin, approve or reject a pending claim. Approval grants Business Admin. */
+  reviewClaim(actor: ModuleActor, claimId: string, decision: "approved" | "rejected", note?: string): Promise<void>;
+  /** As a community admin, list pending claims awaiting a vouch. */
+  readClaimRequests(actor: ModuleActor, communityId: string): Promise<{ claims: ClaimReview[] }>;
 }
+
+/** A directory listing: canonical fields with any community-local override applied. */
+export type DirectoryListing = PublicProfile & {
+  description: string; kind: string; website: string; locations: string; serviceAreas: string; localOffer: string;
+};
 
 /** 3. Discovery & Publishing — authorized directory and published content. */
 export interface DiscoveryPublishingModule {
   /** Paginated, audience-scoped directory of organizations for a community. */
   readDirectory(actor: ModuleActor, communityId: string, after?: string): Promise<{
-    organizations: (PublicProfile & { description: string; kind: string })[];
+    organizations: DirectoryListing[];
     nextCursor: string | null;
   }>;
   // M4 adds: opportunities and responses with per-audience publication.

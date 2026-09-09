@@ -16,6 +16,10 @@ export const personIdentities = pgTable("person_identities", {
 export const organizations = pgTable("organizations", {
   id: text("id").primaryKey(), name: text("name").notNull(),
   kind: text("kind").notNull(), description: text("description").notNull().default(""),
+  // Canonical profile fields (M2): edited once, shown in every listing.
+  website: text("website").notNull().default(""),
+  locations: text("locations").notNull().default(""),
+  serviceAreas: text("service_areas").notNull().default(""),
   createdAt: createdAt(),
 }, t => [check("organization_kind", sql`${t.kind} in ('business', 'chamber', 'association', 'municipality', 'other')`)]);
 
@@ -97,4 +101,78 @@ export const membershipAudit = pgTable("membership_audit", {
   targetId: text("target_id").notNull().references(() => people.id),
   action: text("action").notNull(), createdAt: createdAt(),
 }, t => [index().on(t.communityId, t.createdAt), check("membership_audit_action", sql`${t.action} in
-  ('invitation.created', 'invitation.revoked', 'invitation.accepted', 'membership.suspended', 'membership.restored', 'community.provisioned', 'administrator.transferred')`)]);
+  ('invitation.created', 'invitation.revoked', 'invitation.accepted', 'membership.suspended', 'membership.restored', 'community.provisioned', 'administrator.transferred',
+    'claim.requested', 'claim.approved', 'claim.rejected', 'claim.withdrawn')`)]);
+
+// --- Verified business claiming (M1 verified claims / M2) -------------------
+// A signed-in member asks to represent a business listed in a community. The
+// community admin vouches (operator vouch): approval atomically grants Business
+// Admin + an active affiliation. Disputes are decided by the community admin.
+export const claimRequests = pgTable("claim_requests", {
+  id: text("id").primaryKey(),
+  personId: text("person_id").notNull().references(() => people.id),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  communityId: text("community_id").notNull().references(() => communities.id),
+  status: text("status").notNull().default("pending"),
+  evidence: text("evidence").notNull().default(""),
+  reviewedBy: text("reviewed_by").references(() => people.id),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  decisionNote: text("decision_note").notNull().default(""),
+  createdAt: createdAt(),
+}, t => [index().on(t.communityId, t.status), index().on(t.personId),
+  check("claim_status", sql`${t.status} in ('pending', 'approved', 'rejected', 'withdrawn')`)]);
+
+// Per-community presentation of a canonical organization: a local headline/offer
+// and visibility, layered over (never overwriting) the canonical profile.
+export const communityListingOverrides = pgTable("community_listing_overrides", {
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  communityId: text("community_id").notNull().references(() => communities.id),
+  headline: text("headline").notNull().default(""),
+  localOffer: text("local_offer").notNull().default(""),
+  visibility: text("visibility").notNull().default("listed"),
+  updatedBy: text("updated_by").notNull().references(() => people.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.organizationId, t.communityId] }),
+  check("listing_visibility", sql`${t.visibility} in ('listed', 'hidden')`)]);
+
+// --- Private import staging (M1) -------------------------------------------
+// Ingested rows stay private to the operator's community, never assign
+// ownership, and never surface in any member-facing projection. Claiming is the
+// only path from a staged record to a real affiliation.
+export const importBatches = pgTable("import_batches", {
+  id: text("id").primaryKey(),
+  communityId: text("community_id").notNull().references(() => communities.id),
+  source: text("source").notNull(),
+  note: text("note").notNull().default(""),
+  createdBy: text("created_by").notNull().references(() => people.id),
+  createdAt: createdAt(),
+}, t => [index().on(t.communityId)]);
+
+export const sourceRecords = pgTable("source_records", {
+  id: text("id").primaryKey(),
+  batchId: text("batch_id").notNull().references(() => importBatches.id),
+  externalId: text("external_id").notNull().default(""),
+  payload: text("payload").notNull().default(""),
+  createdAt: createdAt(),
+}, t => [index().on(t.batchId)]);
+
+export const externalEntityLinks = pgTable("external_entity_links", {
+  id: text("id").primaryKey(),
+  sourceRecordId: text("source_record_id").notNull().references(() => sourceRecords.id),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  createdAt: createdAt(),
+}, t => [unique().on(t.sourceRecordId, t.entityType),
+  check("external_link_entity", sql`${t.entityType} in ('organization', 'person')`)]);
+
+export const mergeHistory = pgTable("merge_history", {
+  id: text("id").primaryKey(),
+  entityType: text("entity_type").notNull(),
+  survivingId: text("surviving_id").notNull(),
+  mergedId: text("merged_id").notNull(),
+  communityId: text("community_id").references(() => communities.id),
+  reason: text("reason").notNull().default(""),
+  mergedBy: text("merged_by").notNull().references(() => people.id),
+  createdAt: createdAt(),
+}, t => [check("merge_entity", sql`${t.entityType} in ('organization', 'person')`),
+  check("merge_distinct", sql`${t.survivingId} <> ${t.mergedId}`)]);

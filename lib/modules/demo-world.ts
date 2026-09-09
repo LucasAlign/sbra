@@ -8,11 +8,21 @@
 import { DEMO_ACTOR_ID } from "./ids";
 
 export type DemoPerson = { id: string; name: string };
-export type DemoOrganization = { id: string; name: string; description: string; kind: string };
+export type DemoOrganization = {
+  id: string; name: string; description: string; kind: string;
+  website: string; locations: string; serviceAreas: string;
+};
 export type DemoStatus = "pending" | "active" | "suspended" | "left";
 export type DemoGrant = {
-  personId: string; organizationId: string; role: string;
+  personId: string; role: string; organizationId?: string; communityId?: string;
   revokedAt?: Date | null; expiresAt?: Date | null;
+};
+export type DemoListingOverride = {
+  organizationId: string; communityId: string; headline: string; localOffer: string; visibility: "listed" | "hidden";
+};
+export type DemoClaim = {
+  id: string; personId: string; organizationId: string; communityId: string;
+  evidence: string; status: "pending" | "approved" | "rejected" | "withdrawn"; createdAt: Date;
 };
 
 export type DemoWorld = {
@@ -23,6 +33,8 @@ export type DemoWorld = {
   orgMemberships: { organizationId: string; communityId: string; status: DemoStatus }[];
   affiliations: { personId: string; organizationId: string; status: DemoStatus }[];
   grants: DemoGrant[];
+  listingOverrides: DemoListingOverride[];
+  claims: DemoClaim[];
 };
 
 const DEMO_OTHER_PERSON = "demo-person-jordan";
@@ -38,8 +50,8 @@ export function createDemoWorld(): DemoWorld {
     ]),
     communities: new Map([[DEMO_COMMUNITY, { id: DEMO_COMMUNITY, status: "active" }]]),
     organizations: new Map([
-      ["demo-brightside", { id: "demo-brightside", name: "Brightside Bakery", description: "Fresh bread and pastries on Penn Ave.", kind: "business" }],
-      ["demo-riverworks", { id: "demo-riverworks", name: "Riverworks Consulting", description: "Small-business bookkeeping and advisory.", kind: "business" }],
+      ["demo-brightside", { id: "demo-brightside", name: "Brightside Bakery", description: "Fresh bread and pastries on Penn Ave.", kind: "business", website: "", locations: "Penn Ave.", serviceAreas: "Reading" }],
+      ["demo-riverworks", { id: "demo-riverworks", name: "Riverworks Consulting", description: "Small-business bookkeeping and advisory.", kind: "business", website: "", locations: "", serviceAreas: "" }],
     ]),
     personMemberships: [
       { personId: DEMO_ACTOR_ID, communityId: DEMO_COMMUNITY, status: "active" },
@@ -50,7 +62,14 @@ export function createDemoWorld(): DemoWorld {
       { organizationId: "demo-riverworks", communityId: DEMO_COMMUNITY, status: "active" },
     ],
     affiliations: [{ personId: DEMO_ACTOR_ID, organizationId: "demo-brightside", status: "active" }],
-    grants: [{ personId: DEMO_ACTOR_ID, organizationId: "demo-brightside", role: "business_admin" }],
+    grants: [
+      { personId: DEMO_ACTOR_ID, organizationId: "demo-brightside", role: "business_admin" },
+      // The demo actor also administers the community, so they can vouch for
+      // another member's claim (but not their own).
+      { personId: DEMO_ACTOR_ID, communityId: DEMO_COMMUNITY, role: "community_admin" },
+    ],
+    listingOverrides: [],
+    claims: [],
   };
 }
 

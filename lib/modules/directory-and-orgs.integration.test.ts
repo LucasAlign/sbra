@@ -58,7 +58,8 @@ test("Postgres Discovery + Organizations adapters: scoped directory and gated ed
     // Directory read through the adapter: active members see the org, public fields only.
     const listing = await directory.readDirectory(member, community);
     assert.deepEqual(listing.organizations.map(o => o.id), [org]);
-    assert.deepEqual(Object.keys(listing.organizations[0]).sort(), ["description", "id", "kind", "name"]);
+    assert.deepEqual(Object.keys(listing.organizations[0]).sort(),
+      ["description", "id", "kind", "localOffer", "locations", "name", "serviceAreas", "website"]);
 
     // Edit through the adapter is denied without an affiliation + grant. (The
     // Postgres adapter surfaces the repository's error; the demo adapter raises

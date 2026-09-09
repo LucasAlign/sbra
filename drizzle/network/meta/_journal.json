@@ -36,6 +36,20 @@
       "when": 1788905216713,
       "tag": "0004_rls_relational",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788922425198,
+      "tag": "0005_claims_and_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788922432170,
+      "tag": "0006_rls_claims",
+      "breakpoints": true
     }
   ]
 }

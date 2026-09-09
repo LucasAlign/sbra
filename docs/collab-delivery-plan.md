@@ -25,8 +25,8 @@ live demo until the backend replaces it milestone by milestone.
 
 ### Health snapshot (verified 2026-09-08)
 - `npx tsc --noEmit` — clean
-- `npm run test:network` — 10/10 pass
-- `npm run test:network:integration` — requires a disposable Postgres
+- `npm run test:network` — 21/21 pass
+- `npm run test:network:integration` — 8/8 pass against a disposable Postgres
   (`COLLAB_TEST_DATABASE_URL`); skipped otherwise
 
 ## How we'll work
@@ -166,10 +166,24 @@ restricted role; admin transfer + audit covered by integration tests.
   tenant boundaries. `person_identities` is the one table deferred (login reads it
   before an actor context exists — see the RLS doc). Verified: tsc clean,
   `test:network` 17/17, `test:network:integration` 6/6.
-- **Remaining in M1:** private import staging + verified claims (operator vouch;
-  disputes to the community admin), and — as a smaller follow-up — locking down
-  `person_identities` via a privileged login path. Import provenance retention is
-  the one open decision, and it only gates the import-staging piece.
+- **Verified claims + private import staging landed** (migrations
+  [`0005`](../drizzle/network/0005_claims_and_import.sql) /
+  [`0006`](../drizzle/network/0006_rls_claims.sql)). `claim_requests` drives the
+  operator-vouch flow ([`lib/network/claims.ts`](../lib/network/claims.ts)): a
+  member files a claim to represent a business listed in a community, a community
+  admin approves, and approval atomically mints a `business_admin` grant + active
+  affiliation (a second admin must approve an admin's own claim; disputes are the
+  community admin's per the decision above). Import staging (`import_batches` /
+  `source_records` / `external_entity_links` / `merge_history`,
+  [`lib/network/import-staging.ts`](../lib/network/import-staging.ts)) is entirely
+  admin-private to the owning community — it never assigns ownership or surfaces in
+  a member projection; claiming is the only path from a staged row to authority.
+- **`person_identities` locked down.** RLS gives a signed-in actor its own rows
+  only; login resolves subjects through a `SECURITY DEFINER` lookup
+  (`collab_lookup_identity`), and the invite recipient check through
+  `collab_person_has_identity` — so no privileged second connection is required.
+- **M1 is complete.** Import provenance retention remains the one open decision,
+  now deferred to M8 backfill (it does not gate the staging tables themselves).
 
 ---
 
@@ -190,6 +204,27 @@ person represents the business; domain-email and manual-review bars can be added
 later without changing the model).
 **Exit:** one person represents two businesses; a single profile edit shows in
 all listings while local overrides stay local (architecture acceptance scenario).
+
+**Status: complete (2026-09-08).**
+- **Claim → vouch → Business Admin** shares M1's `claim_requests` backbone
+  ([`lib/network/claims.ts`](../lib/network/claims.ts)); the grant + affiliation
+  are minted in one transaction under the community lock and RLS.
+- **Canonical profile editing** — `name`, `kind`, `description`, `website`,
+  `locations`, `service_areas` — is gated by an active affiliation + unexpired
+  Business Admin grant in the same `UPDATE`
+  ([`editOrganizationProfile`](../lib/network/repository.ts)); the edit flows to
+  every community that lists the org.
+- **Community listing overrides** (`community_listing_overrides`): a local
+  headline/offer and `listed`/`hidden` visibility layered over — never
+  overwriting — the canonical profile; the directory read merges them and drops
+  `hidden` listings.
+- Both adapter families implement it (demo + Postgres) behind the
+  `OrganizationsMembership` / `Discovery & Publishing` modules. The acceptance
+  scenario is covered by
+  [`claims.integration.test.ts`](../lib/network/claims.integration.test.ts): one
+  person represents two businesses, a canonical edit shows in both communities,
+  and a C1 override stays local to C1. Verified: tsc clean, `test:network` 21/21,
+  `test:network:integration` 8/8.
 
 ---
 
@@ -333,13 +368,15 @@ monitoring clean; prototype/seed mode removed from the entry point.
 
 ## Immediate next step
 
-**M0 is complete; M1 admin transfer + audit are done.** The two gating policy
-decisions are answered: **community admin decides** profile-claim disputes, and
-**operator vouch** is the MVP business-claim verification bar.
+**M0, M1, and M2 are complete.** The foundation is hardened (admin transfer,
+immutable audit, full RLS under the restricted role, verified claiming with
+operator vouch, private import staging, `person_identities` lockdown) and a
+signed-in person can claim and manage a real business, with canonical edits that
+propagate everywhere and community-local listing overrides.
 
-Next in **M1**: row-level security under a restricted `collab_runtime` role
-(transaction-local, pool-safe context; separate privileged provisioning path),
-then private import staging + verified claims (built around operator vouch, with
-disputes routed to the community admin). Then **M2** (canonical business claiming)
-can begin. Import provenance retention is the one remaining open decision, and it
-only gates the import-staging piece.
+Next is **M3 — authorized directory & community context**: expand the public
+directory projection with keyset pagination and bounded pages, route `/c/{slug}`
+and `/r/{slug}` to community/region IDs server-side, and retire the brand
+conditionals (`isLatino`, seed-array swaps) and the generic `SbraEvent` name
+while preserving Berks/SBRA seed content. No open decision gates M3; import
+provenance retention now sits with M8 backfill.

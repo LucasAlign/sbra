@@ -58,7 +58,8 @@ test("Postgres: identities, constraints, directory isolation, and grant revocati
     ]);
     const directory = await readDirectory(db, alice.id, "a");
     assert.deepEqual(directory.organizations.map(o => o.id), ["shared"]);
-    assert.deepEqual(Object.keys(directory.organizations[0]).sort(), ["description", "id", "kind", "name"]);
+    assert.deepEqual(Object.keys(directory.organizations[0]).sort(),
+      ["description", "id", "kind", "localOffer", "locations", "name", "serviceAreas", "website"]);
     await assert.rejects(readDirectory(db, alice.id, "b"));
     await assert.rejects(readDirectory(db, alice.id, "unknown"));
     await assert.rejects(editOrganizationDescription(db, alice.id, "shared", "unauthorized"));

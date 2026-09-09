@@ -62,6 +62,30 @@ Two subtleties the policies account for:
   the *issuer* is still an admin — a cross-actor read RLS would hide. A dedicated
   `SECURITY DEFINER` helper (`collab_person_is_admin_locked`) performs that
   lock-and-check, bypassing RLS for that one integrity read.
+- **`INSERT ... ON CONFLICT DO UPDATE` also needs the target row to be visible
+  through the `SELECT` policy.** When a vouching admin writes another person's
+  affiliation (whose `SELECT` is scoped to its owner), an upsert is blocked even
+  with no real conflict. Those idempotent writes (claim approval's affiliation,
+  listing overrides) are therefore done as **update-then-insert**, so each
+  statement satisfies its own admin write policy and never needs a cross-actor
+  read.
+
+## The claim-approval writes ([0006](../drizzle/network/0006_rls_claims.sql))
+
+Approving a business claim (operator vouch) grants the claimant a `business_admin`
+role and an active affiliation — writes the *reviewing admin* performs on the
+*claimant's* behalf. Two helpers make that expressible without weakening the
+per-owner policies:
+
+- `collab_admins_org_community(org)` — is the actor a community admin of any
+  community the org is actively listed in? `role_grants` `INSERT`/`UPDATE` and
+  `organization_affiliations` `INSERT`/`UPDATE` allow the write when this holds
+  (org-scoped grants have no `community_id` for a policy to key on directly).
+- The claim itself (`claim_requests`) is visible to its filer or a community
+  admin; a member files only their own (`person_id = collab_actor()`); the admin
+  decides. Import-staging tables (`import_batches`, `source_records`,
+  `external_entity_links`, `merge_history`) are entirely admin-private to the
+  owning community via `FOR ALL` policies — there is no member-facing projection.
 
 ## Coverage so far
 
@@ -81,15 +105,16 @@ Two subtleties the policies account for:
   immutability trigger (0002) and the absence of a policy.
 - **Catalog (`communities`, `networks`, `regions`, `community_regions`)**:
   readable by the app; only the privileged provisioning path may change it.
+- **`claim_requests`, `community_listing_overrides`, and the import-staging
+  tables** ([0006](../drizzle/network/0006_rls_claims.sql)): see the claim-approval
+  section above.
+- **`person_identities`** ([0006](../drizzle/network/0006_rls_claims.sql)): no
+  general `SELECT` — a signed-in actor may read only its own rows; inserts are
+  open (login/linking). Login resolves a subject *before* an actor context exists,
+  so it reads through the `SECURITY DEFINER` `collab_lookup_identity`; the invite
+  flow's recipient check goes through `collab_person_has_identity`. Both bypass
+  RLS for exactly one existence read.
 
-Every runtime data path in `repository.ts`, `membership.ts`, and the workspace
-loader now runs through `withActor`, so these policies apply to real traffic.
-
-## Still deferred
-
-- **`person_identities`** (provider subjects): login must look up an identity
-  *before* an actor context exists, and the invitation flow checks a recipient's
-  identity — both cross the own-row boundary. Locking this table down needs those
-  reads moved to the privileged path (a separate login/provisioning connection)
-  or a `SECURITY DEFINER` lookup. It has no enumeration endpoint today, so
-  app-level scoping holds until then.
+Every runtime data path in `repository.ts`, `membership.ts`, `claims.ts`,
+`import-staging.ts`, and the workspace loader runs through `withActor`, so these
+policies apply to real traffic.
