@@ -4,7 +4,7 @@ import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import * as s from "@/lib/db/network-schema";
 import { requirePerson } from "@/lib/network/server";
 import { withActor } from "@/lib/db/context";
-import { identityAccess, discoveryPublishing, organizationsMembership, type OrganizationProfile, type ListingOverride, type OpportunityInput, type EventInput } from "@/lib/modules";
+import { identityAccess, discoveryPublishing, organizationsMembership, relationships, type OrganizationProfile, type ListingOverride, type OpportunityInput, type EventInput, type IntroductionInput, type ReferralInput } from "@/lib/modules";
 import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin, transferAdministrator, readAudit } from "@/lib/network/membership";
 import { readImportBatches, recordMerge, stageImportBatch, linkSourceRecord } from "@/lib/network/import-staging";
 
@@ -95,6 +95,61 @@ export async function loadEvents(communityId: string) {
 export async function loadEventAttendance(eventId: string) {
   const { actor } = await requirePerson();
   return discoveryPublishing().readEventAttendance(actor, eventId);
+}
+
+export async function requestIntroduction(input: IntroductionInput) {
+  const { actor } = await requirePerson();
+  return relationships().requestIntroduction(actor, input);
+}
+
+export async function respondToIntroduction(introductionId: string, decision: "accepted" | "declined", contact?: string) {
+  const { actor } = await requirePerson();
+  return relationships().respondToIntroduction(actor, introductionId, decision, contact);
+}
+
+export async function withdrawIntroduction(introductionId: string) {
+  const { actor } = await requirePerson();
+  return relationships().withdrawIntroduction(actor, introductionId);
+}
+
+export async function loadIntroductions() {
+  const { actor } = await requirePerson();
+  return relationships().readIntroductions(actor);
+}
+
+export async function loadConnections() {
+  const { actor } = await requirePerson();
+  return relationships().readConnections(actor);
+}
+
+export async function addRelationshipNote(aboutPersonId: string, body: string) {
+  const { actor } = await requirePerson();
+  return relationships().addRelationshipNote(actor, aboutPersonId, body);
+}
+
+export async function updateRelationshipNote(noteId: string, body: string) {
+  const { actor } = await requirePerson();
+  return relationships().updateRelationshipNote(actor, noteId, body);
+}
+
+export async function loadRelationshipNotes(aboutPersonId: string) {
+  const { actor } = await requirePerson();
+  return relationships().readRelationshipNotes(actor, aboutPersonId);
+}
+
+export async function createReferral(input: ReferralInput) {
+  const { actor } = await requirePerson();
+  return relationships().createReferral(actor, input);
+}
+
+export async function updateReferralOutcome(referralId: string, status: "open" | "closed" | "declined", closedValue?: number | null) {
+  const { actor } = await requirePerson();
+  return relationships().updateReferralOutcome(actor, referralId, status, closedValue);
+}
+
+export async function loadReferrals() {
+  const { actor } = await requirePerson();
+  return relationships().readReferrals(actor);
 }
 
 export async function updatePersonName(name: string) {

@@ -39,6 +39,21 @@ export type DemoEvent = {
 };
 export type DemoPublication = { eventId: string; communityId: string };
 export type DemoRsvp = { eventId: string; personId: string; status: "going" | "not_going"; respondedAt: Date };
+export type DemoIntroduction = {
+  id: string; communityId: string; createdBy: string; message: string; status: "pending" | "withdrawn"; createdAt: Date;
+};
+export type DemoParticipant = {
+  introductionId: string; personId: string; role: "introducer" | "party";
+  consent: "pending" | "accepted" | "declined"; contact: string; respondedAt: Date | null;
+};
+export type DemoConnection = {
+  personLow: string; personHigh: string; status: "active" | "archived"; introductionId: string | null; createdAt: Date;
+};
+export type DemoNote = { id: string; ownerId: string; aboutPersonId: string; body: string; updatedAt: Date };
+export type DemoReferral = {
+  id: string; communityId: string; fromPersonId: string; toPersonId: string; need: string; note: string;
+  status: "open" | "closed" | "declined"; closedValue: string | null; createdAt: Date; closedAt: Date | null;
+};
 
 export type DemoWorld = {
   people: Map<string, DemoPerson>;
@@ -55,6 +70,11 @@ export type DemoWorld = {
   events: DemoEvent[];
   publications: DemoPublication[];
   rsvps: DemoRsvp[];
+  introductions: DemoIntroduction[];
+  participants: DemoParticipant[];
+  connections: DemoConnection[];
+  notes: DemoNote[];
+  referrals: DemoReferral[];
 };
 
 const DEMO_OTHER_PERSON = "demo-person-jordan";
@@ -95,6 +115,11 @@ export function createDemoWorld(): DemoWorld {
     events: [],
     publications: [],
     rsvps: [],
+    introductions: [],
+    participants: [],
+    connections: [],
+    notes: [],
+    referrals: [],
   };
 }
 

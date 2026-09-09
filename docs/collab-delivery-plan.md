@@ -25,8 +25,8 @@ live demo until the backend replaces it milestone by milestone.
 
 ### Health snapshot (verified 2026-09-09)
 - `npx tsc --noEmit` — clean
-- `npm run test:network` — 25/25 pass
-- `npm run test:network:integration` — 11/11 pass against a disposable Postgres
+- `npm run test:network` — 29/29 pass
+- `npm run test:network:integration` — 12/12 pass against a disposable Postgres
   (`COLLAB_TEST_DATABASE_URL`); skipped otherwise
 - `npx next build` — clean (`/c/[slug]`, `/r/[slug]` server-rendered on demand)
 
@@ -382,6 +382,45 @@ RSVP per person; private attendance stays private.
 **Exit:** an introduction requires recipient acceptance before contact sharing; a
 connection never exposes either party's private notes.
 
+**Status: complete (2026-09-09).**
+- **Schema** (migration [`0011`](../drizzle/network/0011_relationships.sql)):
+  `introductions` + `introduction_participants` (each participant consents;
+  `contact` is written only on acceptance), `connections` (a canonical
+  `person_low < person_high` pair — one row per pair), `relationship_notes`
+  (owner-private), and `member_referrals` (named to avoid colliding with the
+  legacy prototype's `referrals`; carries the financial `closed_value`).
+- **Logic** ([`lib/network/relationships.ts`](../lib/network/relationships.ts)):
+  `requestIntroduction` (initiator is a party by default and supplies their
+  contact, or facilitates with `asParty:false`; every named party must be a member
+  of the community), `respondToIntroduction` (a pending party accepts/declines;
+  **contact is exchanged only on acceptance**, and accepting connects the party to
+  every already-accepted party), `withdrawIntroduction`, `readIntroductions`
+  (effective status derived from consent; each participant's contact is
+  projection-gated so it appears only once **both** the viewer and that
+  participant have accepted). `readConnections`; `addRelationshipNote` /
+  `updateRelationshipNote` / `readRelationshipNotes` (a note requires an active
+  connection and is **owner-private**). `createReferral` (rides on a connection),
+  `updateReferralOutcome` (either party; sets `closed_value`), `readReferrals`.
+- **RLS** (migration [`0012`](../drizzle/network/0012_rls_relationships.sql), with
+  `collab_is_intro_participant` / `collab_intro_created_by` /
+  `collab_person_is_active_member` SECURITY DEFINER helpers): introduction rows are
+  visible only to participants; a participant edits only their own consent row; the
+  creator adds the participant rows. Connections, notes, and referrals are visible
+  only to the people in them — a connection never exposes either party's notes, and
+  a referral's financial detail stays with the giver and receiver. There is no
+  community-wide referral projection and no aggregate ranking (no leaderboards).
+- Implemented behind the **Relationships** module
+  ([`lib/modules/relationships.ts`](../lib/modules/relationships.ts), demo +
+  Postgres), registered in [`lib/modules/index.ts`](../lib/modules/index.ts) and
+  surfaced through [`app/network-actions.ts`](../app/network-actions.ts). Covered by
+  [`relationships.integration.test.ts`](../lib/network/relationships.integration.test.ts)
+  (contact hidden until the recipient accepts, then mutual; connection formed on
+  acceptance; a note stays with its owner; referrals + `closed_value` stay with the
+  two parties; RLS backstops for non-participants) and demo unit tests in
+  [`relationships.test.ts`](../lib/modules/relationships.test.ts). Verified: tsc
+  clean, `next build` clean, `test:network` 29/29, `test:network:integration`
+  12/12 on a disposable Postgres.
+
 ---
 
 ### M7 — Community announcements & home workspace
@@ -468,21 +507,23 @@ monitoring clean; prototype/seed mode removed from the entry point.
 
 ## Immediate next step
 
-**M0–M5 are complete.** The foundation is hardened (admin transfer, immutable
+**M0–M6 are complete.** The foundation is hardened (admin transfer, immutable
 audit, full RLS under the restricted role, verified claiming with operator vouch,
 private import staging, `person_identities` lockdown); a signed-in person can
-claim and manage a real business with canonical edits that propagate everywhere
-and community-local listing overrides; the directory is real, scoped, and routed
-(`/c/{slug}` and `/r/{slug}` resolve server-side to public community/region
-context, unknown/inactive slugs 404, brand from config); the opportunities
-primitive is live (private until published, responses private to
-requester/responder unless shared); and events are shared across approved
-communities as one canonical row with per-community publication, one RSVP per
-person, transactional capacity, and private attendance.
+claim and manage a real business with canonical edits and community-local listing
+overrides; the directory is real, scoped, and routed; opportunities are private
+until published; events are shared across approved communities with one canonical
+row, transactional capacity, and private attendance; and relationships are live —
+consent-gated introductions (contact shared only after acceptance) that form
+connections, owner-private relationship notes, and referrals that ride on
+connections with financial detail restricted to the two parties and no
+leaderboards.
 
-Next is **M6 — introductions, connections & referrals**: consent-gated
-introductions (`introductions` / `introduction_participants` — contact details
-shared only after acceptance), `connections` + `relationship_notes` (notes
-private to their owner), and referrals rebuilt on participant relationships with
-restricted financial details and no automatic leaderboards. No open decision
-gates M6.
+Next is **M7 — community announcements & home workspace**: `announcements` +
+`announcement_publications` with an explicit audience and author authority
+(comments inherit parent access); the home workspace (open requests, recommended
+next actions, introductions awaiting response, upcoming relevant events, chamber
+messages); and porting the valuable prototype pieces (Tools hub, admin console)
+onto real scoped data. Exit is the Berks MVP condition: two communities share a
+business and an event while keeping private operations separate, and members
+complete an opportunity → introduction workflow.

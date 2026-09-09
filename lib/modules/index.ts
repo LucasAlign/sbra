@@ -10,7 +10,8 @@ import { getDb } from "../db/client";
 import { DemoIdentityAccess, PostgresIdentityAccess, type IdentityAccessModule } from "./identity-access";
 import { DemoDiscoveryPublishing, PostgresDiscoveryPublishing } from "./discovery-publishing";
 import { DemoOrganizationsMembership, PostgresOrganizationsMembership } from "./organizations-membership";
-import type { DiscoveryPublishingModule, OrganizationsMembershipModule } from "./contracts";
+import { DemoRelationships, PostgresRelationships } from "./relationships";
+import type { DiscoveryPublishingModule, OrganizationsMembershipModule, RelationshipsModule } from "./contracts";
 import { createDemoWorld, type DemoWorld } from "./demo-world";
 import { DEMO_ACTOR_ID, DEMO_IDENTITY } from "./ids";
 import { ModuleError, type ModuleMode } from "./types";
@@ -62,11 +63,17 @@ export function organizationsMembership(): OrganizationsMembershipModule {
   return moduleMode() === "demo" ? new DemoOrganizationsMembership(world()) : new PostgresOrganizationsMembership(db());
 }
 
+export function relationships(): RelationshipsModule {
+  return moduleMode() === "demo" ? new DemoRelationships(world()) : new PostgresRelationships(db());
+}
+
 export { ModuleError } from "./types";
 export { DEMO_ACTOR_ID } from "./ids";
 export type { ModuleActor, PrivateProfile, PublicProfile, ModuleMode } from "./types";
 export type { IdentityAccessModule, ProviderIdentity } from "./identity-access";
-export type { DiscoveryPublishingModule, OrganizationsMembershipModule,
+export type { DiscoveryPublishingModule, OrganizationsMembershipModule, RelationshipsModule,
   OrganizationProfile, ListingOverride, ClaimReview, DirectoryListing,
   Opportunity, OpportunityResponse, OpportunityInput, OpportunityKind,
-  EventInput, CommunityEvent, EventAttendee } from "./contracts";
+  EventInput, CommunityEvent, EventAttendee,
+  IntroductionInput, Introduction, IntroductionParticipant, Connection,
+  RelationshipNote, ReferralInput, Referral } from "./contracts";

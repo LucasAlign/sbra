@@ -135,11 +135,64 @@ export interface DiscoveryPublishingModule {
   readEventAttendance(actor: ModuleActor, eventId: string): Promise<{ attendees: EventAttendee[] }>;
 }
 
+/** Fields to request an introduction. The initiator is a party by default
+ *  (asParty), providing their own contact; set asParty:false to only facilitate. */
+export type IntroductionInput = {
+  communityId: string; partyIds: string[]; message?: string; contact?: string; asParty?: boolean;
+};
+
+/** One participant of an introduction. `contact` is populated only once BOTH the
+ *  viewer and this participant have accepted — contact is shared after acceptance. */
+export type IntroductionParticipant = {
+  personId: string; name: string; role: string; consent: string; contact: string;
+};
+
+/** An introduction as one of its participants sees it. */
+export type Introduction = {
+  id: string; communityId: string; createdBy: string; message: string; status: string;
+  createdAt: Date; mine: boolean; myRole: string; myConsent: string; participants: IntroductionParticipant[];
+};
+
+/** A connection between the actor and another person. */
+export type Connection = { personId: string; name: string; since: Date; introductionId: string | null };
+
+/** A private relationship note (owner-only). */
+export type RelationshipNote = { id: string; aboutPersonId: string; body: string; updatedAt: Date };
+
+/** Fields to create a referral (to an existing connection). */
+export type ReferralInput = { communityId: string; toPersonId: string; need?: string; note?: string };
+
+/** A referral as one of its two parties sees it (financial detail included). */
+export type Referral = {
+  id: string; communityId: string; fromPersonId: string; fromName: string; toPersonId: string; toName: string;
+  need: string; note: string; status: string; closedValue: string | null;
+  createdAt: Date; closedAt: Date | null; direction: string;
+};
+
 /** 4. Relationships — member-driven connections, introductions, referrals (M6). */
 export interface RelationshipsModule {
-  // Introductions require recipient consent before contact sharing; connection
-  // notes stay private to their owner. Methods land in M6.
-  readonly milestone: "M6";
+  /** Request an introduction naming one or more community members. */
+  requestIntroduction(actor: ModuleActor, input: IntroductionInput): Promise<{ id: string }>;
+  /** Respond to an introduction awaiting the actor (contact shared only on accept). */
+  respondToIntroduction(actor: ModuleActor, introductionId: string, decision: "accepted" | "declined", contact?: string): Promise<{ status: string }>;
+  /** Withdraw the actor's own pending introduction. */
+  withdrawIntroduction(actor: ModuleActor, introductionId: string): Promise<void>;
+  /** Introductions the actor takes part in, with per-participant contact gating. */
+  readIntroductions(actor: ModuleActor): Promise<{ introductions: Introduction[] }>;
+  /** The actor's active connections. */
+  readConnections(actor: ModuleActor): Promise<{ connections: Connection[] }>;
+  /** Add a private note about a person the actor is connected to. */
+  addRelationshipNote(actor: ModuleActor, aboutPersonId: string, body: string): Promise<{ id: string }>;
+  /** Edit one of the actor's own notes. */
+  updateRelationshipNote(actor: ModuleActor, noteId: string, body: string): Promise<void>;
+  /** The actor's own private notes about a person. */
+  readRelationshipNotes(actor: ModuleActor, aboutPersonId: string): Promise<{ notes: RelationshipNote[] }>;
+  /** Refer a connection within a community. */
+  createReferral(actor: ModuleActor, input: ReferralInput): Promise<{ id: string }>;
+  /** Update a referral's outcome (either party); closed value stays with the two. */
+  updateReferralOutcome(actor: ModuleActor, referralId: string, status: "open" | "closed" | "declined", closedValue?: number | null): Promise<void>;
+  /** Referrals the actor gave or received. */
+  readReferrals(actor: ModuleActor): Promise<{ referrals: Referral[] }>;
 }
 
 /** 5. Community Operations — announcements, home workspace, scoped admin (M7). */

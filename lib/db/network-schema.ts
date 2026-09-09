@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, integer, primaryKey, unique, check, foreignKey, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, numeric, primaryKey, unique, check, foreignKey, index } from "drizzle-orm/pg-core";
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const status = () => text("status", { enum: ["pending", "active", "suspended", "left"] }).notNull().default("pending");
@@ -256,3 +256,75 @@ export const eventRsvps = pgTable("event_rsvps", {
   respondedAt: timestamp("responded_at", { withTimezone: true }).notNull().defaultNow(),
 }, t => [primaryKey({ columns: [t.eventId, t.personId] }),
   check("rsvp_status", sql`${t.status} in ('going', 'not_going')`)]);
+
+// --- Introductions, connections & referrals (M6) ---------------------------
+// Member-driven relationships with consent. An introduction names participants;
+// each party's contact is exchanged only once they accept. Accepted parties
+// become connections. Each person keeps private relationship notes. Referrals
+// ride on connections and their financial detail stays with the two parties.
+export const introductions = pgTable("introductions", {
+  id: text("id").primaryKey(),
+  communityId: text("community_id").notNull().references(() => communities.id),
+  createdBy: text("created_by").notNull().references(() => people.id),
+  message: text("message").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  createdAt: createdAt(),
+}, t => [index().on(t.communityId), index().on(t.createdBy),
+  check("introduction_status", sql`${t.status} in ('pending', 'accepted', 'declined', 'withdrawn')`)]);
+
+// A participant's `contact` (how to reach them) is written only on acceptance and
+// is projection-gated to accepted co-participants — contact is shared only after
+// acceptance. RLS keeps the rows visible to participants of the introduction only.
+export const introductionParticipants = pgTable("introduction_participants", {
+  introductionId: text("introduction_id").notNull().references(() => introductions.id),
+  personId: text("person_id").notNull().references(() => people.id),
+  role: text("role").notNull().default("party"),
+  consent: text("consent").notNull().default("pending"),
+  contact: text("contact").notNull().default(""),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+}, t => [primaryKey({ columns: [t.introductionId, t.personId] }), index().on(t.personId),
+  check("participant_role", sql`${t.role} in ('introducer', 'party')`),
+  check("participant_consent", sql`${t.consent} in ('pending', 'accepted', 'declined')`)]);
+
+// A symmetric connection between two people, stored with a canonical ordering
+// (person_low < person_high) so there is at most one row per pair. Formed when an
+// introduction's parties accept, or directly.
+export const connections = pgTable("connections", {
+  personLow: text("person_low").notNull().references(() => people.id),
+  personHigh: text("person_high").notNull().references(() => people.id),
+  status: text("status").notNull().default("active"),
+  introductionId: text("introduction_id").references(() => introductions.id),
+  createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.personLow, t.personHigh] }), index().on(t.personHigh),
+  check("connection_status", sql`${t.status} in ('active', 'archived')`),
+  check("connection_distinct", sql`${t.personLow} < ${t.personHigh}`)]);
+
+// A private note one person keeps about another; visible only to its owner. A
+// connection never exposes either party's notes.
+export const relationshipNotes = pgTable("relationship_notes", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id").notNull().references(() => people.id),
+  aboutPersonId: text("about_person_id").notNull().references(() => people.id),
+  body: text("body").notNull().default(""),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, t => [index().on(t.ownerId, t.aboutPersonId)]);
+
+// A referral between two connected members. The whole row — including the
+// financial `closed_value` — is visible only to the giver and receiver; there is
+// no community-wide projection and no aggregate ranking (no leaderboards). Named
+// `member_referrals` so it never collides with the legacy prototype's `referrals`.
+export const memberReferrals = pgTable("member_referrals", {
+  id: text("id").primaryKey(),
+  communityId: text("community_id").notNull().references(() => communities.id),
+  fromPersonId: text("from_person_id").notNull().references(() => people.id),
+  toPersonId: text("to_person_id").notNull().references(() => people.id),
+  need: text("need").notNull().default(""),
+  note: text("note").notNull().default(""),
+  status: text("status").notNull().default("open"),
+  closedValue: numeric("closed_value", { precision: 12, scale: 2 }),
+  createdAt: createdAt(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+}, t => [index().on(t.fromPersonId), index().on(t.toPersonId),
+  check("referral_status", sql`${t.status} in ('open', 'closed', 'declined')`),
+  check("referral_distinct", sql`${t.fromPersonId} <> ${t.toPersonId}`)]);

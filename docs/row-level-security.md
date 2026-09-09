@@ -138,7 +138,21 @@ per-owner policies:
   see others' rows. The audience helpers `collab_event_organizer(event)` and
   `collab_can_see_event(event)` keep the publication/RSVP policies from re-entering
   `community_events` / `event_publications`.
+- **`introductions`, `introduction_participants`, `connections`,
+  `relationship_notes`, `member_referrals`** ([0012](../drizzle/network/0012_rls_relationships.sql)):
+  an introduction and its participant rows are visible only to its participants
+  (`collab_is_intro_participant`); the creator adds participant rows
+  (`collab_intro_created_by`); each participant edits only their own consent row.
+  A participant's contact is written only on acceptance and is further
+  projection-gated to accepted co-participants, so contact is shared only after
+  acceptance. Connections are visible/writable only to the two people in the pair;
+  relationship notes only to their owner; referrals (including the financial
+  `closed_value`) only to the giver and receiver — no community projection, no
+  ranking. Naming other people (introduction parties, a referral's recipient)
+  requires checking *their* membership, which the per-person policy on
+  `person_community_memberships` hides from the actor, so that one existence read
+  goes through the `collab_person_is_active_member` definer.
 
 Every runtime data path in `repository.ts`, `membership.ts`, `claims.ts`,
-`import-staging.ts`, `opportunities.ts`, `events.ts`, and the workspace loader
-runs through `withActor`, so these policies apply to real traffic.
+`import-staging.ts`, `opportunities.ts`, `events.ts`, `relationships.ts`, and the
+workspace loader runs through `withActor`, so these policies apply to real traffic.
