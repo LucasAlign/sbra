@@ -163,6 +163,11 @@ per-owner policies:
   editing only their own. The home workspace runs each of its lists through these
   same actor-scoped policies, so it never surfaces anything the actor could not
   already read.
+- **`legacy_id_map`** ([0015](../drizzle/network/0015_legacy_backfill.sql)): an
+  operations-only table for the M8 backfill. RLS is **enabled with no policy**, so
+  the restricted runtime role can neither read nor write it; only the privileged
+  backfill path (the owner connection, which bypasses RLS) touches it — the
+  deny-by-default use of RLS, where the absence of a policy *is* the policy.
 
 Every runtime data path in `repository.ts`, `membership.ts`, `claims.ts`,
 `import-staging.ts`, `opportunities.ts`, `events.ts`, `relationships.ts`,

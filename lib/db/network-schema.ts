@@ -358,3 +358,20 @@ export const announcementComments = pgTable("announcement_comments", {
   body: text("body").notNull().default(""),
   createdAt: createdAt(),
 }, t => [index().on(t.announcementId)]);
+
+// --- Legacy backfill (M8) ---------------------------------------------------
+// Maps a deployed prototype entity (a legacy member or business row) to its
+// canonical id, or flags it for manual review. Entirely an operations /
+// provisioning concern written by the privileged backfill path; RLS is enabled
+// with NO policy, so the restricted runtime role can neither read nor write it.
+export const legacyIdMap = pgTable("legacy_id_map", {
+  entityType: text("entity_type").notNull(),
+  legacyId: text("legacy_id").notNull(),
+  canonicalId: text("canonical_id"),
+  status: text("status").notNull().default("mapped"),
+  source: text("source").notNull().default(""),
+  reason: text("reason").notNull().default(""),
+  createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.entityType, t.legacyId] }),
+  check("legacy_map_entity", sql`${t.entityType} in ('person', 'organization')`),
+  check("legacy_map_status", sql`${t.status} in ('mapped', 'needs_review', 'skipped')`)]);

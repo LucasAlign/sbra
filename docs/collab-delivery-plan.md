@@ -26,7 +26,7 @@ live demo until the backend replaces it milestone by milestone.
 ### Health snapshot (verified 2026-09-09)
 - `npx tsc --noEmit` — clean
 - `npm run test:network` — 31/31 pass
-- `npm run test:network:integration` — 14/14 pass against a disposable Postgres
+- `npm run test:network:integration` — 15/15 pass against a disposable Postgres
   (`COLLAB_TEST_DATABASE_URL`); skipped otherwise
 - `npx next build` — clean (`/c/[slug]`, `/r/[slug]` server-rendered on demand)
 
@@ -496,6 +496,42 @@ free vs. paid membership plans.
 **Exit:** reads/writes switched together; denied-access and failed-write
 monitoring clean; prototype/seed mode removed from the entry point.
 
+**Progress (2026-09-09): the decision-independent backfill engine landed; the
+production cutover itself is still gated by the decisions above and by a data
+backup/restore rehearsal.**
+- **Legacy-ID mapping table** (migration [`0015`](../drizzle/network/0015_legacy_backfill.sql)):
+  `legacy_id_map` records every legacy prototype id → canonical id (or a
+  `needs_review` flag with a reason). It is an operations-only table: RLS is
+  enabled with **no policy**, so the restricted runtime role can neither read nor
+  write it; only the privileged backfill path (owner connection, like the seed and
+  provisioning scripts) touches it.
+- **Backfill engine** ([`lib/network/backfill.ts`](../lib/network/backfill.ts)):
+  `backfillCommunity` maps legacy `businesses` → canonical organizations (with
+  `tier` migrated onto the org's community membership and `address`/`city` folded
+  into `locations`) and legacy `members` → people, **only via a verified account**
+  (the member's auth `uid` becomes their `person_identities` row). Ambiguous rows —
+  no verified account, a `uid` shared by two rows, or a missing/duplicated email —
+  are sent to `needs_review` with a reason and **never merged into one person**.
+  `isOwner` becomes an affiliation title, **never a role grant** — legacy admin
+  roles are granted explicitly after review, so there is no global promotion. The
+  pass is idempotent (re-running skips everything already handled).
+  `readBackfillReview` lists the flagged rows for a human; `validateBackfill`
+  checks post-run integrity (no dangling affiliations/memberships, and that the
+  backfill minted zero role grants).
+- Covered by [`backfill.integration.test.ts`](../lib/network/backfill.integration.test.ts):
+  verified members map (identity + affiliation + membership), the five ambiguous
+  rows go to review with the right reasons, `tier` migrates, no admin grant is
+  created, the pass is idempotent, and validation is clean. Verified: tsc clean,
+  `next build` clean, `test:network` 31/31, `test:network:integration` 15/15 on a
+  disposable Postgres.
+- **Still to do for the cutover (needs the decisions + real data access):** inventory
+  and back up the deployed data and rehearse restore; run the backfill against a
+  staging copy and shadow-compare authorized projections; resolve the `needs_review`
+  queue by hand; grant the reviewed community operators/admins explicitly; then a
+  short write-freeze cutover that switches reads and writes together, keeping the
+  legacy tables read-only for a recovery window, and removes seed mode from the
+  entry point.
+
 ---
 
 ### M9 — Phase 2: neighboring counties
@@ -556,14 +592,15 @@ exit condition is proven end to end** by an integration test. The one open threa
 from M7 is presentation: porting the prototype's Tools hub / admin console and the
 home workspace onto the backend modules, which folds naturally into the cutover.
 
-Next is **M8 — legacy backfill & MVP cutover**: inventory and back up deployed
-data; build legacy-ID mapping tables; map each legacy member → person +
-affiliation via verified account linkage (manual review for duplicate/missing
-emails); reconcile businesses with source evidence and record merge history;
-migrate `tier`; review legacy admin roles explicitly; validate counts/FKs/money
-precision; shadow-compare authorized projections in staging; then a short
-write-freeze cutover that switches reads and writes together and retires seed mode
-from the entry point.
+**M8 is under way.** Its decision-independent core — the `legacy_id_map` table and
+the idempotent backfill engine (verified-account linkage, manual-review flagging,
+tier migration, no global promotion, integrity validation) — has landed with full
+integration coverage. What remains is the cutover itself, which genuinely needs
+the open decisions and real data access: inventory + back up the deployed data and
+rehearse restore; run the backfill against a staging copy and shadow-compare
+authorized projections; work the `needs_review` queue by hand; grant the reviewed
+operators/admins explicitly; then a short write-freeze cutover that switches reads
+and writes together and retires seed mode from the entry point.
 
-**Needs a decision (gates M8):** initial verified community operators; data
-retention periods & scoped export format; free vs. paid membership plans.
+**Needs a decision (gates the M8 cutover):** initial verified community operators;
+data retention periods & scoped export format; free vs. paid membership plans.
