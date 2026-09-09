@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, primaryKey, unique, check, foreignKey, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, primaryKey, unique, check, foreignKey, index } from "drizzle-orm/pg-core";
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const status = () => text("status", { enum: ["pending", "active", "suspended", "left"] }).notNull().default("pending");
@@ -212,3 +212,47 @@ export const opportunityResponses = pgTable("opportunity_responses", {
   shared: boolean("shared").notNull().default(false),
   createdAt: createdAt(),
 }, t => [unique().on(t.opportunityId, t.authorId), index().on(t.opportunityId)]);
+
+// --- Events & RSVP (M5) -----------------------------------------------------
+// One canonical event, organized by a person (optionally on behalf of an org),
+// is PUBLISHED to many communities (see event_publications) — there are no
+// per-community copies. Discovery is shared across the communities an event is
+// published to; a member sees an event if they are an active member of any
+// community it reaches. Attendance is private: a participant sees only their own
+// RSVP, while the organizer sees the roster. Named `community_events` /
+// `event_rsvps` to avoid colliding with the legacy prototype's events/rsvps.
+export const communityEvents = pgTable("community_events", {
+  id: text("id").primaryKey(),
+  organizerId: text("organizer_id").notNull().references(() => people.id),
+  organizationId: text("organization_id").references(() => organizations.id),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  location: text("location").notNull().default(""),
+  timezone: text("timezone").notNull().default("UTC"),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }),
+  capacity: integer("capacity"),
+  status: text("status").notNull().default("scheduled"),
+  createdAt: createdAt(),
+}, t => [index().on(t.organizerId),
+  check("event_status", sql`${t.status} in ('scheduled', 'canceled')`),
+  check("event_capacity", sql`${t.capacity} is null or ${t.capacity} > 0`),
+  check("event_time_order", sql`${t.endsAt} is null or ${t.endsAt} >= ${t.startsAt}`)]);
+
+// A single event reaches many communities; no copies. PK (event, community).
+export const eventPublications = pgTable("event_publications", {
+  eventId: text("event_id").notNull().references(() => communityEvents.id),
+  communityId: text("community_id").notNull().references(() => communities.id),
+  publishedBy: text("published_by").notNull().references(() => people.id),
+  createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.eventId, t.communityId] }), index().on(t.communityId)]);
+
+// One RSVP per person per event; the person edits their own. Capacity is enforced
+// in the RSVP transaction (advisory-locked per event) against the going count.
+export const eventRsvps = pgTable("event_rsvps", {
+  eventId: text("event_id").notNull().references(() => communityEvents.id),
+  personId: text("person_id").notNull().references(() => people.id),
+  status: text("status").notNull().default("going"),
+  respondedAt: timestamp("responded_at", { withTimezone: true }).notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.eventId, t.personId] }),
+  check("rsvp_status", sql`${t.status} in ('going', 'not_going')`)]);

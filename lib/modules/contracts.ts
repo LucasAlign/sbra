@@ -77,6 +77,26 @@ export type OpportunityResponse = {
   body: string; shared: boolean; createdAt: Date; mine: boolean;
 };
 
+/** Fields to create an event (published to its first community atomically). */
+export type EventInput = {
+  communityId: string; title: string; startsAt: Date; endsAt?: Date | null;
+  description?: string; location?: string; timezone?: string;
+  capacity?: number | null; organizationId?: string | null;
+};
+
+/** An event as an authorized viewer sees it. Attendance stays private: `goingCount`
+ *  is populated only for the organizer; everyone else gets `full` + their own `myStatus`. */
+export type CommunityEvent = {
+  id: string; organizerId: string; organizerName: string;
+  organizationId: string | null; organizationName: string | null;
+  title: string; description: string; location: string; timezone: string;
+  startsAt: Date; endsAt: Date | null; capacity: number | null; status: string;
+  mine: boolean; myStatus: string | null; full: boolean; goingCount: number | null;
+};
+
+/** One entry in an event's roster (organizer-only). */
+export type EventAttendee = { personId: string; name: string; status: string; respondedAt: Date };
+
 /** 3. Discovery & Publishing — authorized directory, opportunities & responses. */
 export interface DiscoveryPublishingModule {
   /** Paginated, audience-scoped directory of organizations for a community. */
@@ -101,6 +121,18 @@ export interface DiscoveryPublishingModule {
   shareResponse(actor: ModuleActor, responseId: string, shared: boolean): Promise<void>;
   /** Responses the actor may see: their own, all as the requester, shared otherwise. */
   readResponses(actor: ModuleActor, opportunityId: string): Promise<{ responses: OpportunityResponse[] }>;
+  /** Create an event and publish it to its first community (one owning row, no copies). */
+  createEvent(actor: ModuleActor, input: EventInput): Promise<{ id: string }>;
+  /** Publish an existing event to another community the actor actively belongs to. */
+  publishEvent(actor: ModuleActor, eventId: string, communityId: string): Promise<void>;
+  /** Cancel the actor's own event. */
+  cancelEvent(actor: ModuleActor, eventId: string): Promise<void>;
+  /** RSVP to an event the actor can see (one per person; capacity enforced). */
+  rsvpToEvent(actor: ModuleActor, eventId: string, status: "going" | "not_going"): Promise<{ status: string }>;
+  /** Events shared to a community that the actor may see, with their own RSVP status. */
+  readEvents(actor: ModuleActor, communityId: string): Promise<{ events: CommunityEvent[] }>;
+  /** As the organizer, read an event's private attendance roster. */
+  readEventAttendance(actor: ModuleActor, eventId: string): Promise<{ attendees: EventAttendee[] }>;
 }
 
 /** 4. Relationships — member-driven connections, introductions, referrals (M6). */

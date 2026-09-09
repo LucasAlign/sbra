@@ -126,7 +126,19 @@ per-owner policies:
   `collab_can_see_opportunity(opp)`. Net effect: responses are **private to
   requester/responder unless shared**, and nothing leaks outside the opportunity's
   published audience.
+- **`community_events`, `event_publications`, `event_rsvps`** ([0010](../drizzle/network/0010_rls_events.sql)):
+  one event, published to many communities. An event is selectable by its
+  organizer or by active members of any community it is published to; a publication
+  is inserted only by the organizer, and only to a community they actively belong
+  to. **Attendance is private** — a participant selects only their own RSVP row,
+  while the organizer selects the whole roster. Capacity is enforced inside the
+  RSVP transaction, which advisory-locks the event (rather than the organizer-owned
+  row, so no lock-only policy is needed) and counts the going RSVPs through
+  `collab_event_going_count(event)` — a definer, because the person RSVPing cannot
+  see others' rows. The audience helpers `collab_event_organizer(event)` and
+  `collab_can_see_event(event)` keep the publication/RSVP policies from re-entering
+  `community_events` / `event_publications`.
 
 Every runtime data path in `repository.ts`, `membership.ts`, `claims.ts`,
-`import-staging.ts`, `opportunities.ts`, and the workspace loader runs through
-`withActor`, so these policies apply to real traffic.
+`import-staging.ts`, `opportunities.ts`, `events.ts`, and the workspace loader
+runs through `withActor`, so these policies apply to real traffic.

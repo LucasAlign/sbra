@@ -4,7 +4,7 @@ import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import * as s from "@/lib/db/network-schema";
 import { requirePerson } from "@/lib/network/server";
 import { withActor } from "@/lib/db/context";
-import { identityAccess, discoveryPublishing, organizationsMembership, type OrganizationProfile, type ListingOverride, type OpportunityInput } from "@/lib/modules";
+import { identityAccess, discoveryPublishing, organizationsMembership, type OrganizationProfile, type ListingOverride, type OpportunityInput, type EventInput } from "@/lib/modules";
 import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin, transferAdministrator, readAudit } from "@/lib/network/membership";
 import { readImportBatches, recordMerge, stageImportBatch, linkSourceRecord } from "@/lib/network/import-staging";
 
@@ -65,6 +65,36 @@ export async function shareOpportunityResponse(responseId: string, shared: boole
 export async function loadOpportunityResponses(opportunityId: string) {
   const { actor } = await requirePerson();
   return discoveryPublishing().readResponses(actor, opportunityId);
+}
+
+export async function createEvent(input: EventInput) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().createEvent(actor, input);
+}
+
+export async function publishEvent(eventId: string, communityId: string) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().publishEvent(actor, eventId, communityId);
+}
+
+export async function cancelEvent(eventId: string) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().cancelEvent(actor, eventId);
+}
+
+export async function rsvpToEvent(eventId: string, status: "going" | "not_going") {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().rsvpToEvent(actor, eventId, status);
+}
+
+export async function loadEvents(communityId: string) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().readEvents(actor, communityId);
+}
+
+export async function loadEventAttendance(eventId: string) {
+  const { actor } = await requirePerson();
+  return discoveryPublishing().readEventAttendance(actor, eventId);
 }
 
 export async function updatePersonName(name: string) {

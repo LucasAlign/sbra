@@ -14,8 +14,11 @@ import {
   closeOpportunity, postOpportunity, publishOpportunity, readOpportunities,
   readResponses, respondToOpportunity, shareResponse,
 } from "../network/opportunities";
-import type { DiscoveryPublishingModule, OpportunityInput } from "./contracts";
-import type { DemoWorld, DemoOpportunity } from "./demo-world";
+import {
+  cancelEvent, createEvent, publishEvent, readEventAttendance, readEvents, rsvpToEvent,
+} from "../network/events";
+import type { DiscoveryPublishingModule, EventInput, OpportunityInput } from "./contracts";
+import type { DemoWorld, DemoEvent, DemoOpportunity } from "./demo-world";
 import { ModuleActor, ModuleError } from "./types";
 
 type Database = PostgresJsDatabase<typeof fullSchema>;
@@ -52,6 +55,24 @@ export class PostgresDiscoveryPublishing implements DiscoveryPublishingModule {
   }
   readResponses(actor: ModuleActor, opportunityId: string) {
     return readResponses(this.db, actor.personId, opportunityId);
+  }
+  createEvent(actor: ModuleActor, input: EventInput) {
+    return createEvent(this.db, actor.personId, input);
+  }
+  publishEvent(actor: ModuleActor, eventId: string, communityId: string) {
+    return publishEvent(this.db, actor.personId, eventId, communityId);
+  }
+  cancelEvent(actor: ModuleActor, eventId: string) {
+    return cancelEvent(this.db, actor.personId, eventId);
+  }
+  rsvpToEvent(actor: ModuleActor, eventId: string, status: "going" | "not_going") {
+    return rsvpToEvent(this.db, actor.personId, eventId, status);
+  }
+  readEvents(actor: ModuleActor, communityId: string) {
+    return readEvents(this.db, actor.personId, communityId);
+  }
+  readEventAttendance(actor: ModuleActor, eventId: string) {
+    return readEventAttendance(this.db, actor.personId, eventId);
   }
 }
 
@@ -183,5 +204,95 @@ export class DemoDiscoveryPublishing implements DiscoveryPublishingModule {
         authorName: this.world.people.get(r.authorId)?.name ?? "", body: r.body, shared: r.shared,
         createdAt: r.createdAt, mine: r.authorId === actor.personId }));
     return { responses };
+  }
+
+  // Mirrors collab_can_see_event: organizer always; active member of any
+  // community the event is published to otherwise.
+  private canSeeEvent(personId: string, event: DemoEvent): boolean {
+    if (event.organizerId === personId) return true;
+    return this.world.publications.some(p => p.eventId === event.id && this.activeMember(personId, p.communityId));
+  }
+
+  private goingCount(eventId: string): number {
+    return this.world.rsvps.filter(r => r.eventId === eventId && r.status === "going").length;
+  }
+
+  async createEvent(actor: ModuleActor, input: EventInput) {
+    if (!input.title?.trim() || input.title.length > 200) throw new ModuleError("Invalid title.");
+    if (!(input.startsAt instanceof Date) || Number.isNaN(input.startsAt.getTime())) throw new ModuleError("Choose when the event starts.");
+    const endsAt = input.endsAt ?? null;
+    if (endsAt && endsAt.getTime() < input.startsAt.getTime()) throw new ModuleError("The event cannot end before it starts.");
+    const capacity = input.capacity ?? null;
+    if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1)) throw new ModuleError("Capacity must be a positive whole number.");
+    if (!this.activeMember(actor.personId, input.communityId)) throw new ModuleError("This community is not available to your account.");
+    const organizationId = input.organizationId ?? null;
+    if (organizationId && !this.canAdminOrg(actor.personId, organizationId)) {
+      throw new ModuleError("You cannot organize on behalf of that organization.");
+    }
+    const event: DemoEvent = { id: crypto.randomUUID(), organizerId: actor.personId, organizationId,
+      title: input.title.trim(), description: (input.description ?? "").trim(), location: (input.location ?? "").trim(),
+      timezone: input.timezone ?? "UTC", startsAt: input.startsAt, endsAt, capacity, status: "scheduled" };
+    this.world.events.push(event);
+    this.world.publications.push({ eventId: event.id, communityId: input.communityId });
+    return { id: event.id };
+  }
+
+  async publishEvent(actor: ModuleActor, eventId: string, communityId: string) {
+    const event = this.world.events.find(e => e.id === eventId && e.organizerId === actor.personId);
+    if (!event) throw new ModuleError("You cannot publish this event.");
+    if (!this.activeMember(actor.personId, communityId)) throw new ModuleError("You can only publish to a community you actively belong to.");
+    if (!this.world.publications.some(p => p.eventId === eventId && p.communityId === communityId)) {
+      this.world.publications.push({ eventId, communityId });
+    }
+  }
+
+  async cancelEvent(actor: ModuleActor, eventId: string) {
+    const event = this.world.events.find(e => e.id === eventId && e.organizerId === actor.personId);
+    if (!event) throw new ModuleError("You cannot cancel this event.");
+    event.status = "canceled";
+  }
+
+  async rsvpToEvent(actor: ModuleActor, eventId: string, status: "going" | "not_going") {
+    if (status !== "going" && status !== "not_going") throw new ModuleError("Invalid RSVP.");
+    const event = this.world.events.find(e => e.id === eventId);
+    if (!event || !this.canSeeEvent(actor.personId, event)) throw new ModuleError("This event is not available to your account.");
+    if (event.status === "canceled") throw new ModuleError("This event has been canceled.");
+    const existing = this.world.rsvps.find(r => r.eventId === eventId && r.personId === actor.personId);
+    if (status === "going" && event.capacity !== null) {
+      const alreadyGoing = existing?.status === "going";
+      if (this.goingCount(eventId) + (alreadyGoing ? 0 : 1) > event.capacity) throw new ModuleError("This event is full.");
+    }
+    if (existing) { existing.status = status; existing.respondedAt = new Date(); }
+    else this.world.rsvps.push({ eventId, personId: actor.personId, status, respondedAt: new Date() });
+    return { status };
+  }
+
+  async readEvents(actor: ModuleActor, communityId: string) {
+    const events = this.world.events
+      .filter(e => this.world.publications.some(p => p.eventId === e.id && p.communityId === communityId))
+      // Shared discovery: visible to active members of this community, or the organizer.
+      .filter(e => e.organizerId === actor.personId || this.activeMember(actor.personId, communityId))
+      .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || (a.id < b.id ? -1 : 1))
+      .map(e => {
+        const going = this.goingCount(e.id);
+        const isOrganizer = e.organizerId === actor.personId;
+        const myStatus = this.world.rsvps.find(r => r.eventId === e.id && r.personId === actor.personId)?.status ?? null;
+        return { id: e.id, organizerId: e.organizerId, organizerName: this.world.people.get(e.organizerId)?.name ?? "",
+          organizationId: e.organizationId, organizationName: e.organizationId ? this.world.organizations.get(e.organizationId)?.name ?? null : null,
+          title: e.title, description: e.description, location: e.location, timezone: e.timezone,
+          startsAt: e.startsAt, endsAt: e.endsAt, capacity: e.capacity, status: e.status,
+          mine: isOrganizer, myStatus, full: e.capacity !== null && going >= e.capacity,
+          goingCount: isOrganizer ? going : null };
+      });
+    return { events };
+  }
+
+  async readEventAttendance(actor: ModuleActor, eventId: string) {
+    const event = this.world.events.find(e => e.id === eventId && e.organizerId === actor.personId);
+    if (!event) throw new ModuleError("Event attendance is not available to your account.");
+    const attendees = this.world.rsvps.filter(r => r.eventId === eventId)
+      .map(r => ({ personId: r.personId, name: this.world.people.get(r.personId)?.name ?? "", status: r.status, respondedAt: r.respondedAt }))
+      .sort((a, b) => a.status.localeCompare(b.status) || a.name.localeCompare(b.name));
+    return { attendees };
   }
 }

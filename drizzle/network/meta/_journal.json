@@ -64,6 +64,20 @@
       "when": 1788950519029,
       "tag": "0008_rls_opportunities",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788974726239,
+      "tag": "0009_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788974730316,
+      "tag": "0010_rls_events",
+      "breakpoints": true
     }
   ]
 }

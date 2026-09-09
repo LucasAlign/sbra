@@ -68,4 +68,5 @@ export type { ModuleActor, PrivateProfile, PublicProfile, ModuleMode } from "./t
 export type { IdentityAccessModule, ProviderIdentity } from "./identity-access";
 export type { DiscoveryPublishingModule, OrganizationsMembershipModule,
   OrganizationProfile, ListingOverride, ClaimReview, DirectoryListing,
-  Opportunity, OpportunityResponse, OpportunityInput, OpportunityKind } from "./contracts";
+  Opportunity, OpportunityResponse, OpportunityInput, OpportunityKind,
+  EventInput, CommunityEvent, EventAttendee } from "./contracts";

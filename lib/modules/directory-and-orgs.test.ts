@@ -197,3 +197,67 @@ test("demo Claims: only a community admin may review, and never their own claim"
   const self = await orgs.requestClaim(actor, "demo-riverworks", DEMO_COMMUNITY_ID, "also mine");
   await assert.rejects(orgs.reviewClaim(actor, self.id, "approved"), ModuleError);
 });
+
+// A second active community with the actor as a member of both, so shared event
+// discovery across communities is observable in the demo world.
+const COMMUNITY_2 = "demo-community-2";
+const sam = { personId: "demo-person-sam", name: "Sam Member" };
+function worldForEvents() {
+  const world = createDemoWorld();
+  world.communities.set(COMMUNITY_2, { id: COMMUNITY_2, status: "active" });
+  world.people.set(sam.personId, { id: sam.personId, name: sam.name });
+  world.personMemberships.push(
+    { personId: DEMO_ACTOR_ID, communityId: COMMUNITY_2, status: "active" }, // organizer in both
+    { personId: sam.personId, communityId: COMMUNITY_2, status: "active" },  // C2 only
+  );
+  return world;
+}
+const soon = () => new Date(Date.now() + 86_400_000);
+
+test("demo Events: one event reaches two communities with a single shared ID", async () => {
+  const disc = new DemoDiscoveryPublishing(worldForEvents());
+  const has = (r: { events: { id: string }[] }, id: string) => r.events.some(e => e.id === id);
+  const { id } = await disc.createEvent(actor, { communityId: DEMO_COMMUNITY_ID, title: "Mixer", startsAt: soon() });
+  // A non-organizer cannot publish it elsewhere.
+  await assert.rejects(disc.publishEvent(other, id, COMMUNITY_2), ModuleError);
+  await disc.publishEvent(actor, id, COMMUNITY_2);
+  // The same ID surfaces in both communities; each community's member sees it.
+  assert.ok(has(await disc.readEvents(other, DEMO_COMMUNITY_ID), id)); // C1 member
+  assert.ok(has(await disc.readEvents(sam, COMMUNITY_2), id));         // C2 member
+  // A stranger who belongs to neither community never sees it.
+  assert.ok(!has(await disc.readEvents(stranger, DEMO_COMMUNITY_ID), id));
+});
+
+test("demo Events: capacity enforced, one RSVP per person, attendance private", async () => {
+  const world = worldForEvents();
+  const disc = new DemoDiscoveryPublishing(world);
+  const { id } = await disc.createEvent(actor, { communityId: DEMO_COMMUNITY_ID, title: "Small workshop", startsAt: soon(), capacity: 1 });
+  await disc.publishEvent(actor, id, COMMUNITY_2);
+
+  // One spot: the first 'going' takes it; the next is turned away.
+  await disc.rsvpToEvent(other, id, "going");
+  await assert.rejects(disc.rsvpToEvent(sam, id, "going"), /full/i);
+  // 'not_going' never consumes a spot; repeating 'going' does not add a row.
+  await disc.rsvpToEvent(sam, id, "not_going");
+  await disc.rsvpToEvent(other, id, "going");
+  assert.equal(world.rsvps.filter(r => r.eventId === id).length, 2);
+  assert.equal(world.rsvps.filter(r => r.eventId === id && r.status === "going").length, 1);
+
+  // Attendance is private: the organizer sees the roster; a member does not.
+  const roster = await disc.readEventAttendance(actor, id);
+  assert.ok(roster.attendees.some(a => a.personId === other.personId && a.status === "going"));
+  await assert.rejects(disc.readEventAttendance(other, id), ModuleError);
+  // A member sees their own status and `full`, but not the going count.
+  const view = (await disc.readEvents(other, DEMO_COMMUNITY_ID)).events.find(e => e.id === id)!;
+  assert.equal(view.myStatus, "going");
+  assert.equal(view.full, true);
+  assert.equal(view.goingCount, null);
+  // The organizer's view carries the count.
+  assert.equal((await disc.readEvents(actor, DEMO_COMMUNITY_ID)).events.find(e => e.id === id)!.goingCount, 1);
+
+  // A stranger cannot RSVP; canceling is the organizer's and blocks new RSVPs.
+  await assert.rejects(disc.rsvpToEvent(stranger, id, "going"), ModuleError);
+  await assert.rejects(disc.cancelEvent(other, id), ModuleError);
+  await disc.cancelEvent(actor, id);
+  await assert.rejects(disc.rsvpToEvent(sam, id, "going"), /canceled/i);
+});

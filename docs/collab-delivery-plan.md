@@ -25,8 +25,8 @@ live demo until the backend replaces it milestone by milestone.
 
 ### Health snapshot (verified 2026-09-09)
 - `npx tsc --noEmit` — clean
-- `npm run test:network` — 23/23 pass
-- `npm run test:network:integration` — 10/10 pass against a disposable Postgres
+- `npm run test:network` — 25/25 pass
+- `npm run test:network:integration` — 11/11 pass against a disposable Postgres
   (`COLLAB_TEST_DATABASE_URL`); skipped otherwise
 - `npx next build` — clean (`/c/[slug]`, `/r/[slug]` server-rendered on demand)
 
@@ -331,6 +331,43 @@ outside its published audience.
 **Exit:** an event appears in two approved communities with one event ID and one
 RSVP per person; private attendance stays private.
 
+**Status: complete (2026-09-09).**
+- **Schema** (migration [`0009`](../drizzle/network/0009_events.sql)):
+  `community_events` (one canonical row: `organizer_id`, optional
+  `organization_id`, `title`/`description`/`location`, `timezone`, `starts_at` /
+  `ends_at`, nullable `capacity`, `status` scheduled/canceled),
+  `event_publications` (PK `event_id` + `community_id` — **one event, many
+  communities, no copies**), and `event_rsvps` (PK `event_id` + `person_id` —
+  **one RSVP per person**, going/not_going). Named `community_events` /
+  `event_rsvps` so they never collide with the legacy prototype's `events` /
+  `rsvps` tables that share `public`.
+- **Logic** ([`lib/network/events.ts`](../lib/network/events.ts)): `createEvent`
+  (organizer must actively belong to the first community; a represented org must
+  be one they administer; the event + its first publication are written in one
+  transaction), `publishEvent` (organizer only, to another community they belong
+  to — shared discovery, no copies), `cancelEvent`, `rsvpToEvent` (**capacity
+  enforced in the transaction**: advisory-locked per event, counted through a
+  definer that bypasses RLS), `readEvents` (events shared to a community with the
+  actor's own RSVP status, a `full` flag, and the going count only for the
+  organizer), and `readEventAttendance` (organizer-only roster).
+- **RLS** (migration [`0010`](../drizzle/network/0010_rls_events.sql), with
+  `collab_can_see_event` / `collab_event_organizer` / `collab_event_going_count`
+  SECURITY DEFINER helpers): an event is selectable by its organizer or by active
+  members of any community it is published to; publications are inserted only by
+  the organizer to a community they actively belong to; **attendance is private** —
+  a participant sees only their own RSVP while the organizer sees the roster.
+- Both adapter families implement it behind the **Discovery & Publishing** module
+  ([`lib/modules/discovery-publishing.ts`](../lib/modules/discovery-publishing.ts)),
+  surfaced through [`app/network-actions.ts`](../app/network-actions.ts). The
+  acceptance scenario is covered by
+  [`events.integration.test.ts`](../lib/network/events.integration.test.ts) (one
+  event ID in two communities; capacity turns the third RSVP away and a freed spot
+  lets the next in; one row per person; organizer sees the roster while a member
+  sees only their own RSVP; RLS backstops forged/out-of-audience writes) and demo
+  unit tests in [`directory-and-orgs.test.ts`](../lib/modules/directory-and-orgs.test.ts).
+  Verified: tsc clean, `next build` clean, `test:network` 25/25,
+  `test:network:integration` 11/11 on a disposable Postgres.
+
 ---
 
 ### M6 — Introductions, connections & referrals
@@ -431,20 +468,21 @@ monitoring clean; prototype/seed mode removed from the entry point.
 
 ## Immediate next step
 
-**M0–M4 are complete.** The foundation is hardened (admin transfer, immutable
+**M0–M5 are complete.** The foundation is hardened (admin transfer, immutable
 audit, full RLS under the restricted role, verified claiming with operator vouch,
 private import staging, `person_identities` lockdown); a signed-in person can
 claim and manage a real business with canonical edits that propagate everywhere
 and community-local listing overrides; the directory is real, scoped, and routed
 (`/c/{slug}` and `/r/{slug}` resolve server-side to public community/region
-context, unknown/inactive slugs 404, brand from config); and the opportunities
-primitive is live — members post structured needs/offers that are private until
-published to their community, respond one-per-person, and keep responses private
-to requester/responder unless the responder shares them, all enforced in SQL and
-by row-level security.
+context, unknown/inactive slugs 404, brand from config); the opportunities
+primitive is live (private until published, responses private to
+requester/responder unless shared); and events are shared across approved
+communities as one canonical row with per-community publication, one RSVP per
+person, transactional capacity, and private attendance.
 
-Next is **M5 — events & RSVP (shared discovery)**: `events` +
-`event_publications` + `rsvps` — one event owns many publications (no copies),
-a unique event+person RSVP, capacity enforced in a transaction, timezone-aware
-timestamps; shared event discovery across approved communities with private
-attendance. No open decision gates M5.
+Next is **M6 — introductions, connections & referrals**: consent-gated
+introductions (`introductions` / `introduction_participants` — contact details
+shared only after acceptance), `connections` + `relationship_notes` (notes
+private to their owner), and referrals rebuilt on participant relationships with
+restricted financial details and no automatic leaderboards. No open decision
+gates M6.
