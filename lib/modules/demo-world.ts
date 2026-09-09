@@ -54,6 +54,11 @@ export type DemoReferral = {
   id: string; communityId: string; fromPersonId: string; toPersonId: string; need: string; note: string;
   status: "open" | "closed" | "declined"; closedValue: string | null; createdAt: Date; closedAt: Date | null;
 };
+export type DemoAnnouncement = {
+  id: string; authorId: string; title: string; body: string; status: "published" | "archived"; createdAt: Date;
+};
+export type DemoAnnouncementPublication = { announcementId: string; communityId: string };
+export type DemoAnnouncementComment = { id: string; announcementId: string; authorId: string; body: string; createdAt: Date };
 
 export type DemoWorld = {
   people: Map<string, DemoPerson>;
@@ -75,6 +80,9 @@ export type DemoWorld = {
   connections: DemoConnection[];
   notes: DemoNote[];
   referrals: DemoReferral[];
+  announcements: DemoAnnouncement[];
+  announcementPublications: DemoAnnouncementPublication[];
+  announcementComments: DemoAnnouncementComment[];
 };
 
 const DEMO_OTHER_PERSON = "demo-person-jordan";
@@ -120,6 +128,9 @@ export function createDemoWorld(): DemoWorld {
     connections: [],
     notes: [],
     referrals: [],
+    announcements: [],
+    announcementPublications: [],
+    announcementComments: [],
   };
 }
 

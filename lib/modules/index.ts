@@ -11,7 +11,8 @@ import { DemoIdentityAccess, PostgresIdentityAccess, type IdentityAccessModule }
 import { DemoDiscoveryPublishing, PostgresDiscoveryPublishing } from "./discovery-publishing";
 import { DemoOrganizationsMembership, PostgresOrganizationsMembership } from "./organizations-membership";
 import { DemoRelationships, PostgresRelationships } from "./relationships";
-import type { DiscoveryPublishingModule, OrganizationsMembershipModule, RelationshipsModule } from "./contracts";
+import { DemoCommunityOperations, PostgresCommunityOperations } from "./community-operations";
+import type { DiscoveryPublishingModule, OrganizationsMembershipModule, RelationshipsModule, CommunityOperationsModule } from "./contracts";
 import { createDemoWorld, type DemoWorld } from "./demo-world";
 import { DEMO_ACTOR_ID, DEMO_IDENTITY } from "./ids";
 import { ModuleError, type ModuleMode } from "./types";
@@ -67,13 +68,18 @@ export function relationships(): RelationshipsModule {
   return moduleMode() === "demo" ? new DemoRelationships(world()) : new PostgresRelationships(db());
 }
 
+export function communityOperations(): CommunityOperationsModule {
+  return moduleMode() === "demo" ? new DemoCommunityOperations(world()) : new PostgresCommunityOperations(db());
+}
+
 export { ModuleError } from "./types";
 export { DEMO_ACTOR_ID } from "./ids";
 export type { ModuleActor, PrivateProfile, PublicProfile, ModuleMode } from "./types";
 export type { IdentityAccessModule, ProviderIdentity } from "./identity-access";
-export type { DiscoveryPublishingModule, OrganizationsMembershipModule, RelationshipsModule,
+export type { DiscoveryPublishingModule, OrganizationsMembershipModule, RelationshipsModule, CommunityOperationsModule,
   OrganizationProfile, ListingOverride, ClaimReview, DirectoryListing,
   Opportunity, OpportunityResponse, OpportunityInput, OpportunityKind,
   EventInput, CommunityEvent, EventAttendee,
   IntroductionInput, Introduction, IntroductionParticipant, Connection,
-  RelationshipNote, ReferralInput, Referral } from "./contracts";
+  RelationshipNote, ReferralInput, Referral,
+  AnnouncementInput, Announcement, AnnouncementComment, HomeWorkspace } from "./contracts";

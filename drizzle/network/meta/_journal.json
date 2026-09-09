@@ -92,6 +92,20 @@
       "when": 1788978632536,
       "tag": "0012_rls_relationships",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788979703150,
+      "tag": "0013_announcements",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788979707652,
+      "tag": "0014_rls_announcements",
+      "breakpoints": true
     }
   ]
 }

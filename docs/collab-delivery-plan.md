@@ -25,8 +25,8 @@ live demo until the backend replaces it milestone by milestone.
 
 ### Health snapshot (verified 2026-09-09)
 - `npx tsc --noEmit` — clean
-- `npm run test:network` — 29/29 pass
-- `npm run test:network:integration` — 12/12 pass against a disposable Postgres
+- `npm run test:network` — 31/31 pass
+- `npm run test:network:integration` — 14/14 pass against a disposable Postgres
   (`COLLAB_TEST_DATABASE_URL`); skipped otherwise
 - `npx next build` — clean (`/c/[slug]`, `/r/[slug]` server-rendered on demand)
 
@@ -438,6 +438,43 @@ connection never exposes either party's private notes.
 event while keeping private operations separate; members complete an
 opportunity → introduction workflow.
 
+**Status: backend complete (2026-09-09); prototype-UI port is a follow-up.**
+- **Announcements** (migrations [`0013`](../drizzle/network/0013_announcements.sql) /
+  [`0014`](../drizzle/network/0014_rls_announcements.sql)): `announcements` +
+  `announcement_publications` + `announcement_comments`. A community communication
+  with **author authority** — created by a community admin and published to
+  communities they administer (one row, many communities). Members of a community
+  it reaches read it; **comments inherit the announcement's audience** (anyone who
+  can see the announcement reads all comments and can add their own). Logic in
+  [`lib/network/community-ops.ts`](../lib/network/community-ops.ts)
+  (`createAnnouncement` / `publishAnnouncement` / `archiveAnnouncement` /
+  `readAnnouncements` / `commentOnAnnouncement` / `readAnnouncementComments`); RLS
+  uses `collab_can_see_announcement` / `collab_announcement_author` definers.
+- **Home workspace** (`readHomeWorkspace`): the front-door aggregation — open
+  requests (opportunities), introductions awaiting the actor, upcoming relevant
+  events, and recent announcements — each RLS-scoped to what the actor may see; the
+  caller derives "recommended next actions" from the counts. Reaction totals do
+  not organize it (there are none).
+- Implemented behind the **Community Operations** module
+  ([`lib/modules/community-operations.ts`](../lib/modules/community-operations.ts),
+  demo + Postgres), registered in [`lib/modules/index.ts`](../lib/modules/index.ts)
+  and surfaced through [`app/network-actions.ts`](../app/network-actions.ts).
+- **Berks MVP exit — proven end to end** by
+  [`community-ops.integration.test.ts`](../lib/network/community-ops.integration.test.ts):
+  one business claimed in C1 shows (canonically) in both communities' directories;
+  one event ID reaches both communities; a C1 opportunity and a C1 announcement
+  never reach a C2-only member (private operations stay separate); and a member
+  responds to an opportunity and is then introduced, forming a connection on
+  acceptance. Announcement author-authority + comment-audience inheritance are
+  covered in the same file; demo unit tests live in
+  [`community-operations.test.ts`](../lib/modules/community-operations.test.ts).
+  Verified: tsc clean, `next build` clean, `test:network` 31/31,
+  `test:network:integration` 14/14 on a disposable Postgres.
+- **Follow-up (not blocking the exit):** port the prototype's Tools hub and admin
+  console onto these scoped modules in `NetworkWorkspace`, and render the home
+  workspace as the backend-mode landing surface. The data + authorization are done;
+  this is presentation, and it dovetails with the M8 cutover when seed mode retires.
+
 ---
 
 ### M8 — Legacy backfill & MVP cutover
@@ -507,23 +544,26 @@ monitoring clean; prototype/seed mode removed from the entry point.
 
 ## Immediate next step
 
-**M0–M6 are complete.** The foundation is hardened (admin transfer, immutable
-audit, full RLS under the restricted role, verified claiming with operator vouch,
-private import staging, `person_identities` lockdown); a signed-in person can
+**M0–M7 are backend-complete.** The foundation is hardened; a signed-in person can
 claim and manage a real business with canonical edits and community-local listing
 overrides; the directory is real, scoped, and routed; opportunities are private
-until published; events are shared across approved communities with one canonical
-row, transactional capacity, and private attendance; and relationships are live —
-consent-gated introductions (contact shared only after acceptance) that form
-connections, owner-private relationship notes, and referrals that ride on
-connections with financial detail restricted to the two parties and no
-leaderboards.
+until published; events are shared across approved communities with transactional
+capacity and private attendance; relationships are live (consent-gated
+introductions that form connections, owner-private notes, party-only referrals);
+and community operations are in place — announcements with author authority and
+audience-inheriting comments, plus the home-workspace aggregation. The **Berks MVP
+exit condition is proven end to end** by an integration test. The one open thread
+from M7 is presentation: porting the prototype's Tools hub / admin console and the
+home workspace onto the backend modules, which folds naturally into the cutover.
 
-Next is **M7 — community announcements & home workspace**: `announcements` +
-`announcement_publications` with an explicit audience and author authority
-(comments inherit parent access); the home workspace (open requests, recommended
-next actions, introductions awaiting response, upcoming relevant events, chamber
-messages); and porting the valuable prototype pieces (Tools hub, admin console)
-onto real scoped data. Exit is the Berks MVP condition: two communities share a
-business and an event while keeping private operations separate, and members
-complete an opportunity → introduction workflow.
+Next is **M8 — legacy backfill & MVP cutover**: inventory and back up deployed
+data; build legacy-ID mapping tables; map each legacy member → person +
+affiliation via verified account linkage (manual review for duplicate/missing
+emails); reconcile businesses with source evidence and record merge history;
+migrate `tier`; review legacy admin roles explicitly; validate counts/FKs/money
+precision; shadow-compare authorized projections in staging; then a short
+write-freeze cutover that switches reads and writes together and retires seed mode
+from the entry point.
+
+**Needs a decision (gates M8):** initial verified community operators; data
+retention periods & scoped export format; free vs. paid membership plans.

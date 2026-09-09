@@ -152,7 +152,19 @@ per-owner policies:
   requires checking *their* membership, which the per-person policy on
   `person_community_memberships` hides from the actor, so that one existence read
   goes through the `collab_person_is_active_member` definer.
+- **`announcements`, `announcement_publications`, `announcement_comments`**
+  ([0014](../drizzle/network/0014_rls_announcements.sql)): an announcement is one
+  row published to many communities. It is visible to its author or to active
+  members of any community it is published to (`collab_can_see_announcement`);
+  publishing carries **author authority** — only the author, and only to a
+  community they administer, may add a publication (`collab_announcement_author` +
+  `collab_is_community_admin`). **Comments inherit the announcement's audience**:
+  anyone who can see the announcement reads every comment and can add their own,
+  editing only their own. The home workspace runs each of its lists through these
+  same actor-scoped policies, so it never surfaces anything the actor could not
+  already read.
 
 Every runtime data path in `repository.ts`, `membership.ts`, `claims.ts`,
-`import-staging.ts`, `opportunities.ts`, `events.ts`, `relationships.ts`, and the
-workspace loader runs through `withActor`, so these policies apply to real traffic.
+`import-staging.ts`, `opportunities.ts`, `events.ts`, `relationships.ts`,
+`community-ops.ts`, and the workspace loader runs through `withActor`, so these
+policies apply to real traffic.

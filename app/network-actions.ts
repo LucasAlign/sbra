@@ -4,7 +4,7 @@ import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import * as s from "@/lib/db/network-schema";
 import { requirePerson } from "@/lib/network/server";
 import { withActor } from "@/lib/db/context";
-import { identityAccess, discoveryPublishing, organizationsMembership, relationships, type OrganizationProfile, type ListingOverride, type OpportunityInput, type EventInput, type IntroductionInput, type ReferralInput } from "@/lib/modules";
+import { identityAccess, discoveryPublishing, organizationsMembership, relationships, communityOperations, type OrganizationProfile, type ListingOverride, type OpportunityInput, type EventInput, type IntroductionInput, type ReferralInput, type AnnouncementInput } from "@/lib/modules";
 import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin, transferAdministrator, readAudit } from "@/lib/network/membership";
 import { readImportBatches, recordMerge, stageImportBatch, linkSourceRecord } from "@/lib/network/import-staging";
 
@@ -150,6 +150,41 @@ export async function updateReferralOutcome(referralId: string, status: "open" |
 export async function loadReferrals() {
   const { actor } = await requirePerson();
   return relationships().readReferrals(actor);
+}
+
+export async function createAnnouncement(input: AnnouncementInput) {
+  const { actor } = await requirePerson();
+  return communityOperations().createAnnouncement(actor, input);
+}
+
+export async function publishAnnouncement(announcementId: string, communityId: string) {
+  const { actor } = await requirePerson();
+  return communityOperations().publishAnnouncement(actor, announcementId, communityId);
+}
+
+export async function archiveAnnouncement(announcementId: string) {
+  const { actor } = await requirePerson();
+  return communityOperations().archiveAnnouncement(actor, announcementId);
+}
+
+export async function loadAnnouncements(communityId: string) {
+  const { actor } = await requirePerson();
+  return communityOperations().readAnnouncements(actor, communityId);
+}
+
+export async function commentOnAnnouncement(announcementId: string, body: string) {
+  const { actor } = await requirePerson();
+  return communityOperations().commentOnAnnouncement(actor, announcementId, body);
+}
+
+export async function loadAnnouncementComments(announcementId: string) {
+  const { actor } = await requirePerson();
+  return communityOperations().readAnnouncementComments(actor, announcementId);
+}
+
+export async function loadHomeWorkspace() {
+  const { actor } = await requirePerson();
+  return communityOperations().readHomeWorkspace(actor);
 }
 
 export async function updatePersonName(name: string) {

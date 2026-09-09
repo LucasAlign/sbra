@@ -328,3 +328,33 @@ export const memberReferrals = pgTable("member_referrals", {
 }, t => [index().on(t.fromPersonId), index().on(t.toPersonId),
   check("referral_status", sql`${t.status} in ('open', 'closed', 'declined')`),
   check("referral_distinct", sql`${t.fromPersonId} <> ${t.toPersonId}`)]);
+
+// --- Announcements (M7) -----------------------------------------------------
+// A community communication with author authority: created by a community admin
+// and PUBLISHED to one or more communities they administer (no copies). Members
+// of a community it reaches can read it and comment; comments inherit the
+// announcement's audience.
+export const announcements = pgTable("announcements", {
+  id: text("id").primaryKey(),
+  authorId: text("author_id").notNull().references(() => people.id),
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  status: text("status").notNull().default("published"),
+  createdAt: createdAt(),
+}, t => [index().on(t.authorId),
+  check("announcement_status", sql`${t.status} in ('published', 'archived')`)]);
+
+export const announcementPublications = pgTable("announcement_publications", {
+  announcementId: text("announcement_id").notNull().references(() => announcements.id),
+  communityId: text("community_id").notNull().references(() => communities.id),
+  publishedBy: text("published_by").notNull().references(() => people.id),
+  createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.announcementId, t.communityId] }), index().on(t.communityId)]);
+
+export const announcementComments = pgTable("announcement_comments", {
+  id: text("id").primaryKey(),
+  announcementId: text("announcement_id").notNull().references(() => announcements.id),
+  authorId: text("author_id").notNull().references(() => people.id),
+  body: text("body").notNull().default(""),
+  createdAt: createdAt(),
+}, t => [index().on(t.announcementId)]);

@@ -195,9 +195,42 @@ export interface RelationshipsModule {
   readReferrals(actor: ModuleActor): Promise<{ referrals: Referral[] }>;
 }
 
+/** Fields to create an announcement (published to its first community). */
+export type AnnouncementInput = { communityId: string; title: string; body?: string };
+
+/** An announcement as a member of a publishing community sees it. */
+export type Announcement = {
+  id: string; authorId: string; authorName: string; title: string; body: string;
+  status: string; createdAt: Date; commentCount: number; mine: boolean;
+};
+
+/** A comment on an announcement (inherits the announcement's audience). */
+export type AnnouncementComment = {
+  id: string; announcementId: string; authorId: string; authorName: string; body: string; createdAt: Date; mine: boolean;
+};
+
+/** The home workspace: the actor's front door, aggregated and RLS-scoped. */
+export type HomeWorkspace = {
+  introductionsAwaiting: { id: string; communityId: string; message: string; createdAt: Date }[];
+  upcomingEvents: { id: string; title: string; startsAt: Date; communityId: string }[];
+  openOpportunities: { id: string; communityId: string; kind: string; title: string; createdAt: Date; mine: boolean }[];
+  announcements: { id: string; communityId: string; title: string; authorName: string; createdAt: Date }[];
+};
+
 /** 5. Community Operations — announcements, home workspace, scoped admin (M7). */
 export interface CommunityOperationsModule {
-  // Announcements carry an explicit audience and author authority; the home
-  // workspace surfaces open requests and next actions. Methods land in M7.
-  readonly milestone: "M7";
+  /** Create an announcement and publish it to a community the actor administers. */
+  createAnnouncement(actor: ModuleActor, input: AnnouncementInput): Promise<{ id: string }>;
+  /** Publish an existing announcement to another community the actor administers. */
+  publishAnnouncement(actor: ModuleActor, announcementId: string, communityId: string): Promise<void>;
+  /** Archive the actor's own announcement. */
+  archiveAnnouncement(actor: ModuleActor, announcementId: string): Promise<void>;
+  /** Announcements published to a community the actor belongs to. */
+  readAnnouncements(actor: ModuleActor, communityId: string): Promise<{ announcements: Announcement[] }>;
+  /** Comment on an announcement the actor can see (comments inherit its audience). */
+  commentOnAnnouncement(actor: ModuleActor, announcementId: string, body: string): Promise<{ id: string }>;
+  /** Comments on an announcement the actor can see. */
+  readAnnouncementComments(actor: ModuleActor, announcementId: string): Promise<{ comments: AnnouncementComment[] }>;
+  /** The actor's home workspace across their communities. */
+  readHomeWorkspace(actor: ModuleActor): Promise<HomeWorkspace>;
 }
