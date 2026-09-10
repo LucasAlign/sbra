@@ -10,7 +10,7 @@ The network catalog lives in `lib/network/catalog.ts`; `lib/organizations.ts` ad
 
 It helps SBRA members connect and communicate around the four things SBRA is built on:
 
-1. **Referral exchange & tracking** — digitize the Breakfast Referral Club (give / receive / track referrals, closed-loop $ value credited to the giver)
+1. **Referral exchange & tracking** — digitize the Breakfast Referral Club (10 points when sent, plus 40 when the recipient marks it Won)
 2. **Events, Mingles & RSVP** — Breakfast Club, Mingles, ribbon-cuttings, workshops
 3. **Member directory & business profiles** — searchable businesses, services offered, referrals wanted
 4. **Community feed & announcements** — wins, The Pitch spotlights, org news

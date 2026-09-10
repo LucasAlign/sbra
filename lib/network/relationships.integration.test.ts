@@ -15,7 +15,7 @@ import {
 // Proves the M6 exit conditions under the restricted runtime role: an
 // introduction shares contact only after the recipient accepts, accepted parties
 // become connections, a connection never exposes either party's private notes,
-// and referrals (with their financial detail) stay with the two parties.
+// and referrals stay with the two parties.
 const url = process.env.COLLAB_TEST_DATABASE_URL;
 
 test("Postgres: consent-gated introductions, private notes, party-only referrals", { skip: !url }, async () => {
@@ -114,10 +114,12 @@ test("Postgres: consent-gated introductions, private notes, party-only referrals
       assert.equal((await tx.select().from(schema.memberReferrals)).filter(r => r.id === ref).length, 0);
     });
 
-    // The receiver closes it with a value; the financial detail stays with the two.
-    await assert.rejects(updateReferralOutcome(db, cara.id, ref, "closed", 999));
-    await updateReferralOutcome(db, bob.id, ref, "closed", 1500);
-    assert.equal((await readReferrals(db, ann.id)).referrals.find(r => r.id === ref)?.closedValue, "1500.00");
+    // Sending earns 10 points; only the receiver can mark it Won for 40 more.
+    assert.equal((await readReferrals(db, ann.id)).referrals.find(r => r.id === ref)?.points, 10);
+    await assert.rejects(updateReferralOutcome(db, cara.id, ref, "won"));
+    await assert.rejects(updateReferralOutcome(db, ann.id, ref, "won"));
+    await updateReferralOutcome(db, bob.id, ref, "won");
+    assert.equal((await readReferrals(db, ann.id)).referrals.find(r => r.id === ref)?.points, 50);
 
     // Withdrawal: a fresh pending introduction can be withdrawn by its creator,
     // after which the recipient can no longer act on it.

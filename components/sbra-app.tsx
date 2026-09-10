@@ -33,6 +33,7 @@ import { APP_KEYS, membersKey, businessesKey, loadCollection, saveCollection, cl
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import { brandFor } from "@/lib/brand";
+import { REFERRAL_SENT_POINTS, REFERRAL_WON_BONUS_POINTS, referralPointsForStatus } from "@/lib/referral-points";
 import { latinoBusinessSeed, latinoMemberSeed } from "@/lib/latino-directory";
 import {
   businessSeed,
@@ -95,9 +96,7 @@ const DEMO_ACCOUNTS: DemoAccount[] = [
 type MemberTextField = "name" | "title" | "email" | "phone" | "bio";
 type DraftPostAttachment = PostAttachment & { file?: File };
 
-// An open referral the receiver hasn't advanced within this many days is
-// "stale" and surfaced as a nudge: stalled referrals starve the giver of the
-// credit they earned, so we prompt the receiver to act.
+// A sent referral with no outcome after this many days is surfaced as a nudge.
 const STALE_REFERRAL_DAYS = 7;
 // Rolling window for the top-givers leaderboard. A calendar month reads empty
 // near the 1st; a rolling window always reflects recent giving activity.
@@ -105,11 +104,7 @@ const LEADERBOARD_WINDOW_DAYS = 30;
 const REFERRAL_DAY_MS = 24 * 60 * 60 * 1000;
 
 function isReferralStale(referral: Referral, now: number): boolean {
-  const open = referral.status === "given" || referral.status === "contacted";
-  // Measure from the last activity (contacted, else created) so acting on a
-  // referral resets the clock instead of nagging the receiver again immediately.
-  const lastActivity = referral.contactedAt ?? referral.createdAt;
-  return open && now - lastActivity >= STALE_REFERRAL_DAYS * REFERRAL_DAY_MS;
+  return referral.status === "sent" && now - referral.createdAt >= STALE_REFERRAL_DAYS * REFERRAL_DAY_MS;
 }
 
 const demoAdminMember: Member = {
@@ -259,11 +254,11 @@ const toolCategories: ToolCategory[] = [
     tools: [
       {
         id: "referral-roi",
-        name: "Referral ROI Calculator",
-        tagline: "What the club is really worth to you",
+        name: "Referral Points",
+        tagline: "Track the connections you create",
         description:
-          "Turn your given and received referrals into hard dollars — closed-loop value earned, given, and your net return from the exchange.",
-        icon: "💸",
+          "See points earned from referrals sent and successful referrals marked Won.",
+        icon: "🏆",
         status: "soon"
       },
       {
@@ -451,20 +446,6 @@ const latinoAds: MemberAd[] = [
   { sponsor: "Tec Centro Berks", headline: "Capacitación que abre nuevas oportunidades.", copy: "Desarrollo de la fuerza laboral para nuestra comunidad.", action: "Conoce al miembro", logo: latinoBusinessLogo("Tec Centro Berks"), tone: "gold" }
 ];
 
-// Illustrative demo savings from member pricing, included events, and learning.
-// Referral revenue remains sourced from closed referral records below.
-const memberSavings: Record<string, { amount: number; detail: string }> = {
-  "maya-chen": { amount: 860, detail: "Workshops + member services" },
-  "devin-brooks": { amount: 340, detail: "Events + learning" },
-  "ari-rivera": { amount: 720, detail: "Vendor discounts + events" },
-  "jada-lee": { amount: 1180, detail: "Member pricing + workshops" },
-  "noah-patel": { amount: 1540, detail: "Training + vendor discounts" },
-  "marisol-ortiz": { amount: 410, detail: "Learning + events" },
-  "sofia-martinez": { amount: 630, detail: "Events + member services" },
-  "grace-whitfield": { amount: 1320, detail: "Programs + member pricing" },
-  "tom-alvarez": { amount: 940, detail: "Workshops + events" }
-};
-
 function splitList(value: string) {
   return value
     .split(",")
@@ -520,7 +501,6 @@ export function SBRAApp() {
   const [referrals, setReferrals] = useState<Referral[]>(referralSeed);
   const [referralComposerOpen, setReferralComposerOpen] = useState(false);
   const [referralDraft, setReferralDraft] = useState<ReferralDraft>(emptyReferralDraft);
-  const [closingReferral, setClosingReferral] = useState<Referral | null>(null);
   const [events, setEvents] = useState<CommunityEvent[]>(eventSeed);
   const [rsvps, setRsvps] = useState<Rsvp[]>(rsvpSeed);
   const [eventComposerOpen, setEventComposerOpen] = useState(false);
@@ -1112,7 +1092,7 @@ export function SBRAApp() {
 
     const newReferral: Referral = {
       id: `ref-${Date.now()}`,
-      status: "given",
+      status: "sent",
       createdAt: Date.now(),
       ...base
     };
@@ -1135,22 +1115,15 @@ export function SBRAApp() {
     if (dbEnabled) void backendActions.updateReferral(id, changes);
   }
 
-  function markReferralContacted(referral: Referral) {
-    void patchReferral(referral.id, { status: "contacted", contactedAt: Date.now() });
-  }
-
-  function markReferralLost(referral: Referral) {
-    void patchReferral(referral.id, { status: "closed_lost", closedAt: Date.now() });
-  }
-
-  function closeReferralWon(referral: Referral, closedValue: number, thankYou: string) {
+  function markReferralWon(referral: Referral) {
     void patchReferral(referral.id, {
-      status: "closed_won",
-      closedValue,
-      thankYou: thankYou.trim() || undefined,
+      status: "won",
       closedAt: Date.now()
     });
-    setClosingReferral(null);
+  }
+
+  function markReferralNotWon(referral: Referral) {
+    void patchReferral(referral.id, { status: "not_won", closedAt: Date.now() });
   }
 
   function setEventRsvp(eventId: string, status: RsvpStatus) {
@@ -1738,9 +1711,8 @@ export function SBRAApp() {
             businessById={businessById}
             currentMemberId={currentMember?.id ?? ""}
             onGive={openReferralComposer}
-            onMarkContacted={markReferralContacted}
-            onMarkLost={markReferralLost}
-            onOpenClose={setClosingReferral}
+            onMarkWon={markReferralWon}
+            onMarkNotWon={markReferralNotWon}
           />
         )}
         {activeView === "events" && (
@@ -1869,15 +1841,6 @@ export function SBRAApp() {
           onChange={setReferralDraft}
           onClose={() => setReferralComposerOpen(false)}
           onSubmit={submitReferral}
-        />
-      )}
-
-      {closingReferral && (
-        <CloseReferralModal
-          referral={closingReferral}
-          memberById={memberById}
-          onClose={() => setClosingReferral(null)}
-          onConfirm={closeReferralWon}
         />
       )}
 
@@ -2199,17 +2162,17 @@ function CommunityView({
   const referralLeaders = Array.from(memberById.values())
     .map((member) => {
       const sent = referrals.filter((referral) => referral.giverId === member.id);
-      const wins = sent.filter((referral) => referral.status === "closed_won");
+      const wins = sent.filter((referral) => referral.status === "won");
       return {
         member,
         business: businessById.get(member.businessId),
         sent: sent.length,
         wins: wins.length,
-        generated: wins.reduce((sum, referral) => sum + (referral.closedValue ?? 0), 0)
+        points: sent.length * REFERRAL_SENT_POINTS + wins.length * REFERRAL_WON_BONUS_POINTS
       };
     })
     .filter((row) => row.sent > 0)
-    .sort((a, b) => b.sent - a.sent || b.generated - a.generated)
+    .sort((a, b) => b.points - a.points || b.sent - a.sent)
     .slice(0, 5);
 
   return (
@@ -2238,7 +2201,7 @@ function CommunityView({
             </span>
             <span className="leader-metric"><strong>{row.sent}</strong><small>Sent</small></span>
             <span className="leader-metric"><strong>{row.wins}</strong><small>Won</small></span>
-            <span className="leader-value"><strong>${row.generated.toLocaleString()}</strong><small>Generated</small></span>
+            <span className="leader-value"><strong>{row.points}</strong><small>Points</small></span>
           </div>
         ))}
       </div>
@@ -3064,39 +3027,23 @@ function ReferralRoiTool({
   const stats = useMemo(() => {
     const given = referrals.filter((r) => r.giverId === currentMemberId);
     const received = referrals.filter((r) => r.receiverId === currentMemberId);
-    const givenWon = given.filter((r) => r.status === "closed_won");
-    const receivedWon = received.filter((r) => r.status === "closed_won");
-    const creditEarned = givenWon.reduce((sum, r) => sum + (r.closedValue ?? 0), 0);
-    const businessWon = receivedWon.reduce((sum, r) => sum + (r.closedValue ?? 0), 0);
+    const givenWon = given.filter((r) => r.status === "won");
+    const receivedWon = received.filter((r) => r.status === "won");
+    const pointsEarned = given.length * REFERRAL_SENT_POINTS + givenWon.length * REFERRAL_WON_BONUS_POINTS;
     const receivedDecided = received.filter(
-      (r) => r.status === "closed_won" || r.status === "closed_lost"
+      (r) => r.status === "won" || r.status === "not_won"
     ).length;
     const winRate = receivedDecided > 0 ? Math.round((receivedWon.length / receivedDecided) * 100) : 0;
-    const avgWon =
-      receivedWon.length > 0 ? businessWon / receivedWon.length : givenWon.length > 0 ? creditEarned / givenWon.length : 0;
     return {
       givenCount: given.length,
       receivedCount: received.length,
       givenWonCount: givenWon.length,
-      creditEarned,
-      businessWon,
-      winRate,
-      avgWon
+      pointsEarned,
+      winRate
     };
   }, [referrals, currentMemberId]);
 
   const memberName = memberById.get(currentMemberId)?.name.split(" ")[0];
-
-  // Projection inputs — seeded from the member's real activity where we can.
-  const [perMonth, setPerMonth] = useState(String(Math.max(1, stats.givenCount)));
-  const [avgValue, setAvgValue] = useState(String(Math.round(stats.avgWon) || 2500));
-  const [closeRate, setCloseRate] = useState(String(stats.winRate || 30));
-  const [dues, setDues] = useState("600");
-
-  const projectedClosed = (toNum(perMonth) * 12 * toNum(closeRate)) / 100;
-  const projectedValue = projectedClosed * toNum(avgValue);
-  const duesNum = toNum(dues);
-  const roiMultiple = duesNum > 0 ? projectedValue / duesNum : 0;
 
   return (
     <div className="tool-body">
@@ -3105,11 +3052,11 @@ function ReferralRoiTool({
         <div className="tool-metric-grid">
           <div className="tool-metric"><strong>{stats.givenCount}</strong><span>Referrals given</span></div>
           <div className="tool-metric"><strong>{stats.receivedCount}</strong><span>Referrals received</span></div>
-          <div className="tool-metric"><strong>{usd(stats.creditEarned)}</strong><span>Credit earned (given)</span></div>
-          <div className="tool-metric"><strong>{usd(stats.businessWon)}</strong><span>Business you closed</span></div>
+          <div className="tool-metric"><strong>{stats.givenWonCount}</strong><span>Successful referrals</span></div>
+          <div className="tool-metric"><strong>{stats.pointsEarned}</strong><span>SBRA Points</span></div>
         </div>
         {stats.givenCount === 0 && stats.receivedCount === 0 && (
-          <p className="tool-hint">No referral activity yet — the projection below shows what the club could be worth as you get active.</p>
+          <p className="tool-hint">Send a referral to earn your first 10 points.</p>
         )}
       </article>
 
@@ -3118,7 +3065,7 @@ function ReferralRoiTool({
           <p className="section-label">Referral breakdown</p>
           <div className="table-scroll">
             <table className="data-table">
-              <thead><tr><th>Direction</th><th>With</th><th>Need</th><th>Status</th><th>Value</th></tr></thead>
+              <thead><tr><th>Direction</th><th>With</th><th>Need</th><th>Status</th><th>Points</th></tr></thead>
               <tbody>
                 {[
                   ...referrals.filter((r) => r.giverId === currentMemberId).map((r) => ({ r, dir: "Given", who: memberById.get(r.receiverId)?.name })),
@@ -3131,7 +3078,7 @@ function ReferralRoiTool({
                       <td>{who ?? r.prospectName ?? "—"}</td>
                       <td>{r.need}</td>
                       <td><span className={`crm-stage-badge roi-status-${r.status}`}>{referralStatusLabels[r.status]}</span></td>
-                      <td>{r.closedValue ? usd(r.closedValue) : "—"}</td>
+                      <td>{r.giverId === currentMemberId ? referralPointsForStatus(r.status) : "—"}</td>
                     </tr>
                   ))}
               </tbody>
@@ -3141,19 +3088,13 @@ function ReferralRoiTool({
       )}
 
       <article className="glass-panel tool-panel">
-        <p className="section-label">Project your annual ROI</p>
-        <div className="tool-form">
-          <ToolField label="Referrals you give / month" value={perMonth} onChange={setPerMonth} step="1" />
-          <ToolField label="Average closed deal value" value={avgValue} onChange={setAvgValue} prefix="$" />
-          <ToolField label="Close rate" value={closeRate} onChange={setCloseRate} suffix="%" />
-          <ToolField label="Annual SBRA dues" value={dues} onChange={setDues} prefix="$" />
-        </div>
+        <p className="section-label">How points work</p>
         <div className="tool-results">
-          <div className="result-tile"><span>Projected closed deals / yr</span><strong>{Math.round(projectedClosed).toLocaleString()}</strong></div>
-          <div className="result-tile"><span>Projected annual value</span><strong>{usd(projectedValue)}</strong></div>
-          <div className="result-tile accent"><span>Return on dues</span><strong>{roiMultiple > 0 ? `${roiMultiple.toFixed(1)}×` : "—"}</strong></div>
+          <div className="result-tile"><span>Referral sent</span><strong>10 points</strong></div>
+          <div className="result-tile accent"><span>Marked Won</span><strong>+40 points</strong></div>
+          <div className="result-tile"><span>Total for a win</span><strong>50 points</strong></div>
         </div>
-        <p className="tool-hint">Estimates only — based on the assumptions above, not a guarantee. Tune the inputs to model your own year.</p>
+        <p className="tool-hint">The recipient only chooses Won or Not Won. Points are not based on deal size.</p>
       </article>
     </div>
   );
@@ -5219,43 +5160,38 @@ function ReferralsView({
   businessById,
   currentMemberId,
   onGive,
-  onMarkContacted,
-  onMarkLost,
-  onOpenClose
+  onMarkWon,
+  onMarkNotWon
 }: {
   referrals: Referral[];
   memberById: Map<string, Member>;
   businessById: Map<string, Business>;
   currentMemberId: string;
   onGive: () => void;
-  onMarkContacted: (referral: Referral) => void;
-  onMarkLost: (referral: Referral) => void;
-  onOpenClose: (referral: Referral) => void;
+  onMarkWon: (referral: Referral) => void;
+  onMarkNotWon: (referral: Referral) => void;
 }) {
   const given = referrals.filter((referral) => referral.giverId === currentMemberId);
   const received = referrals.filter((referral) => referral.receiverId === currentMemberId);
-  const closedWonGiven = given.filter((referral) => referral.status === "closed_won");
-  const creditedValue = closedWonGiven.reduce((total, referral) => total + (referral.closedValue ?? 0), 0);
+  const wonGiven = given.filter((referral) => referral.status === "won");
+  const points = given.length * REFERRAL_SENT_POINTS + wonGiven.length * REFERRAL_WON_BONUS_POINTS;
 
   const now = Date.now();
   // Open referrals sent to you that have gone quiet — your move to advance them.
   const staleReceived = received.filter((referral) => isReferralStale(referral, now));
 
-  // Top givers over a rolling window, ranked by referrals given (the behavior we
-  // want to reward), then by dollars credited as a tiebreaker.
+  // Top connectors over a rolling monthly window, ranked by earned points.
   const windowStart = now - LEADERBOARD_WINDOW_DAYS * REFERRAL_DAY_MS;
-  const giverStats = new Map<string, { giverId: string; given: number; closedWon: number; credited: number }>();
+  const giverStats = new Map<string, { giverId: string; sent: number; won: number; points: number }>();
   for (const referral of referrals) {
     if (referral.createdAt < windowStart) continue;
-    const stats = giverStats.get(referral.giverId) ?? { giverId: referral.giverId, given: 0, closedWon: 0, credited: 0 };
-    stats.given += 1;
-    if (referral.status === "closed_won") {
-      stats.closedWon += 1;
-      stats.credited += referral.closedValue ?? 0;
-    }
+    const stats = giverStats.get(referral.giverId) ?? { giverId: referral.giverId, sent: 0, won: 0, points: 0 };
+    stats.sent += 1;
+    stats.points += REFERRAL_SENT_POINTS;
+    if (referral.status === "won") { stats.won += 1; stats.points += REFERRAL_WON_BONUS_POINTS; }
     giverStats.set(referral.giverId, stats);
   }
-  const rankedGivers = [...giverStats.values()].sort((a, b) => b.given - a.given || b.credited - a.credited);
+  const rankedGivers = [...giverStats.values()].sort((a, b) => b.points - a.points || b.sent - a.sent);
   const topGivers = rankedGivers.slice(0, 5);
   const myRankIndex = rankedGivers.findIndex((stats) => stats.giverId === currentMemberId);
 
@@ -5264,13 +5200,13 @@ function ReferralsView({
       <div className="glass-panel referral-header">
         <div>
           <p className="section-label">Referral exchange</p>
-          <h3>Give a lead. Make an introduction. Close the loop.</h3>
-          <p className="referral-sub">Connect a real opportunity with the right SBRA member, then keep the status current so everyone can see the impact.</p>
-          <p className="impact-note">The people and businesses are sourced from SBRA’s public directory; all activity, referrals, and financial metrics in this demo are illustrative.</p>
+          <h3>Send a referral. Earn points. Build connections.</h3>
+          <p className="referral-sub">Send a useful opportunity to the right SBRA member. They only need to mark it Won or Not Won.</p>
+          <p className="impact-note">The people and businesses are sourced from SBRA’s public directory; referral activity in this demo is illustrative.</p>
           <ol className="referral-how" aria-label="How the referral program works">
-            <li><span>1</span><p><strong>Send</strong><small>Share a qualified lead or warm member introduction.</small></p></li>
-            <li><span>2</span><p><strong>Follow up</strong><small>The receiving member contacts them and updates the status.</small></p></li>
-            <li><span>3</span><p><strong>Record the result</strong><small>Log wins and value so the connector gets credit.</small></p></li>
+            <li><span>1</span><p><strong>Send</strong><small>Share a lead or warm introduction and earn 10 points.</small></p></li>
+            <li><span>2</span><p><strong>Choose the result</strong><small>The receiving member marks it Won or Not Won.</small></p></li>
+            <li><span>3</span><p><strong>Earn the win bonus</strong><small>A Won referral adds 40 more points for the sender.</small></p></li>
           </ol>
         </div>
         <button className="primary-button" onClick={onGive}>
@@ -5288,7 +5224,7 @@ function ReferralsView({
             </strong>
             <span>
               {staleReceived.length === 1 ? "A referral has" : "Referrals have"} sat for{" "}
-              {STALE_REFERRAL_DAYS}+ days. Mark them contacted or closed so the giver gets their credit.
+              {STALE_REFERRAL_DAYS}+ days. Mark each one Won or Not Won so the sender gets the right points.
             </span>
           </div>
         </div>
@@ -5296,7 +5232,7 @@ function ReferralsView({
 
       <div className="metric-grid">
         <article className="glass-panel metric">
-          <span>Given</span>
+          <span>Sent</span>
           <strong>{given.length}</strong>
           <p>Referrals you sent</p>
         </article>
@@ -5306,28 +5242,21 @@ function ReferralsView({
           <p>Referrals to you</p>
         </article>
         <article className="glass-panel metric">
-          <span>Closed won</span>
-          <strong>{closedWonGiven.length}</strong>
-          <p>Your referrals that closed</p>
+          <span>Successful referrals</span>
+          <strong>{wonGiven.length}</strong>
+          <p>Your referrals marked Won</p>
         </article>
         <article className="glass-panel metric">
-          <span>Business generated</span>
-          <strong>${creditedValue.toLocaleString()}</strong>
-          <p>Value from referrals you sent</p>
+          <span>SBRA Points</span>
+          <strong>{points}</strong>
+          <p>10 sent + 40 Won bonus</p>
         </article>
       </div>
-
-      <ReferralImpactBoard
-        referrals={referrals}
-        memberById={memberById}
-        businessById={businessById}
-        currentMemberId={currentMemberId}
-      />
 
       {topGivers.length > 0 && (
         <div className="glass-panel leaderboard">
           <div className="leaderboard-head">
-            <p className="section-label">Top givers · last {LEADERBOARD_WINDOW_DAYS} days</p>
+            <p className="section-label">Top Connector · last {LEADERBOARD_WINDOW_DAYS} days</p>
             {myRankIndex >= 0 && <span className="leaderboard-you">You&apos;re #{myRankIndex + 1}</span>}
           </div>
           <ol className="leaderboard-list">
@@ -5342,16 +5271,16 @@ function ReferralsView({
                     {isYou && <span className="leaderboard-tag">You</span>}
                   </span>
                   <span className="leaderboard-stat">
-                    {stats.given} given · {stats.closedWon} closed
+                    {stats.sent} sent · {stats.won} won
                   </span>
-                  <span className="leaderboard-credit">${stats.credited.toLocaleString()}</span>
+                  <span className="leaderboard-credit">{stats.points} pts</span>
                 </li>
               );
             })}
           </ol>
           {myRankIndex >= topGivers.length && (
             <p className="leaderboard-selfnote">
-              You&apos;re #{myRankIndex + 1} with {rankedGivers[myRankIndex].given} given — give another to climb.
+              You&apos;re #{myRankIndex + 1} with {rankedGivers[myRankIndex].points} points — send another to climb.
             </p>
           )}
         </div>
@@ -5359,7 +5288,7 @@ function ReferralsView({
 
       <div className="referral-columns">
         <section className="referral-column">
-          <p className="section-label">Given by you ({given.length})</p>
+          <p className="section-label">Sent by you ({given.length})</p>
           {given.map((referral) => (
             <ReferralCard
               key={referral.id}
@@ -5368,12 +5297,11 @@ function ReferralsView({
               isStale={isReferralStale(referral, now)}
               memberById={memberById}
               businessById={businessById}
-              onMarkContacted={onMarkContacted}
-              onMarkLost={onMarkLost}
-              onOpenClose={onOpenClose}
+              onMarkWon={onMarkWon}
+              onMarkNotWon={onMarkNotWon}
             />
           ))}
-          {given.length === 0 && <div className="empty-state">You haven&apos;t given a referral yet.</div>}
+          {given.length === 0 && <div className="empty-state">You haven&apos;t sent a referral yet.</div>}
         </section>
 
         <section className="referral-column">
@@ -5386,101 +5314,13 @@ function ReferralsView({
               isStale={isReferralStale(referral, now)}
               memberById={memberById}
               businessById={businessById}
-              onMarkContacted={onMarkContacted}
-              onMarkLost={onMarkLost}
-              onOpenClose={onOpenClose}
+              onMarkWon={onMarkWon}
+              onMarkNotWon={onMarkNotWon}
             />
           ))}
           {received.length === 0 && <div className="empty-state">No referrals sent to you yet.</div>}
         </section>
       </div>
-    </section>
-  );
-}
-
-function ReferralImpactBoard({
-  referrals,
-  memberById,
-  businessById,
-  currentMemberId
-}: {
-  referrals: Referral[];
-  memberById: Map<string, Member>;
-  businessById: Map<string, Business>;
-  currentMemberId: string;
-}) {
-  const revenueByMember = new Map<string, number>();
-  referrals.forEach((referral) => {
-    if (referral.status === "closed_won") {
-      revenueByMember.set(
-        referral.receiverId,
-        (revenueByMember.get(referral.receiverId) ?? 0) + (referral.closedValue ?? 0)
-      );
-    }
-  });
-
-  const rows = Array.from(memberById.values())
-    .map((member) => {
-      const referralRevenue = revenueByMember.get(member.id) ?? 0;
-      const savings = memberSavings[member.id]?.amount ?? 0;
-      return {
-        member,
-        business: businessById.get(member.businessId),
-        referralRevenue,
-        savings,
-        savingsDetail: memberSavings[member.id]?.detail ?? "No savings logged yet",
-        totalImpact: referralRevenue + savings
-      };
-    })
-    .filter((row) => row.totalImpact > 0)
-    .sort((a, b) => b.totalImpact - a.totalImpact);
-
-  const referralTotal = rows.reduce((sum, row) => sum + row.referralRevenue, 0);
-  const savingsTotal = rows.reduce((sum, row) => sum + row.savings, 0);
-
-  return (
-    <section className="glass-panel impact-board" aria-labelledby="impact-board-title">
-      <div className="impact-board-head">
-        <div>
-          <p className="section-label">Member impact board</p>
-          <h3 id="impact-board-title">Value created across SBRA</h3>
-          <p>Closed referral revenue plus estimated savings from member benefits.</p>
-        </div>
-        <div className="impact-totals" aria-label="Community impact totals">
-          <span><small>Revenue generated</small><strong>${referralTotal.toLocaleString()}</strong></span>
-          <span><small>Member savings</small><strong>${savingsTotal.toLocaleString()}</strong></span>
-          <span className="impact-total"><small>Total impact</small><strong>${(referralTotal + savingsTotal).toLocaleString()}</strong></span>
-        </div>
-      </div>
-
-      <div className="impact-table" role="table" aria-label="Member revenue and savings leaderboard">
-        <div className="impact-table-header" role="row">
-          <span role="columnheader">Member</span>
-          <span role="columnheader">Referral revenue</span>
-          <span role="columnheader">Member savings</span>
-          <span role="columnheader">Total impact</span>
-        </div>
-        {rows.map((row, index) => (
-          <div
-            className={row.member.id === currentMemberId ? "impact-row current" : "impact-row"}
-            role="row"
-            key={row.member.id}
-          >
-            <div className="impact-member" role="cell">
-              <span className={`impact-rank rank-${Math.min(index + 1, 4)}`}>{index + 1}</span>
-              <span className="impact-avatar">{initials(row.member.name)}</span>
-              <span>
-                <strong>{row.member.name}{row.member.id === currentMemberId ? " (You)" : ""}</strong>
-                <small>{row.business?.name ?? "SBRA member"}</small>
-              </span>
-            </div>
-            <span className="impact-value" role="cell"><strong>${row.referralRevenue.toLocaleString()}</strong><small>Closed business</small></span>
-            <span className="impact-value" role="cell"><strong>${row.savings.toLocaleString()}</strong><small>{row.savingsDetail}</small></span>
-            <strong className="impact-grand-total" role="cell">${row.totalImpact.toLocaleString()}</strong>
-          </div>
-        ))}
-      </div>
-      <p className="impact-note">All referral activity, revenue, savings, rankings, and engagement shown here are illustrative demo data—not verified results attributed to these members.</p>
     </section>
   );
 }
@@ -5491,23 +5331,21 @@ function ReferralCard({
   isStale,
   memberById,
   businessById,
-  onMarkContacted,
-  onMarkLost,
-  onOpenClose
+  onMarkWon,
+  onMarkNotWon
 }: {
   referral: Referral;
   perspective: "given" | "received";
   isStale: boolean;
   memberById: Map<string, Member>;
   businessById: Map<string, Business>;
-  onMarkContacted: (referral: Referral) => void;
-  onMarkLost: (referral: Referral) => void;
-  onOpenClose: (referral: Referral) => void;
+  onMarkWon: (referral: Referral) => void;
+  onMarkNotWon: (referral: Referral) => void;
 }) {
   const giver = memberById.get(referral.giverId);
   const receiver = memberById.get(referral.receiverId);
   const introduced = referral.introducedMemberId ? memberById.get(referral.introducedMemberId) : undefined;
-  const isClosed = referral.status === "closed_won" || referral.status === "closed_lost";
+  const isClosed = referral.status === "won" || referral.status === "not_won";
   const counterpart = perspective === "given" ? receiver : giver;
 
   return (
@@ -5546,26 +5384,20 @@ function ReferralCard({
         </p>
       )}
 
-      {referral.status === "closed_won" && (
+      {referral.status === "won" && (
         <div className="referral-closed">
-          <strong>Closed ${Number(referral.closedValue ?? 0).toLocaleString()}</strong>
-          {referral.thankYou && <span>&ldquo;{referral.thankYou}&rdquo;</span>}
+          <strong>Won · sender earned 50 points</strong>
         </div>
       )}
-      {referral.status === "closed_lost" && <div className="referral-closed lost">Closed — did not convert</div>}
+      {referral.status === "not_won" && <div className="referral-closed lost">Not Won · sender earned 10 points</div>}
 
       {perspective === "received" && !isClosed && (
         <div className="referral-actions">
-          {referral.status === "given" && (
-            <button className="secondary-button" onClick={() => onMarkContacted(referral)}>
-              Mark contacted
-            </button>
-          )}
-          <button className="primary-button" onClick={() => onOpenClose(referral)}>
-            Close — won
+          <button className="primary-button" onClick={() => onMarkWon(referral)}>
+            Won
           </button>
-          <button className="secondary-button" onClick={() => onMarkLost(referral)}>
-            Close — lost
+          <button className="secondary-button" onClick={() => onMarkNotWon(referral)}>
+            Not Won
           </button>
         </div>
       )}
@@ -5693,70 +5525,6 @@ function GiveReferralModal({
           </button>
           <button className="primary-button" disabled={!canSubmit} onClick={onSubmit}>
             Send Referral
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function CloseReferralModal({
-  referral,
-  memberById,
-  onClose,
-  onConfirm
-}: {
-  referral: Referral;
-  memberById: Map<string, Member>;
-  onClose: () => void;
-  onConfirm: (referral: Referral, closedValue: number, thankYou: string) => void;
-}) {
-  const [value, setValue] = useState("");
-  const [thankYou, setThankYou] = useState("");
-  const giver = memberById.get(referral.giverId);
-
-  return (
-    <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="glass-panel profile-modal close-referral-modal" role="dialog" aria-modal="true">
-        <button className="modal-close" onClick={onClose} aria-label="Close">
-          Close
-        </button>
-        <div className="modal-head">
-          <div className="avatar large">$</div>
-          <div>
-            <p className="section-label">Close the loop</p>
-            <h3>Mark referral as won</h3>
-            <p>Credit the closed business to {giver ? giver.name : "the giver"}.</p>
-          </div>
-        </div>
-
-        <form className="profile-form" onSubmit={(event) => event.preventDefault()}>
-          <label>
-            Closed value ($)
-            <input
-              type="number"
-              min="0"
-              inputMode="numeric"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-            />
-          </label>
-          <label className="wide">
-            Thank-you note
-            <textarea
-              placeholder={`Thank ${giver ? giver.name.split(" ")[0] : "them"} for the referral…`}
-              value={thankYou}
-              onChange={(event) => setThankYou(event.target.value)}
-            />
-          </label>
-        </form>
-
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="primary-button" onClick={() => onConfirm(referral, Number(value) || 0, thankYou)}>
-            Confirm Won
           </button>
         </div>
       </section>

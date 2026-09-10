@@ -81,5 +81,5 @@ export type { DiscoveryPublishingModule, OrganizationsMembershipModule, Relation
   Opportunity, OpportunityResponse, OpportunityInput, OpportunityKind,
   EventInput, CommunityEvent, EventAttendee,
   IntroductionInput, Introduction, IntroductionParticipant, Connection,
-  RelationshipNote, ReferralInput, Referral,
+  RelationshipNote, ReferralInput, ReferralOutcome, Referral,
   AnnouncementInput, Announcement, AnnouncementComment, HomeWorkspace } from "./contracts";

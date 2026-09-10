@@ -261,7 +261,7 @@ export const eventRsvps = pgTable("event_rsvps", {
 // Member-driven relationships with consent. An introduction names participants;
 // each party's contact is exchanged only once they accept. Accepted parties
 // become connections. Each person keeps private relationship notes. Referrals
-// ride on connections and their financial detail stays with the two parties.
+// ride on connections and use the simplified points model.
 export const introductions = pgTable("introductions", {
   id: text("id").primaryKey(),
   communityId: text("community_id").notNull().references(() => communities.id),
@@ -310,9 +310,9 @@ export const relationshipNotes = pgTable("relationship_notes", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, t => [index().on(t.ownerId, t.aboutPersonId)]);
 
-// A referral between two connected members. The whole row — including the
-// financial `closed_value` — is visible only to the giver and receiver; there is
-// no community-wide projection and no aggregate ranking (no leaderboards). Named
+// A referral between two connected members. The whole row is visible only to
+// the giver and receiver. Points are derived from status: 10 when sent and 40
+// additional when won. Named
 // `member_referrals` so it never collides with the legacy prototype's `referrals`.
 export const memberReferrals = pgTable("member_referrals", {
   id: text("id").primaryKey(),
@@ -321,12 +321,11 @@ export const memberReferrals = pgTable("member_referrals", {
   toPersonId: text("to_person_id").notNull().references(() => people.id),
   need: text("need").notNull().default(""),
   note: text("note").notNull().default(""),
-  status: text("status").notNull().default("open"),
-  closedValue: numeric("closed_value", { precision: 12, scale: 2 }),
+  status: text("status").notNull().default("sent"),
   createdAt: createdAt(),
   closedAt: timestamp("closed_at", { withTimezone: true }),
 }, t => [index().on(t.fromPersonId), index().on(t.toPersonId),
-  check("referral_status", sql`${t.status} in ('open', 'closed', 'declined')`),
+  check("referral_status", sql`${t.status} in ('sent', 'won', 'not_won')`),
   check("referral_distinct", sql`${t.fromPersonId} <> ${t.toPersonId}`)]);
 
 // --- Announcements (M7) -----------------------------------------------------

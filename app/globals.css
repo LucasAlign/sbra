@@ -2234,10 +2234,9 @@ button {
 .inv-status-sent { background: rgba(0, 17, 103, 0.1); color: var(--blue); }
 .inv-status-paid { background: rgba(27, 127, 95, 0.16); color: #1b7f5f; }
 .inv-status-overdue { background: rgba(184, 26, 31, 0.12); color: var(--coral); }
-.roi-status-given { background: rgba(107, 111, 138, 0.16); color: #5c607e; }
-.roi-status-contacted { background: rgba(0, 17, 103, 0.1); color: var(--blue); }
-.roi-status-closed_won { background: rgba(27, 127, 95, 0.16); color: #1b7f5f; }
-.roi-status-closed_lost { background: rgba(184, 26, 31, 0.12); color: var(--coral); }
+.roi-status-sent { background: rgba(107, 111, 138, 0.16); color: #5c607e; }
+.roi-status-won { background: rgba(27, 127, 95, 0.16); color: #1b7f5f; }
+.roi-status-not_won { background: rgba(184, 26, 31, 0.12); color: var(--coral); }
 .inv-total { font-family: var(--font-display); font-size: 17px; color: var(--ink); }
 
 /* Shared data tables (loan schedule, scenario compare, scorecard history) */
@@ -4246,20 +4245,16 @@ button {
   border-left: 4px solid var(--line);
 }
 
-.referral-card.status-closed_won {
+.referral-card.status-won {
   border-left-color: #1f9d55;
 }
 
-.referral-card.status-closed_lost {
+.referral-card.status-not_won {
   border-left-color: var(--muted);
 }
 
-.referral-card.status-given {
+.referral-card.status-sent {
   border-left-color: var(--gold);
-}
-
-.referral-card.status-contacted {
-  border-left-color: var(--blue);
 }
 
 .referral-card-head {
@@ -4288,12 +4283,12 @@ button {
   font-weight: 700;
 }
 
-.ref-status.closed_won {
+.ref-status.won {
   background: rgba(31, 157, 85, 0.16);
   color: #157347;
 }
 
-.ref-status.closed_lost {
+.ref-status.not_won {
   background: rgba(107, 111, 138, 0.16);
   color: var(--muted);
 }

@@ -382,9 +382,7 @@ export const referralSeed: Referral[] = [
     prospectName: "Sample event organizer",
     prospectContact: "demo@example.com",
     need: "Illustrative photography opportunity included for the product demo.",
-    status: "closed_won",
-    closedValue: 1450,
-    thankYou: "Illustrative closed-loop note for the product demo.",
+    status: "won",
     createdAt: Date.now() - 9 * DAY,
     closedAt: Date.now() - 2 * DAY
   },
@@ -396,7 +394,7 @@ export const referralSeed: Referral[] = [
     prospectName: "Sample local customer",
     prospectContact: "demo@example.com",
     need: "Illustrative hearing-services inquiry included for the product demo.",
-    status: "contacted",
+    status: "sent",
     createdAt: Date.now() - 4 * DAY
   },
   {
@@ -406,7 +404,7 @@ export const referralSeed: Referral[] = [
     receiverId: "maya-chen",
     introducedMemberId: "sofia-martinez",
     need: "Illustrative warm introduction included to demonstrate the referral workflow.",
-    status: "given",
+    status: "sent",
     createdAt: Date.now() - 8 * DAY
   },
   {
@@ -417,9 +415,7 @@ export const referralSeed: Referral[] = [
     prospectName: "Sample local business",
     prospectContact: "demo@example.com",
     need: "Illustrative opportunity included to demonstrate referral tracking.",
-    status: "closed_won",
-    closedValue: 780,
-    thankYou: "Illustrative closed-loop note for the product demo.",
+    status: "won",
     createdAt: Date.now() - 15 * DAY,
     closedAt: Date.now() - 6 * DAY
   }

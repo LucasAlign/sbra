@@ -52,7 +52,7 @@ export type DemoConnection = {
 export type DemoNote = { id: string; ownerId: string; aboutPersonId: string; body: string; updatedAt: Date };
 export type DemoReferral = {
   id: string; communityId: string; fromPersonId: string; toPersonId: string; need: string; note: string;
-  status: "open" | "closed" | "declined"; closedValue: string | null; createdAt: Date; closedAt: Date | null;
+  status: "sent" | "won" | "not_won"; createdAt: Date; closedAt: Date | null;
 };
 export type DemoAnnouncement = {
   id: string; authorId: string; title: string; body: string; status: "published" | "archived"; createdAt: Date;

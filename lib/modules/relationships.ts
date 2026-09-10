@@ -2,8 +2,8 @@
 //
 // Owns member-driven introductions (with consent, contact shared only after
 // acceptance), the connections those produce, private relationship notes, and
-// referrals that ride on connections (financial detail restricted to the two
-// parties, no leaderboards). Demo and Postgres adapters implement one interface;
+// referrals that ride on connections. Sending earns 10 points and a Won outcome
+// adds 40. Demo and Postgres adapters implement one interface;
 // the Postgres adapter delegates to the transactional, RLS-backed logic in
 // lib/network/relationships.ts.
 
@@ -14,9 +14,10 @@ import {
   readRelationshipNotes, requestIntroduction, respondToIntroduction, updateReferralOutcome,
   updateRelationshipNote, withdrawIntroduction,
 } from "../network/relationships";
-import type { IntroductionInput, ReferralInput, RelationshipsModule } from "./contracts";
+import type { IntroductionInput, ReferralInput, ReferralOutcome, RelationshipsModule } from "./contracts";
 import type { DemoWorld } from "./demo-world";
 import { ModuleActor, ModuleError } from "./types";
+import { referralPointsForStatus } from "../referral-points";
 
 type Database = PostgresJsDatabase<typeof fullSchema>;
 
@@ -52,8 +53,8 @@ export class PostgresRelationships implements RelationshipsModule {
   createReferral(actor: ModuleActor, input: ReferralInput) {
     return createReferral(this.db, actor.personId, input);
   }
-  updateReferralOutcome(actor: ModuleActor, referralId: string, status: "open" | "closed" | "declined", closedValue?: number | null) {
-    return updateReferralOutcome(this.db, actor.personId, referralId, status, closedValue);
+  updateReferralOutcome(actor: ModuleActor, referralId: string, status: ReferralOutcome) {
+    return updateReferralOutcome(this.db, actor.personId, referralId, status);
   }
   readReferrals(actor: ModuleActor) {
     return readReferrals(this.db, actor.personId);
@@ -207,24 +208,18 @@ export class DemoRelationships implements RelationshipsModule {
     }
     if (!this.isConnected(actor.personId, input.toPersonId)) throw new ModuleError("You can only refer a connection.");
     const referral = { id: crypto.randomUUID(), communityId: input.communityId, fromPersonId: actor.personId,
-      toPersonId: input.toPersonId, need: need.trim(), note: note.trim(), status: "open" as const,
-      closedValue: null, createdAt: new Date(), closedAt: null };
+      toPersonId: input.toPersonId, need: need.trim(), note: note.trim(), status: "sent" as const,
+      createdAt: new Date(), closedAt: null };
     this.world.referrals.push(referral);
     return { id: referral.id };
   }
 
-  async updateReferralOutcome(actor: ModuleActor, referralId: string, status: "open" | "closed" | "declined", closedValue?: number | null) {
-    if (!["open", "closed", "declined"].includes(status)) throw new ModuleError("Invalid status.");
-    const referral = this.world.referrals.find(r => r.id === referralId && (r.fromPersonId === actor.personId || r.toPersonId === actor.personId));
+  async updateReferralOutcome(actor: ModuleActor, referralId: string, status: ReferralOutcome) {
+    if (!["won", "not_won"].includes(status)) throw new ModuleError("Invalid status.");
+    const referral = this.world.referrals.find(r => r.id === referralId && r.toPersonId === actor.personId && r.status === "sent");
     if (!referral) throw new ModuleError("You cannot update this referral.");
-    let value: string | null = null;
-    if (status === "closed" && closedValue !== undefined && closedValue !== null) {
-      if (typeof closedValue !== "number" || !Number.isFinite(closedValue) || closedValue < 0) throw new ModuleError("Invalid closed value.");
-      value = closedValue.toFixed(2);
-    }
     referral.status = status;
-    referral.closedValue = status === "closed" ? value : null;
-    referral.closedAt = status === "closed" ? new Date() : null;
+    referral.closedAt = new Date();
   }
 
   async readReferrals(actor: ModuleActor) {
@@ -234,7 +229,7 @@ export class DemoRelationships implements RelationshipsModule {
       .map(r => ({ id: r.id, communityId: r.communityId, fromPersonId: r.fromPersonId,
         fromName: this.world.people.get(r.fromPersonId)?.name ?? "", toPersonId: r.toPersonId,
         toName: this.world.people.get(r.toPersonId)?.name ?? "", need: r.need, note: r.note, status: r.status,
-        closedValue: r.closedValue, createdAt: r.createdAt, closedAt: r.closedAt,
+        points: referralPointsForStatus(r.status), createdAt: r.createdAt, closedAt: r.closedAt,
         direction: r.fromPersonId === actor.personId ? "given" : "received" }));
     return { referrals };
   }

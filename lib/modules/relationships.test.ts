@@ -71,10 +71,17 @@ test("demo Relationships: referrals ride on connections and stay with the two pa
   assert.ok((await rel.readReferrals(actor)).referrals.some(r => r.id === id && r.direction === "given"));
   assert.ok((await rel.readReferrals(other)).referrals.some(r => r.id === id && r.direction === "received"));
   assert.equal((await rel.readReferrals(sam)).referrals.length, 0);
-  // The receiver closes it with a value; a non-party cannot update it.
-  await assert.rejects(rel.updateReferralOutcome(sam, id, "closed", 999), ModuleError);
-  await rel.updateReferralOutcome(other, id, "closed", 1500);
-  assert.equal((await rel.readReferrals(actor)).referrals.find(r => r.id === id)?.closedValue, "1500.00");
+  assert.equal((await rel.readReferrals(actor)).referrals.find(r => r.id === id)?.points, 10);
+  // Only the receiver can choose Won or Not Won, and an outcome is final.
+  await assert.rejects(rel.updateReferralOutcome(sam, id, "won"), ModuleError);
+  await assert.rejects(rel.updateReferralOutcome(actor, id, "won"), ModuleError);
+  await rel.updateReferralOutcome(other, id, "won");
+  assert.equal((await rel.readReferrals(actor)).referrals.find(r => r.id === id)?.points, 50);
+  await assert.rejects(rel.updateReferralOutcome(other, id, "not_won"), ModuleError);
+
+  const { id: notWonId } = await rel.createReferral(actor, { communityId: DEMO_COMMUNITY_ID, toPersonId: other.personId, need: "Needs a printer." });
+  await rel.updateReferralOutcome(other, notWonId, "not_won");
+  assert.equal((await rel.readReferrals(actor)).referrals.find(r => r.id === notWonId)?.points, 10);
 });
 
 test("demo Relationships: a creator can withdraw a pending introduction", async () => {

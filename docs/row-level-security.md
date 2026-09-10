@@ -146,8 +146,8 @@ per-owner policies:
   A participant's contact is written only on acceptance and is further
   projection-gated to accepted co-participants, so contact is shared only after
   acceptance. Connections are visible/writable only to the two people in the pair;
-  relationship notes only to their owner; referrals (including the financial
-  `closed_value`) only to the giver and receiver — no community projection, no
+  relationship notes only to their owner; referrals are readable by the giver
+  and receiver, while only the receiver may set the outcome — no community projection, no
   ranking. Naming other people (introduction parties, a referral's recipient)
   requires checking *their* membership, which the per-person policy on
   `person_community_memberships` hides from the actor, so that one existence read

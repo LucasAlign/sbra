@@ -121,9 +121,7 @@ Postgres integration test.** Keep the two adapters behaviourally identical.
    use fixed ids; a full run needs a **freshly recreated container** (below).
    **Assertions must be scoped to the test's own rows** (join `legacy_id_map`, or
    filter by the test's community/id prefix) — never global `count(*)`/`.length`.
-6. **`numeric` columns come back as strings** in drizzle (e.g. `closed_value` →
-   `"1500.00"`). Compare as strings or `Number(...)`.
-7. **Field-level audience is enforced in the projection, not RLS** (RLS is
+6. **Field-level audience is enforced in the projection, not RLS** (RLS is
    row-level). E.g. an introduction participant's `contact` is gated in
    `readIntroductions`; event `goingCount` is organizer-only in `readEvents`. RLS
    still guarantees only the right *rows* are visible.

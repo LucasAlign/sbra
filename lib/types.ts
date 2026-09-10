@@ -60,18 +60,17 @@ export type Rsvp = {
 
 export type ReferralKind = "lead" | "intro";
 
-export type ReferralStatus = "given" | "contacted" | "closed_won" | "closed_lost";
+export type ReferralStatus = "sent" | "won" | "not_won";
 
 export const referralStatusLabels: Record<ReferralStatus, string> = {
-  given: "Given",
-  contacted: "Contacted",
-  closed_won: "Closed — won",
-  closed_lost: "Closed — lost"
+  sent: "Sent",
+  won: "Won",
+  not_won: "Not Won"
 };
 
 // Value passed between members. A "lead" hands over an external prospect; an
-// "intro" connects the receiver with another member. Closed business ($ value)
-// is credited to the giver — SBRA's closed-loop tracking.
+// "intro" connects the receiver with another member. Sending earns the giver
+// 10 points; a Won outcome earns 40 additional points.
 export type Referral = {
   id: string;
   kind: ReferralKind;
@@ -82,10 +81,7 @@ export type Referral = {
   prospectContact?: string; // for kind === "lead"
   need: string;
   status: ReferralStatus;
-  closedValue?: number; // $ credited to the giver when closed_won
-  thankYou?: string; // note from receiver to giver
   createdAt: number;
-  contactedAt?: number; // set when the receiver marks it contacted; resets staleness
   closedAt?: number;
 };
 

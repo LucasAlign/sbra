@@ -52,9 +52,7 @@ export const referrals = pgTable("referrals", {
   prospectName: text("prospect_name"),
   prospectContact: text("prospect_contact"),
   need: text("need").notNull().default(""),
-  status: text("status").notNull().default("given"),
-  closedValue: doublePrecision("closed_value"),
-  thankYou: text("thank_you"),
+  status: text("status").notNull().default("sent"),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   closedAt: bigint("closed_at", { mode: "number" })
 });

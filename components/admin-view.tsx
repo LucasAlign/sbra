@@ -15,6 +15,7 @@ import type {
   UserRole
 } from "@/lib/types";
 import { supportStatuses, tierLabels } from "@/lib/types";
+import { REFERRAL_SENT_POINTS, REFERRAL_WON_BONUS_POINTS } from "@/lib/referral-points";
 
 // Best-effort unique id for records created in the admin console.
 function newId(prefix: string): string {
@@ -76,10 +77,6 @@ function countBy<T>(items: T[], key: (item: T) => string): Map<string, number> {
 
 function pct(part: number, whole: number): number {
   return whole === 0 ? 0 : Math.round((part / whole) * 100);
-}
-
-function money(value: number): string {
-  return `$${value.toLocaleString()}`;
 }
 
 function shortDate(ts: number): string {
@@ -411,17 +408,14 @@ export function AdminView({
   // --- Referrals in range ---------------------------------------------------
   const rangedReferrals = referrals.filter((referral) => referral.createdAt >= rangeStart);
   const pipeline = {
-    given: rangedReferrals.length,
-    contacted: rangedReferrals.filter((referral) => referral.status !== "given").length,
-    closedWon: rangedReferrals.filter((referral) => referral.status === "closed_won").length,
-    closedLost: rangedReferrals.filter((referral) => referral.status === "closed_lost").length
+    sent: rangedReferrals.length,
+    won: rangedReferrals.filter((referral) => referral.status === "won").length,
+    notWon: rangedReferrals.filter((referral) => referral.status === "not_won").length
   };
-  const closedValue = rangedReferrals
-    .filter((referral) => referral.status === "closed_won")
-    .reduce((sum, referral) => sum + (referral.closedValue ?? 0), 0);
-  const openReferrals = referrals.filter((referral) => referral.status === "given" || referral.status === "contacted");
+  const referralPoints = pipeline.sent * REFERRAL_SENT_POINTS + pipeline.won * REFERRAL_WON_BONUS_POINTS;
+  const openReferrals = referrals.filter((referral) => referral.status === "sent");
   const staleReferrals = openReferrals.filter(
-    (referral) => now - (referral.contactedAt ?? referral.createdAt) >= 7 * DAY_MS
+    (referral) => now - referral.createdAt >= 7 * DAY_MS
   );
 
   const weeklyReferrals = useMemo(() => {
@@ -435,19 +429,20 @@ export function AdminView({
   }, [referrals, now]);
 
   const topGivers = useMemo(() => {
-    const stats = new Map<string, { given: number; won: number; value: number }>();
+    const stats = new Map<string, { sent: number; won: number; points: number }>();
     for (const referral of rangedReferrals) {
-      const entry = stats.get(referral.giverId) ?? { given: 0, won: 0, value: 0 };
-      entry.given += 1;
-      if (referral.status === "closed_won") {
+      const entry = stats.get(referral.giverId) ?? { sent: 0, won: 0, points: 0 };
+      entry.sent += 1;
+      entry.points += REFERRAL_SENT_POINTS;
+      if (referral.status === "won") {
         entry.won += 1;
-        entry.value += referral.closedValue ?? 0;
+        entry.points += REFERRAL_WON_BONUS_POINTS;
       }
       stats.set(referral.giverId, entry);
     }
     return [...stats.entries()]
       .map(([giverId, entry]) => ({ giverId, ...entry }))
-      .sort((a, b) => b.given - a.given || b.value - a.value)
+      .sort((a, b) => b.points - a.points || b.sent - a.sent)
       .slice(0, 5);
     // rangedReferrals is derived from referrals + range, which are the real inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -728,9 +723,9 @@ export function AdminView({
                 ["Metric", "Value", "Range"],
                 ["Member businesses", businesses.length, "all time"],
                 ["People", members.length, "all time"],
-                ["Referrals given", pipeline.given, rangeLabel],
-                ["Referrals closed won", pipeline.closedWon, rangeLabel],
-                ["Closed referral value", closedValue, rangeLabel],
+                ["Referrals sent", pipeline.sent, rangeLabel],
+                ["Referrals won", pipeline.won, rangeLabel],
+                ["Referral points", referralPoints, rangeLabel],
                 ["Open support requests", openRequests.length, "now"],
                 ["Event RSVPs (going)", totalGoing, "all events"],
                 ["Active members", activeMembers, "all time"]
@@ -757,9 +752,9 @@ export function AdminView({
         </article>
         <article className="glass-panel metric">
           <span>Referrals · {rangeLabel}</span>
-          <strong>{pipeline.given}</strong>
+          <strong>{pipeline.sent}</strong>
           <p>
-            {pipeline.closedWon} closed won · {money(closedValue)}
+            {pipeline.won} won · {referralPoints} points
           </p>
         </article>
         <article className="glass-panel metric">
@@ -846,44 +841,41 @@ export function AdminView({
 
         <ReportCard
           eyebrow={`Referrals · ${rangeLabel}`}
-          title="Referral pipeline"
-          subtitle="How referrals move from given to closed"
+          title="Referral outcomes"
+          subtitle="Sent referrals with a simple Won or Not Won result"
           onExport={() =>
             downloadCsv("referral-pipeline.csv", [
               ["Stage", "Count"],
-              ["Given", pipeline.given],
-              ["Contacted", pipeline.contacted],
-              ["Closed won", pipeline.closedWon],
-              ["Closed lost", pipeline.closedLost],
-              ["Closed value", closedValue]
+              ["Sent", pipeline.sent],
+              ["Won", pipeline.won],
+              ["Not Won", pipeline.notWon],
+              ["Points", referralPoints]
             ])
           }
           footer={
             <span>
-              Win rate <strong>{pct(pipeline.closedWon, pipeline.given)}%</strong> · Avg closed deal{" "}
-              <strong>{money(pipeline.closedWon ? Math.round(closedValue / pipeline.closedWon) : 0)}</strong>
+              Win rate <strong>{pct(pipeline.won, pipeline.sent)}%</strong> · Points earned <strong>{referralPoints}</strong>
             </span>
           }
         >
           <div className="funnel">
             {[
-              { label: "Given", value: pipeline.given, color: PALETTE[0] },
-              { label: "Contacted", value: pipeline.contacted, color: PALETTE[1] },
-              { label: "Closed won", value: pipeline.closedWon, color: PALETTE[3] },
-              { label: "Closed lost", value: pipeline.closedLost, color: PALETTE[2] }
+              { label: "Sent", value: pipeline.sent, color: PALETTE[0] },
+              { label: "Won", value: pipeline.won, color: PALETTE[3] },
+              { label: "Not Won", value: pipeline.notWon, color: PALETTE[2] }
             ].map((stage) => (
               <div className="funnel-stage" key={stage.label}>
                 <span>{stage.label}</span>
                 <div className="funnel-track">
                   <i
                     style={{
-                      width: `${Math.max(pipeline.given ? (stage.value / pipeline.given) * 100 : 0, stage.value ? 6 : 0)}%`,
+                      width: `${Math.max(pipeline.sent ? (stage.value / pipeline.sent) * 100 : 0, stage.value ? 6 : 0)}%`,
                       background: stage.color
                     }}
                   />
                 </div>
                 <strong>{stage.value}</strong>
-                <small>{pct(stage.value, pipeline.given)}%</small>
+                <small>{pct(stage.value, pipeline.sent)}%</small>
               </div>
             ))}
           </div>
@@ -892,7 +884,7 @@ export function AdminView({
         <ReportCard
           eyebrow="Referrals"
           title="Weekly referral activity"
-          subtitle="New referrals given per week, last 8 weeks"
+          subtitle="New referrals sent per week, last 8 weeks"
           onExport={() =>
             downloadCsv("weekly-referrals.csv", [
               ["Week", "Referrals"],
@@ -1071,19 +1063,19 @@ export function AdminView({
 
         <ReportCard
           eyebrow={`Referrals · ${rangeLabel}`}
-          title="Top referral givers"
-          subtitle="Members generating the most business for others"
+          title="Top Connectors"
+          subtitle="Members earning the most referral points"
           onExport={() =>
             downloadCsv("top-givers.csv", [
-              ["Member", "Business", "Given", "Closed won", "Closed value"],
+              ["Member", "Business", "Sent", "Won", "Points"],
               ...topGivers.map((row) => {
                 const member = memberById.get(row.giverId);
                 return [
                   member?.name ?? row.giverId,
                   businessById.get(member?.businessId ?? "")?.name ?? "",
-                  row.given,
+                  row.sent,
                   row.won,
-                  row.value
+                  row.points
                 ];
               })
             ])
@@ -1097,9 +1089,9 @@ export function AdminView({
                 <tr>
                   <th>#</th>
                   <th>Member</th>
-                  <th>Given</th>
+                      <th>Sent</th>
                   <th>Won</th>
-                  <th>Value</th>
+                      <th>Points</th>
                 </tr>
               </thead>
               <tbody>
@@ -1114,9 +1106,9 @@ export function AdminView({
                         <strong>{member?.name ?? "Member"}</strong>
                         <small>{businessById.get(member?.businessId ?? "")?.name ?? ""}</small>
                       </td>
-                      <td>{row.given}</td>
+                      <td>{row.sent}</td>
                       <td>{row.won}</td>
-                      <td>{money(row.value)}</td>
+                      <td>{row.points}</td>
                     </tr>
                   );
                 })}

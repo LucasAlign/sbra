@@ -162,10 +162,12 @@ export type RelationshipNote = { id: string; aboutPersonId: string; body: string
 /** Fields to create a referral (to an existing connection). */
 export type ReferralInput = { communityId: string; toPersonId: string; need?: string; note?: string };
 
-/** A referral as one of its two parties sees it (financial detail included). */
+export type ReferralOutcome = "won" | "not_won";
+
+/** A referral as one of its two parties sees it. Points are derived from status. */
 export type Referral = {
   id: string; communityId: string; fromPersonId: string; fromName: string; toPersonId: string; toName: string;
-  need: string; note: string; status: string; closedValue: string | null;
+  need: string; note: string; status: "sent" | ReferralOutcome; points: number;
   createdAt: Date; closedAt: Date | null; direction: string;
 };
 
@@ -189,8 +191,8 @@ export interface RelationshipsModule {
   readRelationshipNotes(actor: ModuleActor, aboutPersonId: string): Promise<{ notes: RelationshipNote[] }>;
   /** Refer a connection within a community. */
   createReferral(actor: ModuleActor, input: ReferralInput): Promise<{ id: string }>;
-  /** Update a referral's outcome (either party); closed value stays with the two. */
-  updateReferralOutcome(actor: ModuleActor, referralId: string, status: "open" | "closed" | "declined", closedValue?: number | null): Promise<void>;
+  /** Let the receiving member mark the referral Won or Not Won. */
+  updateReferralOutcome(actor: ModuleActor, referralId: string, status: ReferralOutcome): Promise<void>;
   /** Referrals the actor gave or received. */
   readReferrals(actor: ModuleActor): Promise<{ referrals: Referral[] }>;
 }

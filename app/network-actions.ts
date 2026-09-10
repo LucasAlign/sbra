@@ -4,7 +4,7 @@ import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import * as s from "@/lib/db/network-schema";
 import { requirePerson } from "@/lib/network/server";
 import { withActor } from "@/lib/db/context";
-import { identityAccess, discoveryPublishing, organizationsMembership, relationships, communityOperations, type OrganizationProfile, type ListingOverride, type OpportunityInput, type EventInput, type IntroductionInput, type ReferralInput, type AnnouncementInput } from "@/lib/modules";
+import { identityAccess, discoveryPublishing, organizationsMembership, relationships, communityOperations, type OrganizationProfile, type ListingOverride, type OpportunityInput, type EventInput, type IntroductionInput, type ReferralInput, type ReferralOutcome, type AnnouncementInput } from "@/lib/modules";
 import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin, transferAdministrator, readAudit } from "@/lib/network/membership";
 import { readImportBatches, recordMerge, stageImportBatch, linkSourceRecord } from "@/lib/network/import-staging";
 
@@ -142,9 +142,9 @@ export async function createReferral(input: ReferralInput) {
   return relationships().createReferral(actor, input);
 }
 
-export async function updateReferralOutcome(referralId: string, status: "open" | "closed" | "declined", closedValue?: number | null) {
+export async function updateReferralOutcome(referralId: string, status: ReferralOutcome) {
   const { actor } = await requirePerson();
-  return relationships().updateReferralOutcome(actor, referralId, status, closedValue);
+  return relationships().updateReferralOutcome(actor, referralId, status);
 }
 
 export async function loadReferrals() {

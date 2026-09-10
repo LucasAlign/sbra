@@ -5,6 +5,7 @@ import type * as fullSchema from "../db/schema";
 import * as s from "../db/network-schema";
 import { withActor } from "../db/context";
 import { boundedText } from "./identity";
+import { referralPointsForStatus } from "../referral-points";
 
 type Database = PostgresJsDatabase<typeof fullSchema>;
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -14,9 +15,9 @@ type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 // An introduction names participants who each consent; a participant's contact is
 // exchanged only once they accept. When parties accept they become connections
 // (a canonical low<high pair, one row). Each person keeps private relationship
-// notes about their connections. Referrals ride on connections and their
-// financial detail stays with the two parties — no community projection, no
-// leaderboards. All of this is also enforced by row-level security (0012).
+// notes about their connections. Referrals ride on connections, use a recipient-
+// confirmed outcome, and derive points from that outcome. All of this is also
+// enforced by row-level security (0012).
 
 function pair(a: string, b: string): [string, string] {
   return a < b ? [a, b] : [b, a];
@@ -232,19 +233,13 @@ export async function createReferral(db: Database, personId: string, input: Refe
   });
 }
 
-export async function updateReferralOutcome(db: Database, personId: string, referralId: string, status: "open" | "closed" | "declined", closedValue?: number | null) {
+export async function updateReferralOutcome(db: Database, personId: string, referralId: string, status: "won" | "not_won") {
   boundedText(referralId, 200);
-  if (!["open", "closed", "declined"].includes(status)) throw new Error("Invalid status.");
-  let value: string | null = null;
-  if (status === "closed" && closedValue !== undefined && closedValue !== null) {
-    if (typeof closedValue !== "number" || !Number.isFinite(closedValue) || closedValue < 0) throw new Error("Invalid closed value.");
-    value = closedValue.toFixed(2);
-  }
-  const set = { status, closedValue: status === "closed" ? value : null,
-    closedAt: status === "closed" ? sql`now()` : null };
+  if (!["won", "not_won"].includes(status)) throw new Error("Invalid status.");
+  const set = { status, closedAt: sql`now()` };
   const changed = await withActor(db, personId, tx => tx.update(s.memberReferrals).set(set)
-    .where(and(eq(s.memberReferrals.id, referralId),
-      or(eq(s.memberReferrals.fromPersonId, personId), eq(s.memberReferrals.toPersonId, personId))))
+    .where(and(eq(s.memberReferrals.id, referralId), eq(s.memberReferrals.toPersonId, personId),
+      eq(s.memberReferrals.status, "sent")))
     .returning({ id: s.memberReferrals.id }));
   if (!changed.length) throw new Error("You cannot update this referral.");
 }
@@ -255,12 +250,13 @@ export async function readReferrals(db: Database, personId: string) {
     const toP = alias(s.people, "referral_to");
     const rows = await tx.select({ id: s.memberReferrals.id, communityId: s.memberReferrals.communityId,
       fromPersonId: s.memberReferrals.fromPersonId, fromName: fromP.name, toPersonId: s.memberReferrals.toPersonId, toName: toP.name,
-      need: s.memberReferrals.need, note: s.memberReferrals.note, status: s.memberReferrals.status, closedValue: s.memberReferrals.closedValue,
+      need: s.memberReferrals.need, note: s.memberReferrals.note, status: s.memberReferrals.status,
       createdAt: s.memberReferrals.createdAt, closedAt: s.memberReferrals.closedAt }).from(s.memberReferrals)
       .innerJoin(fromP, eq(fromP.id, s.memberReferrals.fromPersonId)).innerJoin(toP, eq(toP.id, s.memberReferrals.toPersonId))
       .where(or(eq(s.memberReferrals.fromPersonId, personId), eq(s.memberReferrals.toPersonId, personId)))
       .orderBy(desc(s.memberReferrals.createdAt)).limit(200);
-    const referrals = rows.map(r => ({ ...r, direction: r.fromPersonId === personId ? "given" : "received" }));
+    const referrals = rows.map(r => ({ ...r, status: r.status as "sent" | "won" | "not_won", points: referralPointsForStatus(r.status as "sent" | "won" | "not_won"),
+      direction: r.fromPersonId === personId ? "given" : "received" }));
     return { referrals };
   });
 }
