@@ -23,6 +23,18 @@ export const organizations = pgTable("organizations", {
   createdAt: createdAt(),
 }, t => [check("organization_kind", sql`${t.kind} in ('business', 'chamber', 'association', 'municipality', 'other')`)]);
 
+// A deliberately small CRM boundary: one private, versioned workspace document
+// per member business. The revision supports optimistic concurrency for shared
+// business logins, while the document can be normalized into relational tables
+// later if usage calls for it.
+export const businessCrmWorkspaces = pgTable("business_crm_workspaces", {
+  organizationId: text("organization_id").primaryKey().references(() => organizations.id),
+  revision: integer("revision").notNull().default(1),
+  version: integer("version").notNull().default(2),
+  data: text("data").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const networks = pgTable("networks", {
   id: text("id").primaryKey(), slug: text("slug").notNull().unique(), name: text("name").notNull(),
 });

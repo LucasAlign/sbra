@@ -4,8 +4,10 @@
 // and loading its data. Today (seed-first, decision #6) everything lives in the
 // browser's `localStorage`, private to each viewer's device. When we do "the
 // swap" (Replit Postgres + Drizzle + Auth.js), only THIS file changes: point
-// `loadTool` / `saveTool` at a per-user table keyed by `TOOL_KEYS` and the tools
-// keep importing from `@/lib/tool-storage` unchanged.
+// `loadTool` / `saveTool` at business-owned storage keyed by `TOOL_KEYS` and the
+// tools keep importing from `@/lib/tool-storage` unchanged. Tools that need to
+// support more than one signed-in business on a device partition their value by
+// business id (the CRM already does this).
 //
 // Reads are synchronous because the tools hydrate their React state from them in
 // `useState` initializers. When wiring a real backend, keep reads synchronous by
@@ -98,7 +100,7 @@ const TOOL_LABELS: Record<string, string> = {
   [TOOL_KEYS.goals]: "Goals & KPIs",
   [TOOL_KEYS.invoice]: "Invoices & quotes",
   [TOOL_KEYS.marketing]: "Saved marketing drafts",
-  [TOOL_KEYS.crm]: "CRM contacts",
+  [TOOL_KEYS.crm]: "CRM workspace",
   [TOOL_KEYS.tax]: "Tax calendar",
   [TOOL_KEYS.grants]: "Grant tracking",
   [TOOL_KEYS.docs]: "Saved documents"

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "community:provision": "tsx scripts/provision-community-admin.ts",
-    "test:network": "tsx --test lib/network/permissions.test.ts lib/network/identity.test.ts lib/network/legacy.test.ts lib/modules/identity-access.test.ts lib/modules/directory-and-orgs.test.ts lib/modules/relationships.test.ts lib/modules/community-operations.test.ts",
+    "test:network": "tsx --test lib/network/permissions.test.ts lib/network/identity.test.ts lib/network/legacy.test.ts lib/modules/identity-access.test.ts lib/modules/directory-and-orgs.test.ts lib/modules/relationships.test.ts lib/modules/community-operations.test.ts scripts/backfill-options.test.ts lib/local-demo.test.ts",
     "test:network:integration": "tsx --test --test-concurrency=1 lib/network/repository.integration.test.ts lib/network/admin-transfer.integration.test.ts lib/network/claims.integration.test.ts lib/network/import-staging.integration.test.ts lib/network/discovery.integration.test.ts lib/network/opportunities.integration.test.ts lib/network/events.integration.test.ts lib/network/relationships.integration.test.ts lib/network/community-ops.integration.test.ts lib/network/backfill.integration.test.ts lib/db/rls.integration.test.ts lib/db/rls-relational.integration.test.ts lib/modules/identity-access.integration.test.ts lib/modules/directory-and-orgs.integration.test.ts",
     "db:network:generate": "drizzle-kit generate --config=drizzle.network.config.ts",
     "db:network:migrate": "drizzle-kit migrate --config=drizzle.network.config.ts",
@@ -14,7 +14,9 @@
     "start": "next start -H 0.0.0.0 -p 3000",
     "directory:sync": "node scripts/sync-sbra-directory.mjs",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "community:backfill": "tsx scripts/backfill-community.ts",
+    "demo:seed": "tsx scripts/seed-local-demo.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",

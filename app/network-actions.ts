@@ -7,6 +7,8 @@ import { withActor } from "@/lib/db/context";
 import { identityAccess, discoveryPublishing, organizationsMembership, relationships, communityOperations, type OrganizationProfile, type ListingOverride, type OpportunityInput, type EventInput, type IntroductionInput, type ReferralInput, type ReferralOutcome, type AnnouncementInput } from "@/lib/modules";
 import { communityAdminAccess, invitePerson, acceptInvitation, revokeInvitation, changeMembership, readMembershipAdmin, transferAdministrator, readAudit } from "@/lib/network/membership";
 import { readImportBatches, recordMerge, stageImportBatch, linkSourceRecord } from "@/lib/network/import-staging";
+import { readBusinessCrm, writeBusinessCrm } from "@/lib/network/business-crm";
+import type { CrmWorkspace } from "@/lib/crm";
 
 export async function loadWorkspace() {
   const { db, person } = await requirePerson();
@@ -280,4 +282,26 @@ export async function transferCommunityAdministrator(communityId: string, succes
 export async function loadCommunityAudit(communityId: string) {
   const { db, person } = await requirePerson();
   return readAudit(db, person.id, communityId);
+}
+
+export async function loadManagedOrganizations() {
+  const { db, person } = await requirePerson();
+  return withActor(db, person.id, tx => tx.selectDistinct({ id: s.organizations.id, name: s.organizations.name,
+    description: s.organizations.description, website: s.organizations.website, locations: s.organizations.locations,
+    serviceAreas: s.organizations.serviceAreas }).from(s.organizations)
+    .innerJoin(s.organizationAffiliations, eq(s.organizationAffiliations.organizationId, s.organizations.id))
+    .innerJoin(s.roleGrants, eq(s.roleGrants.organizationId, s.organizations.id))
+    .where(and(eq(s.organizationAffiliations.personId, person.id), eq(s.organizationAffiliations.status, "active"),
+      eq(s.roleGrants.personId, person.id), eq(s.roleGrants.role, "business_admin"), isNull(s.roleGrants.revokedAt),
+      sql`(${s.roleGrants.expiresAt} is null or ${s.roleGrants.expiresAt} > now())`)).limit(100));
+}
+
+export async function loadBusinessCrm() {
+  const { db, person } = await requirePerson();
+  return readBusinessCrm(db, person.id);
+}
+
+export async function saveBusinessCrm(workspace: CrmWorkspace, expectedRevision: number) {
+  const { db, person } = await requirePerson();
+  return writeBusinessCrm(db, person.id, workspace, expectedRevision);
 }

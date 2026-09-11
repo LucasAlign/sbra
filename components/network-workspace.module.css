@@ -16,3 +16,8 @@
 .card { padding: 20px; border: 1px solid #dce3eb; border-radius: 12px; }
 .card h3 { margin: 10px 0; }
 .error { padding: 16px; color: #8b2434; background: #fff1f0; border-radius: 8px; }
+.shell fieldset { border: 0; padding: 0; display: grid; gap: 12px; }
+.shell details { margin: 16px 0; }
+.shell summary { cursor: pointer; font-weight: 600; }
+.shell nav button[aria-pressed="true"] { background: #a6532b; }
+.shell .card { margin-top: 14px; overflow-wrap: anywhere; }

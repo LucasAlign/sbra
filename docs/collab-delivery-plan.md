@@ -1,5 +1,12 @@
 # Collab delivery plan
 
+Implementation update (2026-09-09): the staging backfill CLI, backend home,
+core community tools, business profiles, and claim review are connected.
+The database demo has separate admin/member logins and repeatable sample data.
+See [local demo setup](./local-database-demo.md) and [cutover rehearsal](./cutover-rehearsal.md).
+Members use the platform free; organizations pay. Production cutover and
+advanced workflow parity remain open.
+
 Status: proposed execution plan, 2026-09-08. Operationalizes
 [`docs/collab-network-architecture.md`](./collab-network-architecture.md) and
 [`docs/network-foundation.md`](./network-foundation.md) into a sequenced,

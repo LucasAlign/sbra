@@ -25,6 +25,7 @@ import {
   type LiveUserProfile
 } from "@/lib/data";
 import { AdminView, type AdminTab } from "@/components/admin-view";
+import { BusinessCrmTool } from "@/components/networking-crm-tool";
 import type { Session } from "next-auth";
 import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
 import * as backendActions from "@/app/actions";
@@ -307,9 +308,9 @@ const toolCategories: ToolCategory[] = [
       {
         id: "networking-crm",
         name: "Networking CRM",
-        tagline: "Work every relationship, never drop a follow-up",
+        tagline: "Know who needs attention and keep every opportunity moving",
         description:
-          "A full contact manager for your network: pipeline stages, activity history, tags, priority, follow-up reminders, directory import, and CSV export.",
+          "A simple business CRM with a daily worklist, contacts, follow-up tasks, opportunities, activity history, referral import, and CSV export.",
         icon: "🤝",
         status: "soon"
       }
@@ -2797,7 +2798,7 @@ function ToolsView({
     } else if (openTool.id === "marketing-content") {
       body = <MarketingContentTool currentBusiness={currentBusiness} onRequestAi={onGetHelp} />;
     } else if (openTool.id === "networking-crm") {
-      body = <NetworkingCrmTool members={members} businessById={businessById} />;
+      body = <BusinessCrmTool businessId={currentBusiness?.id ?? currentMember?.businessId ?? "member-business"} members={members} businessById={businessById} referrals={referrals} currentMemberId={currentMemberId} />;
     } else if (openTool.id === "tax-calendar") {
       body = <TaxCalendarTool />;
     } else if (openTool.id === "grant-finder") {

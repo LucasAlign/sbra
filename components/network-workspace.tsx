@@ -5,12 +5,16 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import { loadWorkspace, loadDirectory, updatePersonName, acceptCommunityInvitation } from "@/app/network-actions";
 import { CommunityMembershipAdmin } from "./community-membership-admin";
 import { LoginIntroduction } from "./login-introduction";
+import { NetworkHome } from "./network-home";
+import { CommunityTools, ActionForm } from "./community-tools";
+import { BusinessProfiles, BusinessClaim } from "./business-profiles";
+import { BusinessCrmWorkspace } from "./business-crm-workspace";
 import styles from "./network-workspace.module.css";
 
 type Workspace = Awaited<ReturnType<typeof loadWorkspace>>;
 type Directory = Awaited<ReturnType<typeof loadDirectory>>;
 
-export function NetworkWorkspace() {
+export function NetworkWorkspace({ localDemo = false }: { localDemo?: boolean }) {
   const { data: session, status } = useSession();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [communityId, setCommunityId] = useState("");
@@ -21,6 +25,7 @@ export function NetworkWorkspace() {
   const [page, setPage] = useState<string | undefined>();
   const [notice, setNotice] = useState("");
   const [revision, setRevision] = useState(0);
+  const [contentRevision, setContentRevision] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -41,7 +46,7 @@ export function NetworkWorkspace() {
     void loadDirectory(communityId, page).then(data => { if (active) setDirectory(data); })
       .catch(() => { if (active) setError("This directory is unavailable. Your membership may have changed; refresh to check your access."); });
     return () => { active = false; };
-  }, [communityId, page, status, session?.user?.id]);
+  }, [communityId, page, status, session?.user?.id, contentRevision]);
 
   const community = workspace?.memberships.find(m => m.id === communityId);
   return <main className={styles.shell}>
@@ -54,10 +59,14 @@ export function NetworkWorkspace() {
         <p className={styles.eyebrow}>CHAMBERS • MEMBERS • LOCAL CONNECTIONS</p><h1>Your chamber. A wider business network.</h1>
         <LoginIntroduction />
         <p>Sign in to access your community memberships and member directories.</p>
-        <button onClick={() => void signIn("google")}>Continue with Google</button></section> : <>
+        <button onClick={() => void signIn("google")}>Continue with Google</button>
+        {localDemo && <ActionForm label="Enter database demo" fields={[{ name: "role", label: "Demo role: admin or member", value: "admin" }, { name: "password", label: "Local demo password", type: "password" }]} submit={async data => { const result = await signIn("credentials", { role: data.get("role"), password: data.get("password"), redirect: false }); if (result?.error) throw new Error("Sign in failed"); }} />}
+        </section> : <>
         {error && <p role="alert" className={styles.error}>{error}</p>}
         {!workspace && !error && <p role="status">Loading your memberships…</p>}
         {workspace && <>
+          <NetworkHome key={`${session?.user?.id}:${revision}:${contentRevision}`} />
+          <BusinessCrmWorkspace key={`crm:${session?.user?.id}`} />
           <section className={styles.panel}><p className={styles.eyebrow}>YOUR COMMUNITY WORKSPACE</p><h1>Welcome, {workspace.person.name}</h1>
             <form onSubmit={async event => {
               event.preventDefault(); setSaving(true); setNotice("");
@@ -89,10 +98,12 @@ export function NetworkWorkspace() {
             </article>)}
           </section>}
           {community?.canAdmin && <CommunityMembershipAdmin key={`${session?.user?.id}:${community.id}`} communityId={community.id} />}
+          {community && <CommunityTools key={`tools:${session?.user?.id}:${community.id}`} communityId={community.id} canAdmin={community.canAdmin} onChanged={() => setContentRevision(n => n + 1)} />}
+          {community && <BusinessProfiles key={`business:${session?.user?.id}:${community.id}`} communityId={community.id} onChanged={() => setContentRevision(n => n + 1)} />}
           {community && <section className={styles.panel}><p className={styles.eyebrow}>{community.name}</p><h2>Business directory</h2>
             {!directory && !error && <p role="status">Loading businesses…</p>}
             {directory && !directory.organizations.length && <p>No businesses are listed here yet.</p>}
-            <div className={styles.grid}>{directory?.organizations.map(org => <article key={org.id} className={styles.card}><p className={styles.eyebrow}>{org.kind}</p><h3>{org.name}</h3><p>{org.description || "Business profile coming soon."}</p></article>)}</div>
+            <div className={styles.grid}>{directory?.organizations.map(org => <article key={org.id} className={styles.card}><p className={styles.eyebrow}>{org.kind}</p><h3>{org.name}</h3><p>{org.description || "Business profile coming soon."}</p><p>{org.localOffer}</p><BusinessClaim organizationId={org.id} communityId={community.id} /></article>)}</div>
             {page && <button onClick={() => setPage(undefined)}>First page</button>}
             {directory?.nextCursor && <button onClick={() => setPage(directory.nextCursor ?? undefined)}>Next page</button>}
           </section>}

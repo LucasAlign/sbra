@@ -1,5 +1,9 @@
 # Row-level security
 
+The staging backfill CLI uses a dedicated owner connection through
+`COLLAB_BACKFILL_DATABASE_URL`; its default report transaction is read-only.
+No runtime grants or RLS policies change. See [rehearsal instructions](./cutover-rehearsal.md).
+
 Authorization in Collab is enforced in application SQL (every read and write
 carries the membership/grant checks). Row-level security (RLS) is a **second,
 independent layer**: even a query that forgets its `WHERE` clause, or a bug that
@@ -168,8 +172,13 @@ per-owner policies:
   the restricted runtime role can neither read nor write it; only the privileged
   backfill path (the owner connection, which bypasses RLS) touches it — the
   deny-by-default use of RLS, where the absence of a policy *is* the policy.
+- **`business_crm_workspaces`** ([0017](../drizzle/network/0017_stiff_albert_cleary.sql)):
+  one private, versioned CRM document belongs to one member business. Only an
+  active affiliate holding a current `business_admin` grant may read or change
+  it (`collab_can_admin_org`). Optimistic revisions reject stale cross-device
+  saves instead of silently overwriting newer business data.
 
 Every runtime data path in `repository.ts`, `membership.ts`, `claims.ts`,
 `import-staging.ts`, `opportunities.ts`, `events.ts`, `relationships.ts`,
-`community-ops.ts`, and the workspace loader runs through `withActor`, so these
+`community-ops.ts`, `business-crm.ts`, and the workspace loader runs through `withActor`, so these
 policies apply to real traffic.
