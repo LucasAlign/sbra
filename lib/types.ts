@@ -46,6 +46,7 @@ export type CommunityEvent = {
   cost: number; // 0 = free
   capacity?: number;
   createdById: string;
+  status?: "scheduled" | "canceled";
 };
 
 export type RsvpStatus = "going" | "maybe" | "declined";
@@ -83,6 +84,15 @@ export type Referral = {
   status: ReferralStatus;
   createdAt: number;
   closedAt?: number;
+  adminAudit?: ReferralAdminAuditEntry[];
+};
+
+export type ReferralAdminAuditEntry = {
+  at: number;
+  actor: string;
+  fromStatus: ReferralStatus;
+  toStatus: ReferralStatus;
+  note: string;
 };
 
 export type MembershipTier = "solo" | "small" | "growth" | "enterprise";
@@ -142,6 +152,15 @@ export type CommunityPost = {
   createdAt?: number;
   hidden?: boolean; // hidden from the member feed by a moderator
   pinned?: boolean; // pinned to the top of the feed (admin broadcast)
+  moderationReason?: string;
+  moderationHistory?: ModerationHistoryEntry[];
+};
+
+export type ModerationHistoryEntry = {
+  at: number;
+  actor: string;
+  action: "hidden" | "restored";
+  reason: string;
 };
 
 export type ReactionType = "celebrate" | "support" | "insightful";

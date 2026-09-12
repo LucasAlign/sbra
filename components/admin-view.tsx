@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { Fragment, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import type {
   Business,
   Comment,
@@ -9,13 +9,26 @@ import type {
   MembershipTier,
   Reaction,
   Referral,
+  ReferralStatus,
   Rsvp,
   CommunityEvent,
   SupportRequest,
   UserRole
 } from "@/lib/types";
-import { supportStatuses, tierLabels } from "@/lib/types";
+import { eventTypeLabels, referralStatusLabels, supportStatuses, tierLabels } from "@/lib/types";
 import { REFERRAL_SENT_POINTS, REFERRAL_WON_BONUS_POINTS } from "@/lib/referral-points";
+import {
+  buildCsv,
+  canonicalSupportStatus,
+  correctReferralStatus,
+  duplicateEvent,
+  filterModerationPosts,
+  isStaleReferral,
+  recordModerationAction,
+  updateBusinessProfile,
+  validateEventTiming,
+  type ModerationFilter
+} from "@/lib/admin-console";
 
 // Best-effort unique id for records created in the admin console.
 function newId(prefix: string): string {
@@ -23,10 +36,12 @@ function newId(prefix: string): string {
   return `${prefix}-${rand}`;
 }
 
-export type AdminTab = "reports" | "members" | "moderation" | "support" | "broadcast";
+export type AdminTab = "reports" | "members" | "referrals" | "events" | "moderation" | "support" | "broadcast";
 const ADMIN_TABS: { key: AdminTab; label: string }[] = [
   { key: "reports", label: "Reports" },
   { key: "members", label: "Members & businesses" },
+  { key: "referrals", label: "Referral oversight" },
+  { key: "events", label: "Event operations" },
   { key: "moderation", label: "Moderation" },
   { key: "support", label: "Support queue" },
   { key: "broadcast", label: "Broadcast" }
@@ -39,6 +54,7 @@ const ADMIN_TABS: { key: AdminTab; label: string }[] = [
 // ---------------------------------------------------------------------------
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const BROADCAST_DRAFT_KEY = "sbra.admin.broadcast-draft";
 
 type RangeKey = "30" | "90" | "365";
 const RANGES: { key: RangeKey; label: string }[] = [
@@ -83,13 +99,16 @@ function shortDate(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function toDateTimeLocal(ts?: number): string {
+  if (!ts) return "";
+  const date = new Date(ts);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(ts - offset).toISOString().slice(0, 16);
+}
+
 // Builds a CSV file from rows and hands it to the browser as a download.
 function downloadCsv(filename: string, rows: (string | number)[][]) {
-  const escape = (cell: string | number) => {
-    const text = String(cell);
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-  };
-  const csv = rows.map((row) => row.map(escape).join(",")).join("\n");
+  const csv = buildCsv(rows);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -98,7 +117,9 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Some browsers begin consuming object URLs after the click task completes.
+  // Revoking synchronously can turn a valid export into a silent no-op.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
 // ---------------------------------------------------------------------------
@@ -348,6 +369,9 @@ export function AdminView({
   onUpdateComments,
   onUpdateReactions,
   onUpdateRequests,
+  onUpdateEvents,
+  onUpdateRsvps,
+  onUpdateReferrals,
   persistEnabled,
   onResetData,
   initialTab
@@ -372,6 +396,9 @@ export function AdminView({
   onUpdateComments: Dispatch<SetStateAction<Comment[]>>;
   onUpdateReactions: Dispatch<SetStateAction<Reaction[]>>;
   onUpdateRequests: Dispatch<SetStateAction<SupportRequest[]>>;
+  onUpdateEvents: Dispatch<SetStateAction<CommunityEvent[]>>;
+  onUpdateRsvps: Dispatch<SetStateAction<Rsvp[]>>;
+  onUpdateReferrals: Dispatch<SetStateAction<Referral[]>>;
   persistEnabled: boolean;
   onResetData: () => void;
   initialTab?: AdminTab;
@@ -381,6 +408,13 @@ export function AdminView({
   // approvals waiting, so the queue is the first thing an admin sees.
   const [memberFilter, setMemberFilter] = useState<"all" | "pending">(initialTab === "members" ? "pending" : "all");
   const [range, setRange] = useState<RangeKey>("90");
+
+  useEffect(() => {
+    if (!initialTab) return;
+    setTab(initialTab);
+    if (initialTab === "members") setMemberFilter("pending");
+  }, [initialTab]);
+
   const now = Date.now();
   const rangeStart = now - Number(range) * DAY_MS;
 
@@ -414,9 +448,7 @@ export function AdminView({
   };
   const referralPoints = pipeline.sent * REFERRAL_SENT_POINTS + pipeline.won * REFERRAL_WON_BONUS_POINTS;
   const openReferrals = referrals.filter((referral) => referral.status === "sent");
-  const staleReferrals = openReferrals.filter(
-    (referral) => now - referral.createdAt >= 7 * DAY_MS
-  );
+  const staleReferrals = openReferrals.filter((referral) => isStaleReferral(referral, now));
 
   const weeklyReferrals = useMemo(() => {
     const weeks = 8;
@@ -462,10 +494,11 @@ export function AdminView({
         }),
     [events, rsvps]
   );
-  const totalGoing = attendance.reduce((sum, row) => sum + row.going, 0);
+  const scheduledEventCount = events.filter((event) => event.status !== "canceled").length;
+  const totalGoing = attendance.filter((row) => row.event.status !== "canceled").reduce((sum, row) => sum + row.going, 0);
 
   // --- Support queue --------------------------------------------------------
-  const openRequests = requests.filter((request) => !/resolved|closed/i.test(request.status));
+  const openRequests = requests.filter((request) => canonicalSupportStatus(request.status) !== "Resolved");
   const supportByCategory = [...countBy(requests, (request) => request.category).entries()].sort((a, b) => b[1] - a[1]);
 
   // --- Community engagement -------------------------------------------------
@@ -515,7 +548,10 @@ export function AdminView({
   // Members & businesses ----------------------------------------------------
   const [memberQuery, setMemberQuery] = useState("");
   const [showAddMember, setShowAddMember] = useState(false);
+  const [showAddBusiness, setShowAddBusiness] = useState(false);
   const [newMember, setNewMember] = useState({ name: "", title: "", email: "", phone: "", businessId: "" });
+  const [newBusiness, setNewBusiness] = useState({ name: "", category: "", city: "Berks County, PA" });
+  const [businessDraft, setBusinessDraft] = useState<Business | null>(null);
 
   const pendingCount = members.filter((member) => member.pending).length;
   const memberRows = useMemo(() => {
@@ -580,6 +616,113 @@ export function AdminView({
     onAdminAction(`${name} added to the approval queue.`);
   }
 
+  function addBusiness() {
+    const name = newBusiness.name.trim();
+    if (!name) {
+      onAdminAction("A business name is required.");
+      return;
+    }
+    if (businesses.some((business) => business.name.localeCompare(name, undefined, { sensitivity: "base" }) === 0)) {
+      onAdminAction(`${name} is already in the directory.`);
+      return;
+    }
+    const business: Business = {
+      id: newId("biz"),
+      name,
+      category: newBusiness.category.trim() || "Uncategorized",
+      city: newBusiness.city.trim() || "Berks County, PA",
+      description: "",
+      servicesOffered: "",
+      referralsWanted: "",
+      website: "",
+      address: "",
+      tier: "solo"
+    };
+    onUpdateBusinesses((prev) => [...prev, business]);
+    setNewMember((prev) => ({ ...prev, businessId: business.id }));
+    setNewBusiness({ name: "", category: "", city: "Berks County, PA" });
+    setShowAddBusiness(false);
+    setShowAddMember(true);
+    onAdminAction(`${name} added. Add a person to place the business in the approval queue.`);
+  }
+
+  function saveBusinessProfile() {
+    if (!businessDraft) return;
+    if (!businessDraft.name.trim()) {
+      onAdminAction("A business name is required.");
+      return;
+    }
+    const duplicate = businesses.some(
+      (business) => business.id !== businessDraft.id && business.name.localeCompare(businessDraft.name, undefined, { sensitivity: "base" }) === 0
+    );
+    if (duplicate) {
+      onAdminAction(`${businessDraft.name.trim()} is already in the directory.`);
+      return;
+    }
+    const updated = updateBusinessProfile(businessById.get(businessDraft.id) ?? businessDraft, businessDraft);
+    onUpdateBusinesses((prev) => prev.map((business) => business.id === updated.id ? updated : business));
+    setBusinessDraft(updated);
+    onAdminAction(`${updated.name} directory profile updated in this demo.`);
+  }
+
+  // Event operations -------------------------------------------------------
+  const [eventDraft, setEventDraft] = useState<CommunityEvent | null>(null);
+  const [expandedAttendanceId, setExpandedAttendanceId] = useState<string | null>(null);
+
+  function saveEvent() {
+    if (!eventDraft) return;
+    const error = validateEventTiming(eventDraft.startsAt, eventDraft.endsAt);
+    if (!eventDraft.title.trim()) {
+      onAdminAction("An event title is required.");
+      return;
+    }
+    if (error) {
+      onAdminAction(error);
+      return;
+    }
+    onUpdateEvents((prev) => prev.map((event) => event.id === eventDraft.id ? { ...eventDraft, title: eventDraft.title.trim() } : event));
+    setEventDraft(null);
+    onAdminAction(`${eventDraft.title.trim()} updated in the seed demo.`);
+  }
+
+  function cancelEvent(event: CommunityEvent) {
+    if (!window.confirm(`Cancel ${event.title}? Members will see it as canceled and RSVP controls will be disabled.`)) return;
+    onUpdateEvents((prev) => prev.map((entry) => entry.id === event.id ? { ...entry, status: "canceled" } : entry));
+    onAdminAction(`${event.title} canceled. Existing attendance records were retained.`);
+  }
+
+  function duplicateSelectedEvent(event: CommunityEvent) {
+    const nextStart = event.startsAt + 7 * DAY_MS;
+    if (!window.confirm(`Duplicate ${event.title} one week later?`)) return;
+    const duplicate = duplicateEvent(event, newId("event"), nextStart);
+    onUpdateEvents((prev) => [...prev, duplicate]);
+    onAdminAction(`${duplicate.title} created one week later. Use Edit to adjust its details.`);
+  }
+
+  function toggleCheckIn(eventId: string, memberId: string) {
+    onUpdateRsvps((prev) => prev.map((rsvp) =>
+      rsvp.eventId === eventId && rsvp.memberId === memberId ? { ...rsvp, checkedIn: !rsvp.checkedIn } : rsvp
+    ));
+    onAdminAction("Attendance check-in updated in the seed demo.");
+  }
+
+  // Referral oversight -----------------------------------------------------
+  const [referralCorrection, setReferralCorrection] = useState<{ id: string; status: ReferralStatus; reason: string } | null>(null);
+
+  function applyReferralCorrection() {
+    if (!referralCorrection?.reason.trim()) return;
+    const referral = referrals.find((entry) => entry.id === referralCorrection.id);
+    if (!referral || referral.status === referralCorrection.status) return;
+    const label = referralStatusLabels[referralCorrection.status];
+    if (!window.confirm(`Correct this referral from ${referralStatusLabels[referral.status]} to ${label}? This will add an audit note.`)) return;
+    const at = Date.now();
+    onUpdateReferrals((prev) => prev.map((entry) => entry.id === referral.id
+      ? correctReferralStatus(entry, referralCorrection.status, currentMember?.name ?? "SBRA admin", at, referralCorrection.reason)
+      : entry));
+    setReferralCorrection(null);
+    onAdminAction(`Referral status corrected to ${label}; a privacy-safe audit note was recorded.`);
+  }
+
   // Moderation --------------------------------------------------------------
   const commentsByPost = useMemo(() => {
     const map = new Map<string, Comment[]>();
@@ -590,18 +733,51 @@ export function AdminView({
     }
     return map;
   }, [comments]);
+  const [moderationFilter, setModerationFilter] = useState<ModerationFilter>("all");
+  const [moderationQuery, setModerationQuery] = useState("");
+  const [moderationReasons, setModerationReasons] = useState<Record<string, string>>({});
+  const [deletedModerationHistory, setDeletedModerationHistory] = useState<{
+    at: number; actor: string; target: string; reason: string;
+  }[]>([]);
+  const moderatedPosts = useMemo(
+    () => filterModerationPosts(posts, moderationFilter, moderationQuery),
+    [posts, moderationFilter, moderationQuery]
+  );
 
   function togglePostHidden(postId: string) {
-    onUpdatePosts((prev) => prev.map((post) => (post.id === postId ? { ...post, hidden: !post.hidden } : post)));
+    const post = posts.find((entry) => entry.id === postId);
+    const reason = (moderationReasons[postId] ?? "").trim();
+    if (!post || !reason) {
+      onAdminAction("Add a moderation reason before changing visibility.");
+      return;
+    }
+    const action = post.hidden ? "restored" : "hidden";
+    if (!window.confirm(`${action === "hidden" ? "Hide" : "Restore"} ${post.author}'s post for: ${reason}?`)) return;
+    onUpdatePosts((prev) => prev.map((entry) => entry.id === postId
+      ? recordModerationAction(entry, action, reason, currentMember?.name ?? "SBRA admin", Date.now())
+      : entry));
+    setModerationReasons((prev) => ({ ...prev, [postId]: "" }));
+    onAdminAction(`Post ${action}; reason added to its moderation history.`);
   }
   function deletePost(postId: string) {
-    if (!window.confirm("Delete this post and its comments and reactions? This cannot be undone.")) return;
+    const post = posts.find((entry) => entry.id === postId);
+    const reason = (moderationReasons[postId] ?? "").trim();
+    if (!post || !reason) {
+      onAdminAction("Add a moderation reason before deleting a post.");
+      return;
+    }
+    if (!window.confirm(`Delete ${post.author}'s post and its comments and reactions for: ${reason}? This cannot be undone.`)) return;
     onUpdatePosts((prev) => prev.filter((post) => post.id !== postId));
     onUpdateComments((prev) => prev.filter((comment) => comment.postId !== postId));
     onUpdateReactions((prev) => prev.filter((reaction) => reaction.postId !== postId));
-    onAdminAction("Post removed.");
+    setDeletedModerationHistory((prev) => [{ at: Date.now(), actor: currentMember?.name ?? "SBRA admin", target: `${post.author}: ${post.body.slice(0, 80)}`, reason }, ...prev]);
+    onAdminAction("Post removed; a session-only deletion record was retained.");
   }
   function deleteComment(commentId: string) {
+    const comment = comments.find((entry) => entry.id === commentId);
+    if (!comment) return;
+    const reason = window.prompt(`Reason for deleting ${comment.authorName}'s comment:`)?.trim();
+    if (!reason || !window.confirm(`Delete ${comment.authorName}'s comment for: ${reason}? This cannot be undone.`)) return;
     onUpdateComments((prev) => prev.filter((comment) => comment.id !== commentId));
     onUpdatePosts((prev) =>
       prev.map((post) => {
@@ -609,7 +785,8 @@ export function AdminView({
         return owns ? { ...post, comments: Math.max(0, post.comments - 1) } : post;
       })
     );
-    onAdminAction("Comment removed.");
+    setDeletedModerationHistory((prev) => [{ at: Date.now(), actor: currentMember?.name ?? "SBRA admin", target: `${comment.authorName} comment: ${comment.body.slice(0, 80)}`, reason }, ...prev]);
+    onAdminAction("Comment removed; a session-only deletion record was retained.");
   }
 
   // Support queue -----------------------------------------------------------
@@ -633,10 +810,38 @@ export function AdminView({
 
   // Broadcast ---------------------------------------------------------------
   const [broadcastBody, setBroadcastBody] = useState("");
-  const [broadcastPinned, setBroadcastPinned] = useState(true);
+  const [broadcastPinned, setBroadcastPinned] = useState(false);
+
+  useEffect(() => {
+    if (!persistEnabled) return;
+    try {
+      const stored = window.localStorage.getItem(BROADCAST_DRAFT_KEY);
+      if (stored) setBroadcastBody(stored);
+    } catch {
+      // Storage is best effort in the seed demo.
+    }
+  }, [persistEnabled]);
+
+  function saveBroadcastDraft() {
+    if (!broadcastBody.trim() || !persistEnabled) return;
+    try {
+      window.localStorage.setItem(BROADCAST_DRAFT_KEY, broadcastBody);
+      onAdminAction("Announcement draft saved on this device.");
+    } catch {
+      onAdminAction("This browser could not save the announcement draft.");
+    }
+  }
+
+  function clearBroadcastDraft() {
+    setBroadcastBody("");
+    try { window.localStorage.removeItem(BROADCAST_DRAFT_KEY); } catch { /* best effort */ }
+    onAdminAction("Announcement draft cleared.");
+  }
+
   function postBroadcast() {
     const body = broadcastBody.trim();
     if (!body) return;
+    if (!window.confirm(`Publish this announcement to all members in the current SBRA community${broadcastPinned ? " and pin it to the top of the feed" : ""}?`)) return;
     const post: CommunityPost = {
       id: newId("post"),
       authorId: currentMember?.id,
@@ -653,7 +858,23 @@ export function AdminView({
     };
     onUpdatePosts((prev) => [post, ...prev]);
     setBroadcastBody("");
+    try { window.localStorage.removeItem(BROADCAST_DRAFT_KEY); } catch { /* best effort */ }
     onAdminAction(broadcastPinned ? "Announcement posted and pinned to the feed." : "Announcement posted to the feed.");
+  }
+
+  function exportSummary() {
+    downloadCsv("sbra-admin-summary.csv", [
+      ["Metric", "Value", "Range"],
+      ["Member businesses", businesses.length, "all time"],
+      ["People", members.length, "all time"],
+      ["Referrals sent", pipeline.sent, rangeLabel],
+      ["Referrals won", pipeline.won, rangeLabel],
+      ["Referral points", referralPoints, rangeLabel],
+      ["Open support requests", openRequests.length, "now"],
+      ["Event RSVPs (going)", totalGoing, "all events"],
+      ["Active members", activeMembers, "all time"]
+    ]);
+    onAdminAction("Admin summary exported as CSV.");
   }
 
   return (
@@ -706,6 +927,7 @@ export function AdminView({
                 key={entry.key}
                 type="button"
                 className={entry.key === range ? "active" : ""}
+                aria-pressed={entry.key === range}
                 onClick={() => setRange(entry.key)}
               >
                 {entry.label}
@@ -718,19 +940,7 @@ export function AdminView({
           <button
             type="button"
             className="primary-button"
-            onClick={() =>
-              downloadCsv("sbra-admin-summary.csv", [
-                ["Metric", "Value", "Range"],
-                ["Member businesses", businesses.length, "all time"],
-                ["People", members.length, "all time"],
-                ["Referrals sent", pipeline.sent, rangeLabel],
-                ["Referrals won", pipeline.won, rangeLabel],
-                ["Referral points", referralPoints, rangeLabel],
-                ["Open support requests", openRequests.length, "now"],
-                ["Event RSVPs (going)", totalGoing, "all events"],
-                ["Active members", activeMembers, "all time"]
-              ])
-            }
+            onClick={exportSummary}
           >
             Export summary
           </button>
@@ -1136,6 +1346,7 @@ export function AdminView({
                 <button
                   type="button"
                   className={memberFilter === "all" ? "active" : ""}
+                  aria-pressed={memberFilter === "all"}
                   onClick={() => setMemberFilter("all")}
                 >
                   All
@@ -1143,6 +1354,7 @@ export function AdminView({
                 <button
                   type="button"
                   className={memberFilter === "pending" ? "active" : ""}
+                  aria-pressed={memberFilter === "pending"}
                   onClick={() => setMemberFilter("pending")}
                 >
                   Pending{pendingCount > 0 ? ` (${pendingCount})` : ""}
@@ -1157,6 +1369,9 @@ export function AdminView({
               />
               <button type="button" className="primary-button" onClick={() => setShowAddMember((open) => !open)}>
                 {showAddMember ? "Close" : "Add member"}
+              </button>
+              <button type="button" className="secondary-button" onClick={() => setShowAddBusiness((open) => !open)}>
+                {showAddBusiness ? "Close business form" : "Add business"}
               </button>
               <label className="secondary-button file-inline">
                 Import roster
@@ -1173,6 +1388,73 @@ export function AdminView({
               : "A live backend is connected — changes are saved there, not to this device."}
           </div>
           {importNote && <div className="glass-panel import-note admin-inline-note">{importNote}</div>}
+
+          <div className="glass-panel admin-add-form">
+            <div className="admin-add-actions">
+              <label>
+                <span>Maintain a business profile</span>
+                <select
+                  value={businessDraft?.id ?? ""}
+                  onChange={(event) => setBusinessDraft(businessById.get(event.target.value) ? { ...businessById.get(event.target.value)! } : null)}
+                >
+                  <option value="">Choose a business…</option>
+                  {[...businesses].sort((a, b) => a.name.localeCompare(b.name)).map((business) => (
+                    <option key={business.id} value={business.id}>{business.name}</option>
+                  ))}
+                </select>
+              </label>
+              <span className="report-note">Edits the shared directory organization profile in this seed demo, not private community membership fields.</span>
+            </div>
+            {businessDraft && (
+              <>
+                <div className="admin-add-grid">
+                  {([
+                    ["name", "Business name"], ["category", "Category"], ["website", "Website"],
+                    ["address", "Address"], ["city", "City or service area"], ["servicesOffered", "Services offered"],
+                    ["referralsWanted", "Ideal referrals"], ["description", "Description"]
+                  ] as const).map(([field, label]) => (
+                    <label key={field} className={field === "description" ? "wide" : undefined}>
+                      <span>{label}</span>
+                      {field === "description" ? (
+                        <textarea value={businessDraft[field]} onChange={(event) => setBusinessDraft((draft) => draft ? { ...draft, [field]: event.target.value } : draft)} />
+                      ) : (
+                        <input value={businessDraft[field]} onChange={(event) => setBusinessDraft((draft) => draft ? { ...draft, [field]: event.target.value } : draft)} />
+                      )}
+                    </label>
+                  ))}
+                </div>
+                <div className="admin-add-actions">
+                  <button type="button" className="primary-button" onClick={saveBusinessProfile} disabled={!persistEnabled || !businessDraft.name.trim()}>Save profile</button>
+                  {!persistEnabled && <span className="report-note">Disabled: the live backend needs an authorized organization-profile mutation and audit trail.</span>}
+                </div>
+              </>
+            )}
+          </div>
+
+          {showAddBusiness && (
+            <div className="glass-panel admin-add-form">
+              <div className="admin-add-grid">
+                <label>
+                  <span>Business name*</span>
+                  <input value={newBusiness.name} onChange={(event) => setNewBusiness((prev) => ({ ...prev, name: event.target.value }))} />
+                </label>
+                <label>
+                  <span>Category</span>
+                  <input value={newBusiness.category} onChange={(event) => setNewBusiness((prev) => ({ ...prev, category: event.target.value }))} />
+                </label>
+                <label>
+                  <span>City or service area</span>
+                  <input value={newBusiness.city} onChange={(event) => setNewBusiness((prev) => ({ ...prev, city: event.target.value }))} />
+                </label>
+              </div>
+              <div className="admin-add-actions">
+                <span className="report-note">Creates the organization first, then opens the person form to complete the membership.</span>
+                <button type="button" className="primary-button" onClick={addBusiness} disabled={!newBusiness.name.trim()}>
+                  Add business
+                </button>
+              </div>
+            </div>
+          )}
 
           {showAddMember && (
             <div className="glass-panel admin-add-form">
@@ -1236,6 +1518,7 @@ export function AdminView({
                         {business ? (
                           <select
                             className="admin-select"
+                            aria-label={`Membership tier for ${business.name}`}
                             value={business.tier}
                             onChange={(event) => setTier(business.id, event.target.value as MembershipTier)}
                           >
@@ -1250,6 +1533,7 @@ export function AdminView({
                       <td>
                         <select
                           className="admin-select"
+                          aria-label={`Community role for ${member.name}`}
                           value={member.role ?? "member"}
                           onChange={(event) => setMemberRole(member.id, event.target.value as UserRole)}
                         >
@@ -1271,9 +1555,9 @@ export function AdminView({
                       </td>
                       <td className="admin-row-actions">
                         {member.pending && (
-                          <button type="button" className="mini-button approve" onClick={() => approveMember(member.id)}>Approve</button>
+                          <button type="button" className="mini-button approve" aria-label={`Approve ${member.name}`} onClick={() => approveMember(member.id)}>Approve</button>
                         )}
-                        <button type="button" className="mini-button danger" onClick={() => removeMember(member.id)}>Remove</button>
+                        <button type="button" className="mini-button danger" aria-label={`Remove ${member.name}`} onClick={() => removeMember(member.id)}>Remove</button>
                       </td>
                     </tr>
                   ))}
@@ -1294,6 +1578,197 @@ export function AdminView({
         </div>
       )}
 
+      {tab === "referrals" && (
+        <div className="admin-panel">
+          <div className="glass-panel admin-panel-head">
+            <div>
+              <p className="section-label">Relationship operations</p>
+              <h3>Referral oversight</h3>
+              <p className="report-subtitle">
+                {openReferrals.length} open · {staleReferrals.length} waiting 7+ days · {pipeline.won} won in {rangeLabel.toLowerCase()}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                downloadCsv("referral-oversight.csv", [
+                  ["Created", "From", "To", "Kind", "Status", "Needs follow-up", "Last admin correction"],
+                  ...referrals.map((referral) => [
+                    new Date(referral.createdAt).toISOString(),
+                    memberById.get(referral.giverId)?.name ?? "Unknown person",
+                    memberById.get(referral.receiverId)?.name ?? "Unknown person",
+                    referral.kind === "intro" ? "Introduction" : "Lead",
+                    referralStatusLabels[referral.status],
+                    isStaleReferral(referral, now) ? "Yes" : "No",
+                    referral.adminAudit?.at(-1)?.note ?? ""
+                  ])
+                ]);
+                onAdminAction("Referral oversight exported as CSV.");
+              }}
+            >
+              Export referrals
+            </button>
+          </div>
+          <div className="glass-panel report-card">
+            <div className="table-scroll">
+              <table className="report-table admin-table">
+                <thead>
+                  <tr><th>Created</th><th>From</th><th>To</th><th>Kind</th><th>Status</th><th>Follow-up</th><th>Admin correction</th></tr>
+                </thead>
+                <tbody>
+                  {[...referrals].sort((a, b) => b.createdAt - a.createdAt).map((referral) => {
+                    const giver = memberById.get(referral.giverId);
+                    const receiver = memberById.get(referral.receiverId);
+                    const stale = isStaleReferral(referral, now);
+                    return (
+                      <tr key={referral.id} className={stale ? "row-pending" : ""}>
+                        <td>{shortDate(referral.createdAt)}</td>
+                        <td><strong>{giver?.name ?? "Unknown person"}</strong><small>{giver ? businessById.get(giver.businessId)?.name : ""}</small></td>
+                        <td><strong>{receiver?.name ?? "Unknown person"}</strong><small>{receiver ? businessById.get(receiver.businessId)?.name : ""}</small></td>
+                        <td>{referral.kind === "intro" ? "Introduction" : "Lead"}</td>
+                        <td><span className={`admin-badge ${referral.status === "sent" ? "pending" : "active"}`}>{referralStatusLabels[referral.status]}</span></td>
+                        <td>{stale ? <span className="admin-badge pending">Waiting 7+ days</span> : "—"}</td>
+                        <td>
+                          {referralCorrection?.id === referral.id ? (
+                            <div className="support-reply-form">
+                              <select
+                                aria-label={`Correct status for referral from ${giver?.name ?? "unknown person"}`}
+                                value={referralCorrection.status}
+                                onChange={(event) => setReferralCorrection((draft) => draft ? { ...draft, status: event.target.value as ReferralStatus } : draft)}
+                              >
+                                {(Object.keys(referralStatusLabels) as ReferralStatus[]).map((status) => <option key={status} value={status}>{referralStatusLabels[status]}</option>)}
+                              </select>
+                              <input
+                                aria-label="Correction reason"
+                                placeholder="Required audit reason"
+                                value={referralCorrection.reason}
+                                onChange={(event) => setReferralCorrection((draft) => draft ? { ...draft, reason: event.target.value } : draft)}
+                              />
+                              <button type="button" className="mini-button" onClick={applyReferralCorrection} disabled={!persistEnabled || !referralCorrection.reason.trim() || referralCorrection.status === referral.status}>Confirm</button>
+                              <button type="button" className="mini-button" onClick={() => setReferralCorrection(null)}>Cancel</button>
+                            </div>
+                          ) : (
+                            <button type="button" className="mini-button" onClick={() => setReferralCorrection({ id: referral.id, status: referral.status, reason: "" })} disabled={!persistEnabled}>Correct status</button>
+                          )}
+                          {referral.adminAudit?.at(-1) && (
+                            <small>{shortDate(referral.adminAudit.at(-1)!.at)} · {referral.adminAudit.at(-1)!.actor}: {referral.adminAudit.at(-1)!.note}</small>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {referrals.length === 0 && <tr><td colSpan={7} className="report-empty">No referrals yet.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="import-note admin-tool-note">Prospect contact details stay with referral participants; this view exposes operational status only.</div>
+            {!persistEnabled && <div className="import-note admin-tool-note">Status correction is disabled: the live backend needs tenant-scoped authorization and an immutable audit record.</div>}
+            <div className="import-note admin-tool-note" aria-live="polite">{adminNote}</div>
+          </div>
+        </div>
+      )}
+
+      {tab === "events" && (
+        <div className="admin-panel">
+          <div className="glass-panel admin-panel-head">
+            <div>
+              <p className="section-label">Event operations</p>
+              <h3>Attendance &amp; capacity</h3>
+              <p className="report-subtitle">{scheduledEventCount} scheduled · {events.length - scheduledEventCount} canceled · {totalGoing} going</p>
+            </div>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                downloadCsv("event-operations.csv", [
+                  ["Event", "Type", "Status", "Starts", "Ends", "Host", "Going", "Maybe", "Checked in", "Capacity"],
+                  ...attendance.map(({ event, going, maybe, checkedIn }) => [
+                    event.title,
+                    eventTypeLabels[event.type],
+                    event.status === "canceled" ? "Canceled" : "Scheduled",
+                    new Date(event.startsAt).toISOString(),
+                    event.endsAt ? new Date(event.endsAt).toISOString() : "",
+                    event.hostMemberId ? memberById.get(event.hostMemberId)?.name ?? "Unknown person" : "Unassigned",
+                    going,
+                    maybe,
+                    checkedIn,
+                    event.capacity ?? "Unlimited"
+                  ])
+                ]);
+                onAdminAction("Event operations exported as CSV.");
+              }}
+            >
+              Export events
+            </button>
+          </div>
+          {eventDraft && (
+            <div className="glass-panel admin-add-form">
+              <div className="admin-add-grid">
+                <label><span>Event title*</span><input value={eventDraft.title} onChange={(event) => setEventDraft((draft) => draft ? { ...draft, title: event.target.value } : draft)} /></label>
+                <label><span>Starts*</span><input type="datetime-local" value={toDateTimeLocal(eventDraft.startsAt)} onChange={(event) => setEventDraft((draft) => draft ? { ...draft, startsAt: new Date(event.target.value).getTime() } : draft)} /></label>
+                <label><span>Ends</span><input type="datetime-local" value={toDateTimeLocal(eventDraft.endsAt)} onChange={(event) => setEventDraft((draft) => draft ? { ...draft, endsAt: event.target.value ? new Date(event.target.value).getTime() : undefined } : draft)} /></label>
+                <label><span>Venue</span><input value={eventDraft.venueName} onChange={(event) => setEventDraft((draft) => draft ? { ...draft, venueName: event.target.value } : draft)} /></label>
+                <label><span>Venue address</span><input value={eventDraft.venueAddress} onChange={(event) => setEventDraft((draft) => draft ? { ...draft, venueAddress: event.target.value } : draft)} /></label>
+                <label><span>Capacity</span><input type="number" min="1" value={eventDraft.capacity ?? ""} onChange={(event) => setEventDraft((draft) => draft ? { ...draft, capacity: event.target.value ? Number(event.target.value) : undefined } : draft)} /></label>
+              </div>
+              <div className="admin-add-actions">
+                <button type="button" className="primary-button" onClick={saveEvent} disabled={!persistEnabled || !eventDraft.title.trim()}>Save event</button>
+                <button type="button" className="secondary-button" onClick={() => setEventDraft(null)}>Discard changes</button>
+                {!persistEnabled && <span className="report-note">Disabled: the live backend needs an authorized event mutation and audit trail.</span>}
+              </div>
+            </div>
+          )}
+          <div className="glass-panel report-card">
+            <div className="table-scroll">
+              <table className="report-table admin-table">
+                <thead><tr><th>Event</th><th>Status</th><th>Starts / ends</th><th>Host</th><th>Going</th><th>Maybe</th><th>Checked in</th><th>Capacity</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {attendance.map(({ event, going, maybe, checkedIn }) => {
+                    const eventRsvps = rsvps.filter((rsvp) => rsvp.eventId === event.id);
+                    const canceled = event.status === "canceled";
+                    return (
+                      <Fragment key={event.id}>
+                        <tr className={canceled ? "row-pending" : ""}>
+                          <td><strong>{event.title}</strong><small>{eventTypeLabels[event.type]} · {event.venueName}</small></td>
+                          <td><span className={`admin-badge ${canceled ? "hidden" : "active"}`}>{canceled ? "Canceled" : "Scheduled"}</span></td>
+                          <td>{new Date(event.startsAt).toLocaleString()}<small>{event.endsAt ? `to ${new Date(event.endsAt).toLocaleString()}` : "No end time"}</small></td>
+                          <td>{event.hostMemberId ? memberById.get(event.hostMemberId)?.name ?? "Unknown person" : "Unassigned"}</td>
+                          <td>{going}</td><td>{maybe}</td><td>{checkedIn}</td><td>{event.capacity ?? "Unlimited"}</td>
+                          <td className="admin-row-actions">
+                            <button type="button" className="mini-button" onClick={() => setExpandedAttendanceId((id) => id === event.id ? null : event.id)}>{expandedAttendanceId === event.id ? "Hide attendance" : "Attendance"}</button>
+                            <button type="button" className="mini-button" onClick={() => setEventDraft({ ...event })} disabled={!persistEnabled}>Edit</button>
+                            <button type="button" className="mini-button" onClick={() => duplicateSelectedEvent(event)} disabled={!persistEnabled}>Duplicate</button>
+                            {!canceled && <button type="button" className="mini-button danger" onClick={() => cancelEvent(event)} disabled={!persistEnabled}>Cancel event</button>}
+                          </td>
+                        </tr>
+                        {expandedAttendanceId === event.id && (
+                          <tr><td colSpan={9}>
+                            <div className="mod-comments">
+                              {eventRsvps.map((rsvp) => {
+                                const attendee = memberById.get(rsvp.memberId);
+                                return <div key={rsvp.memberId} className="admin-add-actions">
+                                  <span><strong>{attendee?.name ?? "Unknown person"}</strong> · {rsvp.status.replace("_", " ")}</span>
+                                  <label><input type="checkbox" checked={rsvp.checkedIn} disabled={!persistEnabled || canceled || rsvp.status !== "going"} onChange={() => toggleCheckIn(event.id, rsvp.memberId)} /> Checked in</label>
+                                </div>;
+                              })}
+                              {eventRsvps.length === 0 && <span className="report-note">No responses yet.</span>}
+                            </div>
+                          </td></tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                  {attendance.length === 0 && <tr><td colSpan={9} className="report-empty">No events.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="import-note admin-tool-note">Seed-demo edits, duplication, cancellation, attendee detail, and check-in persist on this device. Attendee messaging is unavailable because delivery needs recipient targeting, an outbox, and audit records.</div>
+            <div className="import-note admin-tool-note" aria-live="polite">{adminNote}</div>
+          </div>
+        </div>
+      )}
+
       {tab === "moderation" && (
         <div className="admin-panel">
           <div className="glass-panel admin-panel-head">
@@ -1304,10 +1779,33 @@ export function AdminView({
                 {posts.length} posts · {posts.filter((post) => post.hidden).length} hidden · {comments.length} comments
               </p>
             </div>
+            <div className="admin-panel-actions">
+              <div className="admin-filter" role="group" aria-label="Filter moderated posts">
+                {(["all", "visible", "hidden"] as ModerationFilter[]).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    className={moderationFilter === filter ? "active" : ""}
+                    aria-pressed={moderationFilter === filter}
+                    onClick={() => setModerationFilter(filter)}
+                  >
+                    {filter[0].toUpperCase() + filter.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <input
+                className="admin-search"
+                type="search"
+                aria-label="Search posts for moderation"
+                placeholder="Search author, business, or text…"
+                value={moderationQuery}
+                onChange={(event) => setModerationQuery(event.target.value)}
+              />
+            </div>
           </div>
           <div className="admin-moderation-list">
-            {posts.length === 0 && <div className="glass-panel report-card report-empty">No posts yet.</div>}
-            {posts.map((post) => {
+            {moderatedPosts.length === 0 && <div className="glass-panel report-card report-empty">No posts match this view.</div>}
+            {moderatedPosts.map((post) => {
               const postComments = commentsByPost.get(post.id) ?? [];
               return (
                 <section className={post.hidden ? "glass-panel report-card mod-post hidden" : "glass-panel report-card mod-post"} key={post.id}>
@@ -1322,15 +1820,34 @@ export function AdminView({
                     </div>
                   </header>
                   <p className="mod-post-body">{post.body}</p>
+                  <div className="support-reply-form">
+                    <input
+                      aria-label={`Moderation reason for post by ${post.author}`}
+                      placeholder="Required reason for hide, restore, or delete"
+                      value={moderationReasons[post.id] ?? ""}
+                      onChange={(event) => setModerationReasons((prev) => ({ ...prev, [post.id]: event.target.value }))}
+                    />
+                    <button type="button" className="mini-button" disabled title="Member reporting requires a report record, reporter privacy rules, and backend intake.">Reported by member (unavailable)</button>
+                  </div>
                   <div className="mod-post-meta">
                     <span>{post.reactions} reactions · {postComments.length} comments</span>
                     <div className="mod-post-actions">
-                      <button type="button" className="mini-button" onClick={() => togglePostHidden(post.id)}>
+                      <button type="button" className="mini-button" aria-label={`${post.hidden ? "Unhide" : "Hide"} post by ${post.author}`} onClick={() => togglePostHidden(post.id)}>
                         {post.hidden ? "Unhide" : "Hide"}
                       </button>
-                      <button type="button" className="mini-button danger" onClick={() => deletePost(post.id)}>Delete</button>
+                      <button type="button" className="mini-button danger" aria-label={`Delete post by ${post.author}`} onClick={() => deletePost(post.id)}>Delete</button>
                     </div>
                   </div>
+                  {post.moderationHistory && post.moderationHistory.length > 0 && (
+                    <details>
+                      <summary>Moderation history ({post.moderationHistory.length})</summary>
+                      <ul className="mod-comments">
+                        {[...post.moderationHistory].reverse().map((entry, index) => (
+                          <li key={`${entry.at}-${index}`}><span>{new Date(entry.at).toLocaleString()} · {entry.actor} · {entry.action}: {entry.reason}</span></li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                   {postComments.length > 0 && (
                     <ul className="mod-comments">
                       {postComments.map((comment) => (
@@ -1339,7 +1856,7 @@ export function AdminView({
                             <strong>{comment.authorName}</strong>
                             <span>{comment.body}</span>
                           </div>
-                          <button type="button" className="mini-button danger" onClick={() => deleteComment(comment.id)}>Delete</button>
+                          <button type="button" className="mini-button danger" aria-label={`Delete comment by ${comment.authorName}`} onClick={() => deleteComment(comment.id)}>Delete</button>
                         </li>
                       ))}
                     </ul>
@@ -1348,6 +1865,18 @@ export function AdminView({
               );
             })}
           </div>
+          <div className="glass-panel import-note admin-inline-note">
+            Member report intake is disabled in the seed demo: there is no report record, reporter-privacy policy, or backend queue. Visibility actions require a reason and are stored with the post.
+          </div>
+          {deletedModerationHistory.length > 0 && (
+            <div className="glass-panel report-card">
+              <h4>Deletion history (this session only)</h4>
+              <ul className="mod-comments">
+                {deletedModerationHistory.map((entry, index) => <li key={`${entry.at}-${index}`}><span>{new Date(entry.at).toLocaleString()} · {entry.actor} · {entry.target} · {entry.reason}</span></li>)}
+              </ul>
+              <p className="report-note">A durable deletion ledger requires backend audit storage; this demo history is cleared when the admin page reloads.</p>
+            </div>
+          )}
           <div className="import-note admin-tool-note">{adminNote}</div>
         </div>
       )}
@@ -1366,7 +1895,8 @@ export function AdminView({
           <div className="admin-moderation-list">
             {requests.length === 0 && <div className="glass-panel report-card report-empty">No support requests.</div>}
             {requests.map((request) => {
-              const resolved = /resolved|closed/i.test(request.status);
+              const status = canonicalSupportStatus(request.status);
+              const resolved = status === "Resolved";
               return (
                 <section className={resolved ? "glass-panel report-card mod-post resolved" : "glass-panel report-card mod-post"} key={request.id}>
                   <header className="mod-post-head">
@@ -1376,7 +1906,8 @@ export function AdminView({
                     </div>
                     <select
                       className="admin-select"
-                      value={supportStatuses.includes(request.status as typeof supportStatuses[number]) ? request.status : "Open"}
+                      aria-label={`Status for ${request.title}`}
+                      value={status}
                       onChange={(event) => setRequestStatus(request.id, event.target.value)}
                     >
                       {supportStatuses.map((status) => (
@@ -1392,11 +1923,12 @@ export function AdminView({
                     <input
                       type="text"
                       placeholder="Reply to the member…"
+                      aria-label={`Reply to ${request.title}`}
                       value={replyDrafts[request.id] ?? ""}
                       onChange={(event) => setReplyDrafts((drafts) => ({ ...drafts, [request.id]: event.target.value }))}
                       onKeyDown={(event) => { if (event.key === "Enter") sendReply(request.id); }}
                     />
-                    <button type="button" className="mini-button" onClick={() => sendReply(request.id)}>Send</button>
+                    <button type="button" className="mini-button" aria-label={`Send reply for ${request.title}`} onClick={() => sendReply(request.id)} disabled={!(replyDrafts[request.id] ?? "").trim()}>Send</button>
                   </div>
                 </section>
               );
@@ -1416,19 +1948,37 @@ export function AdminView({
             </div>
           </div>
           <div className="glass-panel report-card admin-broadcast">
+            <p className="report-note">Audience: all members in the current SBRA community feed. Review the message before publishing.</p>
             <textarea
               className="admin-broadcast-input"
               placeholder="Share an announcement with all members — a program update, a deadline, an event reminder…"
+              maxLength={2000}
               value={broadcastBody}
               onChange={(event) => setBroadcastBody(event.target.value)}
             />
+            {broadcastBody.trim() && (
+              <div className="glass-panel import-note admin-inline-note" aria-label="Announcement preview">
+                <strong>Preview</strong>
+                <p>{broadcastBody.trim()}</p>
+                {broadcastPinned && <span className="admin-badge pinned">Pinned</span>}
+              </div>
+            )}
+            <label>
+              <span>Schedule for later</span>
+              <input type="datetime-local" disabled aria-describedby="broadcast-schedule-blocker" />
+            </label>
+            <p className="report-note" id="broadcast-schedule-blocker">Scheduling is unavailable: reliable delivery requires a server-side scheduler, durable outbox, recipient snapshot, and audit record. Saving a draft does not schedule it.</p>
             <div className="admin-broadcast-actions">
+              <span className="report-note" aria-live="polite">{broadcastBody.length}/2000 characters</span>
               <label className="broadcast-pin">
                 <input type="checkbox" checked={broadcastPinned} onChange={(event) => setBroadcastPinned(event.target.checked)} />
                 Pin to top of feed
               </label>
+              <button type="button" className="secondary-button" onClick={saveBroadcastDraft} disabled={!persistEnabled || !broadcastBody.trim()}>Save draft</button>
+              <button type="button" className="secondary-button" onClick={clearBroadcastDraft} disabled={!broadcastBody}>Clear draft</button>
+              <button type="button" className="secondary-button" disabled title="Requires a server-side scheduler and delivery outbox">Schedule (unavailable)</button>
               <button type="button" className="primary-button" onClick={postBroadcast} disabled={!broadcastBody.trim()}>
-                Post announcement
+                Publish now
               </button>
             </div>
             <div className="import-note admin-tool-note">{adminNote}</div>

@@ -38,8 +38,24 @@ function slug(value) {
 }
 
 function cleanEmail(value = "") {
-  return value.replace(/<mailto:[^>]+>/gi, "").trim();
+  const email = value.replace(/<mailto:[^>]+>/gi, "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
 }
+
+function cleanDirectoryText(value = "") {
+  return value
+    .replace(/\bComertial\b/g, "Commercial")
+    .replace(/\bManages Service Security Provider\b/g, "Managed Service Security Provider")
+    .replace(/\bcovenient\b/gi, "convenient")
+    .trim();
+}
+
+const correctedDescriptionOverrides = {
+  "FXV Digital Design": "Digital marketing, web design, and website hosting services for small businesses.",
+  "GKS Brown Realty": "Real estate services for buyers, sellers, and property owners in Berks County.",
+  "Golden Rule Remodeling": "Residential remodeling and home improvement services in Berks County.",
+  "New Life to Live LLC": "Functional nutrition coaching for individuals seeking practical support for healthier living."
+};
 
 function normalizeWebsite(value = "") {
   if (!value) return "";
@@ -110,13 +126,13 @@ const records = await mapConcurrent(paths, 8, async (path) => {
 const businesses = records
   .map((record) => {
     const name = String(record.Member || "").trim();
-    const category = String(record["Business Type"] || "Professional Services").trim();
+    const category = cleanDirectoryText(String(record["Business Type"] || "Professional Services"));
     const website = normalizeWebsite(String(record.Website || "").trim());
     return {
       id: legacyBusinessIds[name] || slug(name),
       name,
       category,
-      description: String(record["What We Do"] || `${name} is an SBRA member serving the Berks County business community.`).trim(),
+      description: correctedDescriptionOverrides[name] || cleanDirectoryText(String(record["What We Do"] || `${name} is an SBRA member serving the Berks County business community.`)),
       servicesOffered: category,
       referralsWanted: "Open to relevant community introductions.",
       website,
@@ -140,7 +156,7 @@ const members = records
       title: "SBRA Member",
       email: cleanEmail(String(record.Email || "")),
       phone: String(record.Phone || "").trim(),
-      bio: String(record["What We Do"] || "").trim(),
+      bio: correctedDescriptionOverrides[businessName] || cleanDirectoryText(String(record["What We Do"] || "")),
       isOwner: false,
       photo: usableImage(String(record.Photo || "").trim())
     };

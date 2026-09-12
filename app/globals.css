@@ -473,6 +473,25 @@ button {
   line-height: 1.4;
 }
 
+.scoped-access-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+}
+
+.scoped-access-note p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.scoped-access-note .secondary-button {
+  flex: 0 0 auto;
+}
+
 .main-panel {
   display: flex;
   min-width: 0;
@@ -2816,6 +2835,7 @@ button {
 .profile-modal {
   position: relative;
   width: min(820px, 100%);
+  min-width: 0;
   max-height: calc(100vh - 44px);
   overflow: auto;
   border-radius: 28px;
@@ -2841,6 +2861,13 @@ button {
   align-items: center;
   margin-bottom: 18px;
   padding-right: 86px;
+}
+
+.modal-head > div:last-child,
+.profile-form,
+.profile-form label,
+.role-toggle {
+  min-width: 0;
 }
 
 .avatar.large {
@@ -2880,14 +2907,21 @@ button {
 }
 
 .profile-form input,
+.profile-form select,
 .profile-form textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 15px;
   padding: 12px 13px;
   color: var(--ink);
   background: rgba(255, 255, 255, 0.68);
   outline: none;
+}
+
+.profile-form select {
+  min-height: 44px;
 }
 
 .profile-form textarea {
@@ -2906,6 +2940,20 @@ button {
 .modal-actions .primary-button {
   width: auto;
   padding: 0 18px;
+}
+
+.directory-view.compact .biz-grid {
+  gap: 10px;
+}
+
+.directory-view.compact .biz-card {
+  gap: 8px;
+  padding: 14px;
+}
+
+.directory-view.compact .biz-card .biz-desc,
+.directory-view.compact .biz-card .biz-referral {
+  display: none;
 }
 
 .mobile-nav {
@@ -3519,6 +3567,16 @@ button {
     max-height: 92dvh;
     border-radius: 26px 26px 0 0;
     padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .onboarding-toggle {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .onboarding-toggle button {
+    min-width: 0;
+    padding-inline: 6px;
+    white-space: normal;
   }
 
   .modal-head {
@@ -4550,6 +4608,26 @@ button {
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
+}
+
+.event-canceled-badge {
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 5px 9px;
+  text-transform: uppercase;
+}
+
+.event-card.canceled {
+  border-color: rgba(153, 27, 27, 0.24);
+}
+
+.event-canceled-note {
+  margin: 12px 0 0;
+  color: #991b1b;
+  font-weight: 700;
 }
 
 .event-title {

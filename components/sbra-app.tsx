@@ -30,11 +30,19 @@ import type { Session } from "next-auth";
 import { signIn as authSignIn, signOut as authSignOut, useSession } from "next-auth/react";
 import * as backendActions from "@/app/actions";
 import { loadTool, saveTool, downloadToolData, importToolData, previewToolData, TOOL_KEYS, type ImportPreview } from "@/lib/tool-storage";
-import { APP_KEYS, membersKey, businessesKey, loadCollection, saveCollection, clearAppData } from "@/lib/app-storage";
+import { APP_KEYS, membersKey, businessesKey, loadCollection, saveCollection, loadValue, saveValue, clearValue, clearAppData } from "@/lib/app-storage";
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import { brandFor } from "@/lib/brand";
 import { REFERRAL_SENT_POINTS, REFERRAL_WON_BONUS_POINTS, referralPointsForStatus } from "@/lib/referral-points";
+import {
+  defaultDisplayPreferences,
+  eligibleReferralMembers,
+  isValidEmail,
+  matchesSearch,
+  supportAlertDestination,
+  type DisplayPreferences
+} from "@/lib/ui-state";
 import { latinoBusinessSeed, latinoMemberSeed } from "@/lib/latino-directory";
 import {
   businessSeed,
@@ -454,16 +462,80 @@ function splitList(value: string) {
     .filter(Boolean);
 }
 
+const focusableSelector = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])'
+].join(",");
+
+function useDialogFocus(onClose: () => void, open = true) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    if (!open || !dialogRef.current) return;
+    const dialog = dialogRef.current;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
+      .filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+    (focusable()[0] ?? dialog).focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (items.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [open]);
+
+  return dialogRef;
+}
+
 export function SBRAApp() {
   const liveServices = useMemo(() => getLiveServices(), []);
   const backendEnabled = Boolean(liveServices);
   const dbEnabled = false; // Live persistence is handled by NetworkWorkspace.
   // Keep demo edits across reloads when no live service owns the data.
   const persistLocal = !dbEnabled && !liveServices;
+  // The server cannot see browser storage. Keep the server and first client
+  // render on the same loading shell, then reveal restored demo state after
+  // hydration so a saved role or collection cannot change the initial markup.
+  const [clientReady, setClientReady] = useState(false);
   // Session is fed in by <SessionBridge>, mounted only in backend mode so that
   // useSession() (and its /api/auth/session fetch) never runs in seed mode.
   const [session, setSession] = useState<Session | null>(null);
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [role, setRole] = useState<UserRole | null>(() => {
+    if (!persistLocal) return null;
+    const stored = loadValue<{ role?: unknown } | null>(APP_KEYS.session, null);
+    return stored?.role === "member" || stored?.role === "admin" ? stored.role : null;
+  });
   const [liveProfile, setLiveProfile] = useState<LiveUserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(backendEnabled);
   const [liveNote, setLiveNote] = useState(
@@ -475,6 +547,7 @@ export function SBRAApp() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginRole, setLoginRole] = useState<UserRole>("member");
   const [activeView, setActiveView] = useState<ViewKey>("community");
+  const [adminInitialTab, setAdminInitialTab] = useState<AdminTab | undefined>();
   // When a home-page quick link opens a specific tool, we stash its id here and
   // navigate to the Tools view, which reads and clears it on mount.
   const [pendingToolId, setPendingToolId] = useState<string | null>(null);
@@ -499,11 +572,17 @@ export function SBRAApp() {
   const [requests, setRequests] = useState<SupportRequest[]>(() =>
     persistLocal ? loadCollection(APP_KEYS.requests, supportRequests) : supportRequests
   );
-  const [referrals, setReferrals] = useState<Referral[]>(referralSeed);
+  const [referrals, setReferrals] = useState<Referral[]>(() =>
+    persistLocal ? loadCollection(APP_KEYS.referrals, referralSeed) : referralSeed
+  );
   const [referralComposerOpen, setReferralComposerOpen] = useState(false);
   const [referralDraft, setReferralDraft] = useState<ReferralDraft>(emptyReferralDraft);
-  const [events, setEvents] = useState<CommunityEvent[]>(eventSeed);
-  const [rsvps, setRsvps] = useState<Rsvp[]>(rsvpSeed);
+  const [events, setEvents] = useState<CommunityEvent[]>(() =>
+    persistLocal ? loadCollection(APP_KEYS.events, eventSeed) : eventSeed
+  );
+  const [rsvps, setRsvps] = useState<Rsvp[]>(() =>
+    persistLocal ? loadCollection(APP_KEYS.rsvps, rsvpSeed) : rsvpSeed
+  );
   const [eventComposerOpen, setEventComposerOpen] = useState(false);
   const [eventDraft, setEventDraft] = useState<EventDraft>(emptyEventDraft);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
@@ -530,6 +609,11 @@ export function SBRAApp() {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [preferences, setPreferences] = useState<DisplayPreferences>(() =>
+    ({ ...defaultDisplayPreferences, ...loadValue<Partial<DisplayPreferences>>(APP_KEYS.preferences, {}) })
+  );
+  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const settingsPopoverRef = useRef<HTMLDivElement | null>(null);
   const [supportCategory, setSupportCategory] = useState(supportCategories[0]);
   const [supportDetail, setSupportDetail] = useState("");
   const [adminNote, setAdminNote] = useState("Choose an admin tool to preview the next operational workflow.");
@@ -562,8 +646,12 @@ export function SBRAApp() {
     return map;
   }, [members]);
 
-  const currentMember = liveProfile ?? (role === "admin" ? demoAdminMember : members[0]);
-  const currentBusiness = currentMember ? businessById.get(currentMember.businessId) : undefined;
+  // The signed-in person is stable while they browse another community. The
+  // active directory changes tenant context, never the actor's identity.
+  const currentMember = liveProfile ?? (role === "admin" ? demoAdminMember : memberSeed[0]);
+  const currentBusiness = currentMember
+    ? businessById.get(currentMember.businessId) ?? businessSeed.find((business) => business.id === currentMember.businessId)
+    : undefined;
 
   // What members actually see in the feed: moderator-hidden posts are dropped,
   // and admin-pinned posts float to the top (newest pin first). Admin moderation
@@ -595,10 +683,53 @@ export function SBRAApp() {
   useEffect(() => {
     if (persistLocal) saveCollection(APP_KEYS.requests, requests);
   }, [requests, persistLocal]);
+  useEffect(() => {
+    if (persistLocal) saveCollection(APP_KEYS.referrals, referrals);
+  }, [referrals, persistLocal]);
+  useEffect(() => {
+    if (persistLocal) saveCollection(APP_KEYS.events, events);
+  }, [events, persistLocal]);
+  useEffect(() => {
+    if (persistLocal) saveCollection(APP_KEYS.rsvps, rsvps);
+  }, [rsvps, persistLocal]);
+  useEffect(() => {
+    saveValue(APP_KEYS.preferences, preferences);
+  }, [preferences]);
+  useEffect(() => {
+    if (persistLocal && role) saveValue(APP_KEYS.session, { role });
+  }, [persistLocal, role]);
 
   useEffect(() => {
-    activeNavRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
+    const activeItem = activeNavRef.current;
+    const nav = activeItem?.parentElement;
+    if (activeItem && nav) {
+      nav.scrollTo({
+        left: Math.max(0, activeItem.offsetLeft - (nav.clientWidth - activeItem.clientWidth) / 2),
+        behavior: "smooth"
+      });
+    }
   }, [activeView, role]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [activeView, activeOrganizationId]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    settingsPopoverRef.current?.querySelector<HTMLElement>(focusableSelector)?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setSettingsOpen(false);
+      settingsButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [settingsOpen]);
+
+  useEffect(() => {
+    setClientReady(true);
+  }, []);
 
   useEffect(() => {
     if (!liveServices) {
@@ -693,7 +824,6 @@ export function SBRAApp() {
   );
 
   const filteredBusinesses = useMemo(() => {
-    const query = search.trim().toLowerCase();
     return businesses.filter((business) => {
       const haystack = [
         business.name,
@@ -703,24 +833,21 @@ export function SBRAApp() {
         business.referralsWanted,
         business.city
       ]
-        .join(" ")
-        .toLowerCase();
-      const matchesQuery = !query || haystack.includes(query);
+        .join(" ");
+      const matchesQuery = matchesSearch(haystack, search);
       const matchesCategory = categoryFilter === "all" || business.category === categoryFilter;
       return matchesQuery && matchesCategory;
     });
   }, [businesses, categoryFilter, search]);
 
   const globalResults = useMemo<GlobalSearchResult[]>(() => {
-    const query = globalSearch.trim().toLowerCase();
-    if (!query) return [];
+    if (!globalSearch.trim()) return [];
 
     const results: GlobalSearchResult[] = [];
     businesses.forEach((business) => {
       const haystack = [business.name, business.category, business.servicesOffered, business.referralsWanted, business.city]
-        .join(" ")
-        .toLowerCase();
-      if (haystack.includes(query)) {
+        .join(" ");
+      if (matchesSearch(haystack, globalSearch)) {
         results.push({
           id: `business-${business.id}`,
           label: business.name,
@@ -733,8 +860,8 @@ export function SBRAApp() {
 
     members.forEach((member) => {
       const business = businessById.get(member.businessId);
-      const haystack = [member.name, member.title, member.email, business?.name ?? ""].join(" ").toLowerCase();
-      if (haystack.includes(query)) {
+      const haystack = [member.name, member.title, member.email, business?.name ?? ""].join(" ");
+      if (matchesSearch(haystack, globalSearch)) {
         results.push({
           id: `member-${member.id}`,
           label: member.name,
@@ -746,8 +873,8 @@ export function SBRAApp() {
     });
 
     posts.forEach((post) => {
-      const haystack = [post.author, post.category, post.body, post.businessName].join(" ").toLowerCase();
-      if (haystack.includes(query)) {
+      const haystack = [post.author, post.category, post.body, post.businessName].join(" ");
+      if (matchesSearch(haystack, globalSearch)) {
         results.push({
           id: `post-${post.id}`,
           label: post.category,
@@ -758,15 +885,15 @@ export function SBRAApp() {
     });
 
     learningModules.forEach((module) => {
-      const haystack = [module.title, module.description].join(" ").toLowerCase();
-      if (haystack.includes(query)) {
+      const haystack = [module.title, module.description].join(" ");
+      if (matchesSearch(haystack, globalSearch)) {
         results.push({ id: `module-${module.number}`, label: module.title, detail: module.description, view: "learn" });
       }
     });
 
     requests.forEach((request) => {
-      const haystack = [request.title, request.category, request.status, request.detail].join(" ").toLowerCase();
-      if (haystack.includes(query)) {
+      const haystack = [request.title, request.category, request.status, request.detail].join(" ");
+      if (matchesSearch(haystack, globalSearch)) {
         results.push({
           id: `request-${request.id}`,
           label: request.title,
@@ -883,19 +1010,30 @@ export function SBRAApp() {
     if (dbEnabled && session?.user) {
       await authSignOut({ redirect: false });
     }
+    if (persistLocal) clearValue(APP_KEYS.session);
     setRole(null);
     setLiveProfile(null);
   }
 
-  function changeView(view: ViewKey) {
+  function changeView(view: ViewKey, requestedAdminTab?: AdminTab) {
     if (view === "admin" && role !== "admin") {
       setActiveView("community");
       return;
     }
+    if (view === "admin") setAdminInitialTab(requestedAdminTab);
     setActiveView(view);
     setGlobalSearchOpen(false);
     setAlertsOpen(false);
     setSettingsOpen(false);
+  }
+
+  function openAlert(alert: { id: string; view: ViewKey }) {
+    if (alert.id === "support-alert" && role) {
+      const destination = supportAlertDestination(role);
+      changeView(destination.view, destination.adminTab);
+      return;
+    }
+    changeView(alert.view);
   }
 
   function openBusiness(business: Business) {
@@ -1064,11 +1202,23 @@ export function SBRAApp() {
     setReferralComposerOpen(true);
   }
 
+  function openReferralForBusiness(business: Business) {
+    if (!currentMember || business.id === currentMember.businessId) return;
+    const recipient = eligibleReferralMembers(membersByBusiness.get(business.id) ?? [], currentMember.id)[0];
+    if (!recipient) return;
+    setActiveBusiness(null);
+    setReferralDraft({ ...emptyReferralDraft, kind: "lead", receiverId: recipient.id });
+    setReferralComposerOpen(true);
+  }
+
   async function submitReferral() {
     if (!currentMember) return;
     const draft = referralDraft;
     if (!draft.receiverId || !draft.need.trim()) return;
     if (draft.kind === "intro" && !draft.introducedMemberId) return;
+    const eligibleIds = new Set(eligibleReferralMembers(members, currentMember.id).map((member) => member.id));
+    if (!eligibleIds.has(draft.receiverId)) return;
+    if (draft.kind === "intro" && (!eligibleIds.has(draft.introducedMemberId) || draft.introducedMemberId === draft.receiverId)) return;
 
     const base = {
       kind: draft.kind,
@@ -1347,10 +1497,16 @@ export function SBRAApp() {
     setComments(commentSeed);
     setReactions(reactionSeed);
     setRequests(supportRequests);
+    setReferrals(referralSeed);
+    setEvents(eventSeed);
+    setRsvps(rsvpSeed);
+    setPreferences(defaultDisplayPreferences);
+    setRole(null);
+    setLiveProfile(null);
     setAdminNote("Demo data reset to the original seed.");
   }
 
-  if (authLoading) {
+  if (!clientReady || authLoading) {
     return (
       <main className="login-screen">
         <section className="glass-panel login-card">
@@ -1378,11 +1534,11 @@ export function SBRAApp() {
           <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
           <p className="login-copy">{liveNote}</p>
           <div className="login-form">
-            <div className="role-toggle" aria-label="Choose sign-in role">
-              <button type="button" className={loginRole === "member" ? "active" : ""} onClick={() => setLoginRole("member")}>
+            <div className="role-toggle" role="group" aria-label="Choose sign-in role">
+              <button type="button" className={loginRole === "member" ? "active" : ""} aria-pressed={loginRole === "member"} onClick={() => setLoginRole("member")}>
                 Member
               </button>
-              <button type="button" className={loginRole === "admin" ? "active" : ""} onClick={() => setLoginRole("admin")}>
+              <button type="button" className={loginRole === "admin" ? "active" : ""} aria-pressed={loginRole === "admin"} onClick={() => setLoginRole("admin")}>
                 Admin
               </button>
             </div>
@@ -1553,8 +1709,11 @@ export function SBRAApp() {
               <UtilityIcon icon="bell" />
             </button>}
             {!brand.directoryOnly && <button
+              ref={settingsButtonRef}
               className={settingsOpen ? "icon-button active" : "icon-button"}
               aria-label="Settings"
+              aria-expanded={settingsOpen}
+              aria-controls="settings-popover"
               onClick={() => {
                 setSettingsOpen((open) => !open);
                 setAlertsOpen(false);
@@ -1594,7 +1753,7 @@ export function SBRAApp() {
               <p className="section-label">Notifications</p>
               <div className="popover-list">
                 {alerts.map((alert) => (
-                  <button key={alert.id} onClick={() => changeView(alert.view)}>
+                  <button key={alert.id} onClick={() => openAlert(alert)}>
                     <strong>{alert.title}</strong>
                     <span>{alert.detail}</span>
                   </button>
@@ -1603,25 +1762,35 @@ export function SBRAApp() {
             </div>
           )}
           {!brand.directoryOnly && settingsOpen && (
-            <div className="top-popover settings-popover">
+            <div ref={settingsPopoverRef} id="settings-popover" className="top-popover settings-popover" role="region" aria-label="Settings">
               <p className="section-label">Settings</p>
               <div className="settings-list">
                 <label>
                   <span>Community digest</span>
-                  <input type="checkbox" defaultChecked />
+                  <input type="checkbox" checked={preferences.communityDigest} onChange={(event) => setPreferences((current) => ({ ...current, communityDigest: event.target.checked }))} />
                 </label>
                 <label>
                   <span>Referral alerts</span>
-                  <input type="checkbox" defaultChecked />
+                  <input type="checkbox" checked={preferences.referralAlerts} onChange={(event) => setPreferences((current) => ({ ...current, referralAlerts: event.target.checked }))} />
                 </label>
                 <label>
                   <span>Compact directory cards</span>
-                  <input type="checkbox" />
+                  <input type="checkbox" checked={preferences.compactDirectoryCards} onChange={(event) => setPreferences((current) => ({ ...current, compactDirectoryCards: event.target.checked }))} />
                 </label>
               </div>
             </div>
           )}
         </header>
+
+        {brand.directoryOnly && (
+          <section className="glass-panel scoped-access-note" aria-label="Acceso de la comunidad">
+            <div>
+              <strong>Sigues conectado a través de SBRA.</strong>
+              <p>Esta comunidad ofrece solo el directorio. Para usar publicaciones, referidos, eventos y herramientas, vuelve a la comunidad SBRA.</p>
+            </div>
+            <button type="button" className="secondary-button" onClick={() => selectOrganization("sbra")}>Volver a SBRA</button>
+          </section>
+        )}
 
         {activeView === "community" && (
           <section className="glass-panel home-tools" aria-labelledby="home-tools-title">
@@ -1703,6 +1872,7 @@ export function SBRAApp() {
             onSearch={setSearch}
             onOpenBusiness={openBusiness}
             spanish={brand.spanish}
+            compact={preferences.compactDirectoryCards}
           />
         )}
         {activeView === "referrals" && (
@@ -1786,9 +1956,12 @@ export function SBRAApp() {
             onUpdateComments={setComments}
             onUpdateReactions={setReactions}
             onUpdateRequests={setRequests}
+            onUpdateEvents={setEvents}
+            onUpdateRsvps={setRsvps}
+            onUpdateReferrals={setReferrals}
             persistEnabled={persistLocal}
             onResetData={resetDemoData}
-            initialTab={(members.some((member) => member.pending) ? "members" : "reports") as AdminTab}
+            initialTab={adminInitialTab ?? (members.some((member) => member.pending) ? "members" : "reports")}
           />
         )}
       </main>
@@ -1820,6 +1993,12 @@ export function SBRAApp() {
           members={membersByBusiness.get(activeBusiness.id) ?? []}
           onClose={() => setActiveBusiness(null)}
           spanish={brand.spanish}
+          onGiveReferral={
+            !brand.directoryOnly && activeBusiness.id !== currentMember?.businessId &&
+            eligibleReferralMembers(membersByBusiness.get(activeBusiness.id) ?? [], currentMember?.id ?? "").length > 0
+              ? () => openReferralForBusiness(activeBusiness)
+              : undefined
+          }
         />
       )}
 
@@ -2423,7 +2602,8 @@ function DirectoryView({
   onCategoryFilter,
   onSearch,
   onOpenBusiness,
-  spanish = false
+  spanish = false,
+  compact = false
 }: {
   businesses: Business[];
   savingsBusinesses: Business[];
@@ -2435,12 +2615,13 @@ function DirectoryView({
   onSearch: (value: string) => void;
   onOpenBusiness: (business: Business) => void;
   spanish?: boolean;
+  compact?: boolean;
 }) {
   const [offersOnly, setOffersOnly] = useState(false);
   const visibleBusinesses = offersOnly ? businesses.filter((business) => business.memberOffer) : businesses;
 
   return (
-    <section>
+    <section className={compact ? "directory-view compact" : "directory-view"}>
       {!spanish && (
         <SavingsShowcase businesses={savingsBusinesses} onBrowseOffers={() => setOffersOnly(true)} />
       )}
@@ -2570,16 +2751,19 @@ function BusinessModal({
   business,
   members,
   onClose,
+  onGiveReferral,
   spanish = false
 }: {
   business: Business;
   members: Member[];
   onClose: () => void;
+  onGiveReferral?: () => void;
   spanish?: boolean;
 }) {
+  const dialogRef = useDialogFocus(onClose);
   return (
     <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="business-name">
+      <section ref={dialogRef} tabIndex={-1} className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="business-name">
         <button className="modal-close" onClick={onClose} aria-label={spanish ? "Cerrar perfil del negocio" : "Close business profile"}>
           {spanish ? "Cerrar" : "Close"}
         </button>
@@ -2649,13 +2833,22 @@ function BusinessModal({
                 {member.bio && <p>{member.bio}</p>}
               </div>
               <div className="member-row-contact">
-                <a href={`mailto:${member.email}`}>{member.email}</a>
+                {member.email ? (
+                  <a href={`mailto:${member.email}`}>{member.email}</a>
+                ) : (
+                  <span>{spanish ? "Correo no disponible" : "Email unavailable"}</span>
+                )}
                 <span>{member.phone}</span>
               </div>
             </div>
           ))}
           {members.length === 0 && <p>{spanish ? "No hay miembros disponibles." : "No members listed yet."}</p>}
         </div>
+        {onGiveReferral && (
+          <div className="modal-actions">
+            <button className="primary-button" onClick={onGiveReferral}>Give a referral</button>
+          </div>
+        )}
       </section>
     </div>
   );
@@ -2724,6 +2917,7 @@ function ToolsView({
   const [exportNote, setExportNote] = useState("");
   const [pendingImport, setPendingImport] = useState<ImportPreview | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const importDialogRef = useDialogFocus(() => setPendingImport(null), Boolean(pendingImport));
 
   function flashNote(message: string) {
     setExportNote(message);
@@ -2906,7 +3100,7 @@ function ToolsView({
       {exportNote && <p className="tool-hint tools-export-note">{exportNote}</p>}
 
       {pendingImport && (
-        <div className="import-overlay" role="dialog" aria-modal="true" aria-label="Confirm import">
+        <div ref={importDialogRef} tabIndex={-1} className="import-overlay" role="dialog" aria-modal="true" aria-label="Confirm import">
           <div className="glass-panel import-dialog">
             <h4>Import this data?</h4>
             <p className="tool-hint">This will restore the following on this device{pendingImport.entries.some((e) => e.hadExisting) ? ", replacing what's currently saved for the marked items" : ""}:</p>
@@ -5102,9 +5296,10 @@ function MemberModal({
   onClose: () => void;
   onSave: () => void;
 }) {
+  const dialogRef = useDialogFocus(onClose);
   return (
     <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="modal-name">
+      <section ref={dialogRef} tabIndex={-1} className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="modal-name">
         <button className="modal-close" onClick={onClose} aria-label="Close profile">
           Close
         </button>
@@ -5423,7 +5618,8 @@ function GiveReferralModal({
   onClose: () => void;
   onSubmit: () => void;
 }) {
-  const others = members.filter((member) => member.id !== currentMemberId);
+  const dialogRef = useDialogFocus(onClose);
+  const others = eligibleReferralMembers(members, currentMemberId);
   const introOptions = others.filter((member) => member.id !== draft.receiverId);
   const canSubmit =
     Boolean(draft.receiverId) &&
@@ -5432,7 +5628,7 @@ function GiveReferralModal({
 
   return (
     <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="give-referral">
+      <section ref={dialogRef} tabIndex={-1} className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="give-referral">
         <button className="modal-close" onClick={onClose} aria-label="Close referral form">
           Close
         </button>
@@ -5445,10 +5641,11 @@ function GiveReferralModal({
           </div>
         </div>
 
-        <div className="role-toggle referral-kind-toggle" aria-label="Referral kind">
+        <div className="role-toggle referral-kind-toggle" role="group" aria-label="Referral kind">
           <button
             type="button"
             className={draft.kind === "lead" ? "active" : ""}
+            aria-pressed={draft.kind === "lead"}
             onClick={() => onChange({ ...draft, kind: "lead" })}
           >
             Lead (external prospect)
@@ -5456,6 +5653,7 @@ function GiveReferralModal({
           <button
             type="button"
             className={draft.kind === "intro" ? "active" : ""}
+            aria-pressed={draft.kind === "intro"}
             onClick={() => onChange({ ...draft, kind: "intro" })}
           >
             Intro (member to member)
@@ -5623,11 +5821,13 @@ function EventCard({
   const maybeCount = eventRsvps.filter((rsvp) => rsvp.status === "maybe").length;
   const statuses: RsvpStatus[] = ["going", "maybe", "declined"];
   const statusText: Record<RsvpStatus, string> = { going: "Going", maybe: "Maybe", declined: "Can't go" };
+  const canceled = "status" in event && event.status === "canceled";
 
   return (
-    <article className={`glass-panel event-card type-${event.type}`}>
+    <article className={`glass-panel event-card type-${event.type}${canceled ? " canceled" : ""}`}>
       <div className="event-card-head">
         <span className={`event-type-badge ${event.type}`}>{eventTypeLabels[event.type]}</span>
+        {canceled && <span className="event-canceled-badge">Canceled</span>}
         {event.recurrence !== "none" && <span className="event-recurrence">{event.recurrence}</span>}
         <span className="event-cost">{event.cost > 0 ? `$${event.cost}` : "Free"}</span>
       </div>
@@ -5653,21 +5853,27 @@ function EventCard({
         {event.capacity ? <span>Cap {event.capacity}</span> : null}
       </div>
 
-      <div className="event-rsvp">
-        {statuses.map((status) => (
-          <button
-            key={status}
-            className={myRsvp?.status === status ? "rsvp-button active" : "rsvp-button"}
-            onClick={() => onRsvp(event.id, status)}
-          >
-            {statusText[status]}
-          </button>
-        ))}
-      </div>
+      {canceled ? (
+        <p className="event-canceled-note" role="status">This event was canceled. RSVP changes are unavailable.</p>
+      ) : (
+        <div className="event-rsvp">
+          {statuses.map((status) => (
+            <button
+              key={status}
+              className={myRsvp?.status === status ? "rsvp-button active" : "rsvp-button"}
+              aria-pressed={myRsvp?.status === status}
+              onClick={() => onRsvp(event.id, status)}
+            >
+              {statusText[status]}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {myRsvp?.status === "going" && (
+      {!canceled && myRsvp?.status === "going" && (
         <button
           className={myRsvp.checkedIn ? "secondary-button checkin-button checked" : "secondary-button checkin-button"}
+          aria-pressed={myRsvp.checkedIn}
           onClick={() => onToggleCheckIn(event.id)}
         >
           {myRsvp.checkedIn ? "✓ Checked in" : "Check in"}
@@ -5688,12 +5894,13 @@ function CreateEventModal({
   onClose: () => void;
   onSubmit: () => void;
 }) {
+  const dialogRef = useDialogFocus(onClose);
   const canSubmit = draft.title.trim().length > 0 && Boolean(draft.startsAt) && draft.venueName.trim().length > 0;
   const eventTypes = Object.keys(eventTypeLabels) as EventType[];
 
   return (
     <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="create-event">
+      <section ref={dialogRef} tabIndex={-1} className="glass-panel profile-modal" role="dialog" aria-modal="true" aria-labelledby="create-event">
         <button className="modal-close" onClick={onClose} aria-label="Close event form">
           Close
         </button>
@@ -5808,7 +6015,8 @@ function OnboardingWizard({
   onFinish: () => void;
 }) {
   const [step, setStep] = useState(1);
-  const canContinue = draft.name.trim().length > 0 && draft.email.trim().length > 0;
+  const dialogRef = useDialogFocus(onClose);
+  const canContinue = draft.name.trim().length > 0 && isValidEmail(draft.email);
   const canFinish =
     canContinue &&
     ((draft.mode === "create" && draft.businessName.trim().length > 0) ||
@@ -5816,7 +6024,7 @@ function OnboardingWizard({
 
   return (
     <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="glass-panel profile-modal onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onboarding">
+      <section ref={dialogRef} tabIndex={-1} className="glass-panel profile-modal onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onboarding">
         <button className="modal-close" onClick={onClose} aria-label="Close">
           Close
         </button>
@@ -5854,10 +6062,11 @@ function OnboardingWizard({
           </form>
         ) : (
           <>
-            <div className="role-toggle onboarding-toggle" aria-label="Business option">
+            <div className="role-toggle onboarding-toggle" role="group" aria-label="Business option">
               <button
                 type="button"
                 className={draft.mode === "create" ? "active" : ""}
+                aria-pressed={draft.mode === "create"}
                 onClick={() => onChange({ ...draft, mode: "create" })}
               >
                 Create a new business
@@ -5865,6 +6074,7 @@ function OnboardingWizard({
               <button
                 type="button"
                 className={draft.mode === "join" ? "active" : ""}
+                aria-pressed={draft.mode === "join"}
                 onClick={() => onChange({ ...draft, mode: "join" })}
               >
                 Join an existing business
