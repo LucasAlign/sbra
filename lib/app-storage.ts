@@ -19,7 +19,12 @@ export const APP_KEYS = {
   posts: "sbra.app.posts",
   comments: "sbra.app.comments",
   reactions: "sbra.app.reactions",
-  requests: "sbra.app.requests"
+  requests: "sbra.app.requests",
+  referrals: "sbra.app.referrals",
+  events: "sbra.app.events",
+  rsvps: "sbra.app.rsvps",
+  preferences: "sbra.app.preferences",
+  session: "sbra.app.session"
 } as const;
 
 // The roster (people + businesses) differs per organization — the SBRA network
@@ -54,6 +59,36 @@ export function saveCollection<T>(key: string, value: T[]): void {
     window.localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // storage full or blocked — the app still works in-session
+  }
+}
+
+// Read and write a single JSON value (for viewer preferences and other
+// non-collection state) with the same guarded fallback behavior.
+export function loadValue<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveValue<T>(key: string, value: T): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // storage full or blocked — the app still works in-session
+  }
+}
+
+export function clearValue(key: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // storage unavailable — the in-memory session still clears
   }
 }
 
