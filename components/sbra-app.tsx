@@ -34,6 +34,7 @@ import { APP_KEYS, membersKey, businessesKey, loadCollection, saveCollection, lo
 import { parseRosterFile } from "@/lib/importers";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import { brandFor } from "@/lib/brand";
+import { sbraArticles, sbraPodcastEpisodes, sbraSupportResources, sbraVideoResources } from "@/lib/sbra-content";
 import { REFERRAL_SENT_POINTS, REFERRAL_WON_BONUS_POINTS, referralPointsForStatus } from "@/lib/referral-points";
 import {
   defaultDisplayPreferences,
@@ -224,9 +225,9 @@ const navItems: NavItem[] = [
   { key: "directory", label: "Directory", count: "Members", icon: "directory" },
   { key: "referrals", label: "Referrals", count: "Core", icon: "referrals" },
   { key: "events", label: "Events", count: "Mingles", icon: "events" },
-  { key: "learn", label: "Learn", count: "3", icon: "learn" },
+  { key: "learn", label: "Learn", count: String(sbraPodcastEpisodes.length + sbraArticles.length), icon: "learn" },
   { key: "tools", label: "Tools", count: "Kit", icon: "tools" },
-  { key: "support", label: "Support", count: "4", icon: "support" },
+  { key: "support", label: "Support", count: String(sbraSupportResources.length), icon: "support" },
   { key: "profile", label: "Profile", count: "You", icon: "profile" },
   { key: "admin", label: "Admin tools", count: "Reports", icon: "admin", adminOnly: true }
 ];
@@ -5100,30 +5101,19 @@ function DocTemplatesTool({ currentBusiness }: { currentBusiness?: Business }) {
 
 function LearnView() {
   const [completed, setCompleted] = useState<Array<string | number>>([]);
+  const [library, setLibrary] = useState<"podcasts" | "articles" | "videos">("podcasts");
+  const [query, setQuery] = useState("");
+  const [articleTopic, setArticleTopic] = useState("All topics");
+  const [showAllPodcasts, setShowAllPodcasts] = useState(false);
   const progress = Math.round((completed.length / learningModules.length) * 100);
-  const podcasts = [
-    {
-      title: "Roadmap to Referrals",
-      creator: "Stacey Brown Randall",
-      description: "Practical ways to build a business that earns consistent, natural referrals.",
-      url: "https://podcasts.apple.com/us/podcast/roadmap-to-referrals/id1405302350",
-      tone: "blue"
-    },
-    {
-      title: "Business Networking & Referrals",
-      creator: "Faithann Basore",
-      description: "Approachable advice for better conversations, follow-up, and trusted connections.",
-      url: "https://podcasts.apple.com/us/podcast/business-networking-referrals-with-faithann-basore/id1780213594",
-      tone: "coral"
-    },
-    {
-      title: "LatinX Business",
-      creator: "Randy Gomez",
-      description: "Stories and useful business lessons from entrepreneurs in the Latino community.",
-      url: "https://podcasts.apple.com/us/podcast/latinx-business/id1539059232",
-      tone: "violet"
-    }
-  ];
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchingPodcasts = sbraPodcastEpisodes.filter((episode) => episode.title.toLowerCase().includes(normalizedQuery));
+  const articleTopics = ["All topics", ...new Set(sbraArticles.map((article) => article.topic))];
+  const matchingArticles = sbraArticles.filter((article) =>
+    (articleTopic === "All topics" || article.topic === articleTopic) &&
+    article.title.toLowerCase().includes(normalizedQuery)
+  );
+  const visiblePodcasts = showAllPodcasts || normalizedQuery ? matchingPodcasts : matchingPodcasts.slice(0, 12);
   return (
     <section className="learn-page">
       <div className="learning-grid">
@@ -5147,30 +5137,90 @@ function LearnView() {
           ))}
         </div>
       </div>
-      <section className="podcast-section" aria-labelledby="podcast-title">
-        <div className="podcast-heading">
+      <section className="learning-library" aria-labelledby="learning-library-title">
+        <div className="learning-library-hero glass-panel">
           <div>
-            <p className="section-label">Recommended listening</p>
-            <h3 id="podcast-title">Learn on the go</h3>
+            <p className="section-label">Official SBRA library</p>
+            <h3 id="learning-library-title">Advice from the people who built it</h3>
+            <p>Explore every episode of the Small Business Resource Show and every article published in the SBRA news archive.</p>
           </div>
-          <span>Curated for Berks County business owners</span>
+          <div className="learning-library-stats" aria-label="Library totals">
+            <span><strong>{sbraPodcastEpisodes.length}</strong> podcast episodes</span>
+            <span><strong>{sbraArticles.length}</strong> articles</span>
+            <span><strong>{sbraVideoResources.length}</strong> video hubs</span>
+          </div>
         </div>
-        <div className="podcast-grid">
-          {podcasts.map((podcast) => (
-            <a className="glass-panel podcast-card" href={podcast.url} target="_blank" rel="noreferrer" key={podcast.title}>
-              <span className={`podcast-art podcast-${podcast.tone}`} aria-hidden="true">▶</span>
-              <div>
-                <small>APPLE PODCASTS</small>
-                <h4>{podcast.title}</h4>
-                <p>{podcast.description}</p>
-                <strong>{podcast.creator} <span>↗</span></strong>
-              </div>
-            </a>
-          ))}
+        <div className="learning-library-controls">
+          <div className="crm-view-tabs" role="tablist" aria-label="Learning library">
+            <button role="tab" aria-selected={library === "podcasts"} className={library === "podcasts" ? "active" : ""} onClick={() => setLibrary("podcasts")}>Podcasts</button>
+            <button role="tab" aria-selected={library === "articles"} className={library === "articles" ? "active" : ""} onClick={() => setLibrary("articles")}>Articles</button>
+            <button role="tab" aria-selected={library === "videos"} className={library === "videos" ? "active" : ""} onClick={() => setLibrary("videos")}>Videos</button>
+          </div>
+          <label className="learning-search">
+            <span className="sr-only">Search the SBRA learning library</span>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${library}…`} />
+          </label>
         </div>
+        {library === "podcasts" ? (
+          <>
+            <div className="podcast-grid podcast-library-grid">
+              {visiblePodcasts.map((episode, index) => (
+                <a className="glass-panel podcast-card" href={episode.url} target="_blank" rel="noreferrer" key={episode.url}>
+                  <span className={`podcast-art podcast-${["blue", "coral", "violet"][index % 3]}`} aria-hidden="true">▶</span>
+                  <div>
+                    <small>SMALL BUSINESS RESOURCE SHOW</small>
+                    <h4>{episode.title}</h4>
+                    <p>{new Date(`${episode.date}T12:00:00`).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })} · {episode.duration}</p>
+                    <strong>Listen on SBRA’s official podcast archive <span>↗</span></strong>
+                  </div>
+                </a>
+              ))}
+            </div>
+            {!visiblePodcasts.length && <LibraryEmpty />}
+            {!normalizedQuery && matchingPodcasts.length > 12 && (
+              <button className="secondary-button learning-show-all" onClick={() => setShowAllPodcasts((current) => !current)}>
+                {showAllPodcasts ? "Show latest episodes" : `Show all ${matchingPodcasts.length} episodes`}
+              </button>
+            )}
+          </>
+        ) : library === "articles" ? (
+          <>
+            <div className="learning-topic-row" aria-label="Article topics">
+              {articleTopics.map((topic) => <button key={topic} className={articleTopic === topic ? "tool-chip active" : "tool-chip"} onClick={() => setArticleTopic(topic)}>{topic}</button>)}
+            </div>
+            {(articleTopic === "All topics" || articleTopic === "COVID-19 archive") && <p className="historical-content-note"><strong>Historical archive:</strong> COVID-19, PPP, grant, unemployment, reopening, and public-health posts describe 2020 programs and should not be treated as current guidance.</p>}
+            <div className="article-library-grid">
+              {matchingArticles.map((article) => (
+                <a className="glass-panel article-library-card" href={article.url} target="_blank" rel="noreferrer" key={article.url}>
+                  <span className="article-library-icon" aria-hidden="true">↗</span>
+                  <small>{article.topic}</small>
+                  <h4>{article.title}</h4>
+                  <strong>Read on the SBRA website</strong>
+                </a>
+              ))}
+            </div>
+            {!matchingArticles.length && <LibraryEmpty />}
+          </>
+        ) : (
+          <div className="article-library-grid">
+            {sbraVideoResources.filter((resource) => `${resource.title} ${resource.description}`.toLowerCase().includes(normalizedQuery)).map((resource) => (
+              <a className="glass-panel article-library-card" href={resource.url} target="_blank" rel="noreferrer" key={resource.url}>
+                <span className="article-library-icon" aria-hidden="true">▶</span>
+                <small>{resource.label}</small>
+                <h4>{resource.title}</h4>
+                <p>{resource.description}</p>
+                <strong>Watch official SBRA videos ↗</strong>
+              </a>
+            ))}
+          </div>
+        )}
       </section>
     </section>
   );
+}
+
+function LibraryEmpty() {
+  return <div className="glass-panel learning-library-empty"><strong>No resources found.</strong><span>Try a different keyword or topic.</span></div>;
 }
 
 function SupportView({
@@ -5188,9 +5238,54 @@ function SupportView({
   onDetail: (value: string) => void;
   onCreateRequest: () => void;
 }) {
+  const [resourceQuery, setResourceQuery] = useState("");
+  const [resourceGroup, setResourceGroup] = useState("All resources");
+  const supportGroups = ["All resources", ...new Set(sbraSupportResources.map((resource) => resource.group))];
+  const normalizedQuery = resourceQuery.trim().toLowerCase();
+  const visibleResources = sbraSupportResources.filter((resource) =>
+    (resourceGroup === "All resources" || resource.group === resourceGroup) &&
+    `${resource.title} ${resource.description}`.toLowerCase().includes(normalizedQuery)
+  );
   return (
-    <section className="support-layout">
-      <section className="glass-panel support-card">
+    <section className="support-page">
+      <section className="glass-panel support-contact-hero">
+        <div>
+          <p className="section-label">Official SBRA help center</p>
+          <h3>How can we help?</h3>
+          <p>Get an answer from the SBRA team or go directly to the right member program, benefit, or business-promotion resource.</p>
+        </div>
+        <div className="support-contact-actions">
+          <a className="primary-button" href="tel:+18148087272">Call 814-808-7272</a>
+          <a className="secondary-button" href="mailto:gseibert@sbrassociation.com">Email SBRA</a>
+          <a className="secondary-button" href="https://www.sbrassociation.com/contact" target="_blank" rel="noreferrer">Official contact page ↗</a>
+        </div>
+      </section>
+      <section className="support-resource-library" aria-labelledby="support-resource-title">
+        <div className="podcast-heading">
+          <div><p className="section-label">Member support documentation</p><h3 id="support-resource-title">Find the right resource</h3></div>
+          <span>{sbraSupportResources.length} official SBRA resources</span>
+        </div>
+        <div className="learning-library-controls">
+          <label className="learning-search"><span className="sr-only">Search support resources</span><input value={resourceQuery} onChange={(event) => setResourceQuery(event.target.value)} placeholder="Search support…" /></label>
+          <div className="learning-topic-row" aria-label="Support resource groups">
+            {supportGroups.map((group) => <button key={group} className={resourceGroup === group ? "tool-chip active" : "tool-chip"} onClick={() => setResourceGroup(group)}>{group}</button>)}
+          </div>
+        </div>
+        <div className="support-resource-grid">
+          {visibleResources.map((resource) => (
+            <a className="glass-panel support-resource-card" href={resource.url} target="_blank" rel="noreferrer" key={resource.url}>
+              <small>{resource.group}</small>
+              {resource.access && <span className="support-access-badge">{resource.access}</span>}
+              <h4>{resource.title}</h4>
+              <p>{resource.description}</p>
+              <strong>Open official resource ↗</strong>
+            </a>
+          ))}
+        </div>
+        {!visibleResources.length && <LibraryEmpty />}
+      </section>
+      <div className="support-layout">
+        <section className="glass-panel support-card">
         <p className="section-label">Request support</p>
         <h3>Contact the SBRA team</h3>
         <p className="support-intro">Choose a topic and briefly describe what you need. Staff will follow up through your member email.</p>
@@ -5212,8 +5307,8 @@ function SupportView({
         <button className="primary-button request-submit" onClick={onCreateRequest}>
           Send to SBRA staff
         </button>
-      </section>
-      <section className="glass-panel support-card">
+        </section>
+        <section className="glass-panel support-card">
         <p className="section-label">Open requests</p>
         {requests.map((request) => (
           <div className="request-row" key={request.id}>
@@ -5224,7 +5319,8 @@ function SupportView({
             <span>{request.status}</span>
           </div>
         ))}
-      </section>
+        </section>
+      </div>
     </section>
   );
 }
