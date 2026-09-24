@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Providers } from "./providers";
 import "./globals.css";
+import "./member-experience.css";
 
 export const metadata: Metadata = {
   title: "Berks County Collab — Local Networks, One Community",

@@ -444,18 +444,6 @@ const mockAds: MemberAd[] = [
   }
 ];
 
-function latinoBusinessLogo(name: string) {
-  return latinoBusinessSeed.find((business) => business.name === name)?.logo || "/sbra-mark.png";
-}
-
-const latinoAds: MemberAd[] = [
-  { sponsor: "Fritura Kings", headline: "Sabor local para compartir en comunidad.", copy: "Restaurante miembro de la Cámara Latina en Reading.", action: "Conoce al miembro", logo: latinoBusinessLogo("Fritura Kings"), tone: "coral" },
-  { sponsor: "OmniV Global Systems, LLC", headline: "Tecnología para conectar y hacer crecer tu negocio.", copy: "Sistemas y soluciones empresariales de un miembro local.", action: "Ver negocio", logo: latinoBusinessLogo("OmniV Global Systems, LLC"), tone: "blue" },
-  { sponsor: "Penn State Berks", headline: "Educación y recursos para avanzar.", copy: "Programas de educación continua y Berks LaunchBox.", action: "Conoce al miembro", logo: latinoBusinessLogo("Penn State Berks"), tone: "navy" },
-  { sponsor: "KimonoMono, LLC", headline: "Estrategia y mercadeo con propósito.", copy: "Apoyo creativo para marcas y empresas en crecimiento.", action: "Ver negocio", logo: latinoBusinessLogo("KimonoMono, LLC"), tone: "sage" },
-  { sponsor: "Tec Centro Berks", headline: "Capacitación que abre nuevas oportunidades.", copy: "Desarrollo de la fuerza laboral para nuestra comunidad.", action: "Conoce al miembro", logo: latinoBusinessLogo("Tec Centro Berks"), tone: "gold" }
-];
-
 function splitList(value: string) {
   return value
     .split(",")
@@ -817,10 +805,12 @@ export function SBRAApp() {
   // mobile bar keeps them under More so it stays four tabs wide.
   const adminNavItem = visibleNav.find((item) => item.key === "admin");
   const sidebarNav = adminNavItem ? [adminNavItem, ...primaryNav] : primaryNav;
+  const mobilePrimaryNav = primaryNav.filter((item) => item.key !== "tools");
+  const mobileMoreNav = visibleNav.filter((item) => !mobilePrimaryNav.some((primary) => primary.key === item.key));
   const sidebarMoreNav = moreNav.filter((item) => item.key !== "admin");
 
   const categories = useMemo(
-    () => Array.from(new Set(businesses.map((business) => business.category))).sort(),
+    () => Array.from(new Set(businesses.map((business) => directoryCategory(business.category)))).sort(),
     [businesses]
   );
 
@@ -836,7 +826,7 @@ export function SBRAApp() {
       ]
         .join(" ");
       const matchesQuery = matchesSearch(haystack, search);
-      const matchesCategory = categoryFilter === "all" || business.category === categoryFilter;
+      const matchesCategory = categoryFilter === "all" || directoryCategory(business.category) === categoryFilter;
       return matchesQuery && matchesCategory;
     });
   }, [businesses, categoryFilter, search]);
@@ -1618,7 +1608,7 @@ export function SBRAApp() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-community={activeOrganizationId}>
       {dbEnabled && <SessionBridge onSession={setSession} />}
       <aside className="glass-panel sidebar">
         <div className="brand">
@@ -1657,7 +1647,7 @@ export function SBRAApp() {
             <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />
           ))}
           {!brand.directoryOnly && <button className={moreOpen || sidebarMoreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
-            <span className="nav-icon">•••</span><span><strong>More</strong><small>Learn, support &amp; profile</small></span>
+            <span className="nav-icon">•••</span><span>More</span>
           </button>}
           {!brand.directoryOnly && moreOpen && <div className="more-menu">{sidebarMoreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
         </nav>
@@ -1723,7 +1713,7 @@ export function SBRAApp() {
             >
               <UtilityIcon icon="settings" />
             </button>}
-            {!brand.directoryOnly && <button className="primary-button" onClick={() => setComposerOpen(true)}>
+            {!brand.directoryOnly && activeView === "community" && <button className="primary-button" onClick={() => setComposerOpen(true)}>
               <span className="button-icon">+</span>
               New Post
             </button>}
@@ -1793,40 +1783,12 @@ export function SBRAApp() {
           </section>
         )}
 
-        {activeView === "community" && (
-          <section className="glass-panel home-tools" aria-labelledby="home-tools-title">
-            <div className="home-tools-head">
-              <div>
-                <p className="section-label">{brand.spanish ? "Herramientas" : "Business tools"}</p>
-                <h3 id="home-tools-title">{brand.spanish ? "Todas tus herramientas, un clic" : "Your full toolkit — open any tool"}</h3>
-              </div>
-              <button className="link-button" onClick={() => selectNav("tools")}>
-                {brand.spanish ? "Abrir centro de herramientas →" : "Open Tools hub →"}
-              </button>
-            </div>
-            <div className="home-tools-row">
-              {allTools.map((tool) => (
-                <button
-                  key={tool.id}
-                  className="home-tool-link"
-                  onClick={() => openToolFromHome(tool.id)}
-                  title={tool.description}
-                >
-                  <span className="home-tool-icon" aria-hidden="true">{tool.icon}</span>
-                  <span className="home-tool-text">
-                    <strong>{tool.name}</strong>
-                    <small>{tool.tagline}</small>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        <AdBanner ads={brand.directoryOnly ? latinoAds : mockAds} spanish={brand.spanish} />
+        {!brand.directoryOnly && <AdBanner ads={mockAds} spanish={brand.spanish} />}
 
         {activeView === "community" && (
           <CommunityView
+            events={events}
+            onViewReferrals={() => selectNav("referrals")}
             posts={feedPosts}
             referrals={referrals}
             memberById={memberById}
@@ -1861,10 +1823,38 @@ export function SBRAApp() {
             onViewEvents={() => selectNav("events")}
           />
         )}
+        {activeView === "community" && (
+          <section className="glass-panel home-tools" aria-labelledby="home-tools-title">
+            <div className="home-tools-head">
+              <div>
+                <p className="section-label">{brand.spanish ? "Herramientas" : "Business tools"}</p>
+                <h3 id="home-tools-title">{brand.spanish ? "Todas tus herramientas, un clic" : "Useful tools"}</h3>
+              </div>
+              <button className="link-button" onClick={() => selectNav("tools")}>
+                {brand.spanish ? "Abrir centro de herramientas →" : "Open Tools hub →"}
+              </button>
+            </div>
+            <div className="home-tools-row">
+              {allTools.filter((tool) => ["networking-crm", "invoice-quote", "pricing-margin"].includes(tool.id)).map((tool) => (
+                <button
+                  key={tool.id}
+                  className="home-tool-link"
+                  onClick={() => openToolFromHome(tool.id)}
+                  title={tool.description}
+                >
+                  <span className="home-tool-icon" aria-hidden="true"><NavIcon icon="tools" /></span>
+                  <span className="home-tool-text">
+                    <strong>{tool.name}</strong>
+                    <small>{tool.tagline}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         {activeView === "directory" && (
           <DirectoryView
             businesses={filteredBusinesses}
-            savingsBusinesses={businesses}
             membersByBusiness={membersByBusiness}
             categories={categories}
             categoryFilter={categoryFilter}
@@ -1968,13 +1958,14 @@ export function SBRAApp() {
       </main>
 
       <nav className="glass-panel mobile-nav" aria-label="Mobile primary">
-        {primaryNav.map((item) => (
+        {mobilePrimaryNav.map((item) => (
           <button
             key={item.key}
             ref={activeView === item.key ? activeNavRef : null}
             className={activeView === item.key ? "active" : ""}
             onClick={() => selectNav(item.key)}
             aria-label={item.label}
+            aria-current={activeView === item.key ? "page" : undefined}
           >
             <span className="mobile-icon">
               <NavIcon icon={item.icon} />
@@ -1982,11 +1973,11 @@ export function SBRAApp() {
             <span>{item.label}</span>
           </button>
         ))}
-        {!brand.directoryOnly && <button className={moreNav.some((item) => item.key === activeView) ? "active" : ""} onClick={() => setMoreOpen((open) => !open)} aria-label="More">
+        {!brand.directoryOnly && <button className={moreOpen || mobileMoreNav.some((item) => item.key === activeView) ? "active" : ""} onClick={() => setMoreOpen((open) => !open)} aria-label="More" aria-expanded={moreOpen} aria-controls="mobile-more-menu">
           <span className="mobile-icon">•••</span><span>More</span>
         </button>}
       </nav>
-      {moreOpen && <div className="mobile-more-menu glass-panel">{moreNav.map((item) => <button key={item.key} className={activeView === item.key ? "active" : ""} onClick={() => selectNav(item.key)}><NavIcon icon={item.icon} /><span>{item.label}</span></button>)}</div>}
+      {moreOpen && <div id="mobile-more-menu" className="mobile-more-menu glass-panel">{mobileMoreNav.map((item) => <button key={item.key} className={activeView === item.key ? "active" : ""} onClick={() => selectNav(item.key)}><NavIcon icon={item.icon} /><span>{item.label}</span></button>)}<button onClick={() => void signOutCurrentUser()}>Sign out</button></div>}
 
       {activeBusiness && (
         <BusinessModal
@@ -2039,50 +2030,26 @@ export function SBRAApp() {
 
 function AdBanner({ ads, spanish = false }: { ads: MemberAd[]; spanish?: boolean }) {
   const [activeAd, setActiveAd] = useState(0);
-  const [paused, setPaused] = useState(false);
-
   useEffect(() => {
-    if (paused) return;
+    if (ads.length < 2) return;
     const timer = window.setInterval(() => {
       setActiveAd((current) => (current + 1) % ads.length);
-    }, 12_000);
+    }, 10_000);
     return () => window.clearInterval(timer);
-  }, [ads.length, paused]);
-
-  const ad = ads[activeAd];
-
+  }, [ads.length]);
+  const ad = ads[activeAd % ads.length];
+  if (!ad) return null;
   return (
-    <aside
-      className={`sponsor-banner sponsor-${ad.tone}`}
-      aria-label={spanish ? `Promoción de muestra del miembro ${ad.sponsor}` : `Sample member promotion from ${ad.sponsor}`}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false);
-      }}
-    >
+    <aside className="sponsor-banner" aria-label={spanish ? "Miembro destacado" : "Member spotlight"}>
       <div className="sponsor-mark">
         <img src={ad.logo} alt={`${ad.sponsor} logo`} />
       </div>
-      <div className="sponsor-message" aria-live="polite">
+      <div className="sponsor-message" aria-live="off">
         <p><span>{spanish ? "Promoción de miembro" : "Sample member promotion"}</span>{ad.sponsor}</p>
         <div className="sponsor-copy">
           <strong>{ad.headline}</strong>
           <small>{ad.copy}</small>
         </div>
-      </div>
-      <span className="sponsor-action">{ad.action}<span aria-hidden="true">→</span></span>
-      <div className="sponsor-controls" aria-label={spanish ? "Elegir anuncio" : "Choose advertisement"}>
-        {ads.map((item, index) => (
-          <button
-            key={item.sponsor}
-            className={index === activeAd ? "active" : ""}
-            onClick={() => setActiveAd(index)}
-            aria-label={spanish ? `Mostrar anuncio ${index + 1}: ${item.sponsor}` : `Show ad ${index + 1}: ${item.sponsor}`}
-            aria-current={index === activeAd ? "true" : undefined}
-          />
-        ))}
       </div>
     </aside>
   );
@@ -2131,14 +2098,14 @@ function NavButton({
   onClick: () => void;
 }) {
   return (
-    <button className={active ? "nav-item active" : "nav-item"} onClick={onClick}>
+    <button className={active ? "nav-item active" : "nav-item"} onClick={onClick} aria-current={active ? "page" : undefined}>
       <span>
         <span className="nav-icon">
           <NavIcon icon={item.icon} />
         </span>
         {item.label}
       </span>
-      <strong>{item.count}</strong>
+
     </button>
   );
 }
@@ -2282,6 +2249,8 @@ function UtilityIcon({ icon }: { icon: "bell" | "settings" | "paperclip" }) {
 }
 
 function CommunityView({
+  events,
+  onViewReferrals,
   posts,
   referrals,
   memberById,
@@ -2311,6 +2280,8 @@ function CommunityView({
   onGiveReferral,
   onViewEvents
 }: {
+  events: CommunityEvent[];
+  onViewReferrals: () => void;
   posts: CommunityPost[];
   referrals: Referral[];
   memberById: Map<string, Member>;
@@ -2340,21 +2311,8 @@ function CommunityView({
   onGiveReferral: () => void;
   onViewEvents: () => void;
 }) {
-  const referralLeaders = Array.from(memberById.values())
-    .map((member) => {
-      const sent = referrals.filter((referral) => referral.giverId === member.id);
-      const wins = sent.filter((referral) => referral.status === "won");
-      return {
-        member,
-        business: businessById.get(member.businessId),
-        sent: sent.length,
-        wins: wins.length,
-        points: sent.length * REFERRAL_SENT_POINTS + wins.length * REFERRAL_WON_BONUS_POINTS
-      };
-    })
-    .filter((row) => row.sent > 0)
-    .sort((a, b) => b.points - a.points || b.sent - a.sent)
-    .slice(0, 5);
+  const pendingCount = referrals.filter((referral) => referral.receiverId === currentMemberId && referral.status === "sent").length;
+  const nextEvent = events.filter((event) => event.startsAt > Date.now() && event.status !== "canceled").sort((a,b) => a.startsAt - b.startsAt)[0];
 
   return (
     <>
@@ -2363,30 +2321,22 @@ function CommunityView({
       <button className="glass-panel quick-action" onClick={onGiveReferral}><span className="quick-action-icon">↗</span><span><strong>Give a referral</strong><small>Connect a lead with a member</small></span></button>
       <button className="glass-panel quick-action" onClick={onViewEvents}><span className="quick-action-icon">◇</span><span><strong>View events</strong><small>RSVP to upcoming gatherings</small></span></button>
     </section>
-    <section className="glass-panel feed-leaderboard" aria-labelledby="feed-leaderboard-title">
-      <div className="feed-leaderboard-head">
-        <div>
-          <p className="section-label">Referral leaderboard</p>
-          <h3 id="feed-leaderboard-title">Members making connections</h3>
-        </div>
-        <button className="link-button" onClick={onGiveReferral}>Give a referral →</button>
+    <section className="home-priorities" aria-label="Your next steps">
+      <div className="glass-panel priority-card">
+        <p className="section-label">Your referrals</p>
+        <h3>{pendingCount ? pendingCount + " awaiting an update" : "You’re all caught up"}</h3>
+        <p>{pendingCount ? "Let members know how their introductions worked out." : "Your received and sent referrals are all in one place."}</p>
+        <button className="link-button" onClick={onViewReferrals}>View referrals →</button>
       </div>
-      <div className="feed-leader-list">
-        {referralLeaders.map((row, index) => (
-          <div className="feed-leader" key={row.member.id}>
-            <span className={`leader-rank rank-${index + 1}`}>{index + 1}</span>
-            <span className="impact-avatar">{initials(row.member.name)}</span>
-            <span className="leader-person">
-              <strong>{row.member.name}</strong>
-              <small>{row.business?.name ?? "SBRA member"}</small>
-            </span>
-            <span className="leader-metric"><strong>{row.sent}</strong><small>Sent</small></span>
-            <span className="leader-metric"><strong>{row.wins}</strong><small>Won</small></span>
-            <span className="leader-value"><strong>{row.points}</strong><small>Points</small></span>
-          </div>
-        ))}
+      <div className="glass-panel priority-card">
+        <p className="section-label">Next event</p>
+        <h3>{nextEvent?.title ?? "More connections ahead"}</h3>
+        <p>{nextEvent ? formatEventTime(nextEvent.startsAt, nextEvent.endsAt) : "Check the calendar for upcoming gatherings."}</p>
+        {nextEvent && <p>{nextEvent.venueName}</p>}
+        <button className="link-button" onClick={onViewEvents}>View events & RSVP →</button>
       </div>
     </section>
+    <h3 className="feed-heading">Community updates</h3>
     <section className="content-grid">
       <div className="feed-column">
         <div className="glass-panel composer">
@@ -2546,31 +2496,7 @@ function CommunityView({
         })}
       </div>
 
-      <aside className="right-rail">
-        <section className="glass-panel rail-card">
-          <p className="section-label">Upcoming</p>
-          <h3>Breakfast Referral Club</h3>
-          <p>Friday, 7:30 AM at B2 Bistro</p>
-          <div className="mini-row">
-            <span>Members going</span>
-            <strong>18</strong>
-          </div>
-          <button className="secondary-button">RSVP</button>
-        </section>
 
-        <section className="glass-panel rail-card">
-          <p className="section-label">New members</p>
-          {["Yamile Zabala", "Adam Wentling"].map((name, index) => (
-            <div className="mentor" key={name}>
-              <div className={index === 0 ? "avatar blue" : "avatar violet"}>{initials(name)}</div>
-              <div>
-                <strong>{name}</strong>
-                <span>{index === 0 ? "Diamond Credit Union" : "Precision Hearing Aid Center"}</span>
-              </div>
-            </div>
-          ))}
-        </section>
-      </aside>
     </section>
     </>
   );
@@ -2593,9 +2519,19 @@ function AttachmentPreview({ attachment }: { attachment: PostAttachment }) {
   );
 }
 
+function directoryCategory(category: string) {
+  const groups: Record<string, string> = {
+    "Bank": "Banking & credit unions", "Banking": "Banking & credit unions", "Banking solutions": "Banking & credit unions", "Financial Credit Union": "Banking & credit unions",
+    "Accounting": "Accounting & tax", "Certified Public Accountants": "Accounting & tax",
+    "Attorney": "Legal services", "Legal Services": "Legal services",
+    "Real Estate": "Real estate", "Realty": "Real estate",
+    "Chiropractor": "Chiropractic", "Chiropractic Services": "Chiropractic"
+  };
+  return groups[category] ?? category;
+}
+
 function DirectoryView({
   businesses,
-  savingsBusinesses,
   membersByBusiness,
   categories,
   categoryFilter,
@@ -2607,7 +2543,6 @@ function DirectoryView({
   compact = false
 }: {
   businesses: Business[];
-  savingsBusinesses: Business[];
   membersByBusiness: Map<string, Member[]>;
   categories: string[];
   categoryFilter: string;
@@ -2623,9 +2558,10 @@ function DirectoryView({
 
   return (
     <section className={compact ? "directory-view compact" : "directory-view"}>
-      {!spanish && (
-        <SavingsShowcase businesses={savingsBusinesses} onBrowseOffers={() => setOffersOnly(true)} />
-      )}
+      {!spanish && <div className="view-switch" role="group" aria-label="Directory view">
+        <button aria-pressed={!offersOnly} onClick={() => setOffersOnly(false)}>All members</button>
+        <button aria-pressed={offersOnly} onClick={() => setOffersOnly(true)}>Member offers</button>
+      </div>}
       <div className="glass-panel toolbar">
         <input
           aria-label={spanish ? "Buscar negocios miembros" : "Search member businesses"}
@@ -2641,18 +2577,12 @@ function DirectoryView({
             </option>
           ))}
         </select>
-        {!spanish && (
-          <label className={offersOnly ? "toggle-chip active" : "toggle-chip"}>
-            <input type="checkbox" checked={offersOnly} onChange={(event) => setOffersOnly(event.target.checked)} />
-            Member offers
-          </label>
-        )}
       </div>
+      <p className="result-count" role="status">{visibleBusinesses.length} {spanish ? "negocios" : offersOnly ? "member offers" : "member businesses"}</p>
       <div className="biz-grid">
         {visibleBusinesses.map((business) => {
           const primaryContact = (membersByBusiness.get(business.id) ?? []).find((member) => member.isOwner)
             ?? (membersByBusiness.get(business.id) ?? [])[0];
-          const teamSize = membersByBusiness.get(business.id)?.length ?? 0;
           return (
             <button className="glass-panel biz-card" key={business.id} onClick={() => onOpenBusiness(business)}>
               <div className="biz-card-head">
@@ -2665,18 +2595,7 @@ function DirectoryView({
                 </div>
               </div>
               <p className="biz-desc">{business.description}</p>
-              <div className="biz-services">
-                {splitList(business.servicesOffered).slice(0, 3).map((service) => (
-                  <span className="service-chip" key={service}>
-                    {service}
-                  </span>
-                ))}
-              </div>
-              <div className="biz-referral">
-                <span className="section-label">{spanish ? "Conexiones buscadas" : "Referrals wanted"}</span>
-                <p>{business.referralsWanted || (spanish ? "Abierto a nuevas conexiones." : "Open to all introductions.")}</p>
-              </div>
-              {business.memberOffer && (
+              {offersOnly && business.memberOffer && (
                 <div className="biz-member-offer">
                   <span>Member savings</span>
                   <p>{formatMemberOffer(business.memberOffer)}</p>
@@ -2701,51 +2620,6 @@ function formatMemberOffer(offer: string) {
     .replace(/Monetary Value of Discount or Offer\*?:\s*/i, "")
     .replace(/^Member Offer:\s*/i, "")
     .trim();
-}
-
-function SavingsShowcase({ businesses, onBrowseOffers }: { businesses: Business[]; onBrowseOffers: () => void }) {
-  const offerBusinesses = businesses.filter((business) => business.memberOffer?.trim());
-  const maxPercent = offerBusinesses.reduce((highest, business) => {
-    const percentages = [...(business.memberOffer ?? "").matchAll(/(\d+)%/g)].map((match) => Number(match[1]));
-    return Math.max(highest, ...percentages, 0);
-  }, 0);
-  const namedAnnualValue = offerBusinesses.reduce((total, business) => {
-    const offer = business.memberOffer ?? "";
-    const monthly = offer.match(/\$(\d+(?:\.\d+)?)\s+monthly discount/i);
-    const statedValue = offer.match(/VALUE\s+\$(\d+(?:\.\d+)?)/i);
-    return total + (monthly ? Number(monthly[1]) * 12 : 0) + (statedValue ? Number(statedValue[1]) : 0);
-  }, 0);
-  const featuredIds = ["binary-it-solutions", "keystone-web", "small-for-small"];
-  const featuredOffers = featuredIds
-    .map((id) => offerBusinesses.find((business) => business.id === id))
-    .filter((business): business is Business => Boolean(business));
-
-  return (
-    <section className="glass-panel savings-showcase" aria-labelledby="savings-showcase-title">
-      <div className="savings-showcase-copy">
-        <p className="section-label">The value of membership</p>
-        <h3 id="savings-showcase-title">Your membership can pay you back.</h3>
-        <p>SBRA members help one another grow with preferred pricing, complimentary consultations, referral rewards, and services included at no cost.</p>
-        <button className="primary-button" type="button" onClick={onBrowseOffers}>Browse member offers</button>
-      </div>
-      <div className="savings-metrics" aria-label="Available member savings">
-        <span><strong>{offerBusinesses.length}</strong><small>published offers</small></span>
-        <span><strong>{maxPercent}%</strong><small>highest listed discount</small></span>
-        <span><strong>${namedAnnualValue.toLocaleString()}+</strong><small>in stated offer value</small></span>
-      </div>
-      <div className="featured-savings">
-        {featuredOffers.map((business) => (
-          <button type="button" className="featured-saving" key={business.id} onClick={onBrowseOffers}>
-            <span className="mini-avatar business-logo">
-              {business.logo ? <img src={business.logo} alt="" /> : initials(business.name)}
-            </span>
-            <span><strong>{business.name}</strong><small>{formatMemberOffer(business.memberOffer ?? "")}</small></span>
-          </button>
-        ))}
-      </div>
-      <p className="savings-disclaimer">Published member offers shown as listed. Eligibility, terms, and purchase requirements may apply; percentage-based savings depend on what you use.</p>
-    </section>
-  );
 }
 
 function BusinessModal({
@@ -5463,15 +5337,13 @@ function ReferralsView({
   onMarkWon: (referral: Referral) => void;
   onMarkNotWon: (referral: Referral) => void;
 }) {
+  const [referralTab, setReferralTab] = useState<"pending" | "received" | "sent">("pending");
   const given = referrals.filter((referral) => referral.giverId === currentMemberId);
   const received = referrals.filter((referral) => referral.receiverId === currentMemberId);
   const wonGiven = given.filter((referral) => referral.status === "won");
   const points = given.length * REFERRAL_SENT_POINTS + wonGiven.length * REFERRAL_WON_BONUS_POINTS;
 
   const now = Date.now();
-  // Open referrals sent to you that have gone quiet — your move to advance them.
-  const staleReceived = received.filter((referral) => isReferralStale(referral, now));
-
   // Top connectors over a rolling monthly window, ranked by earned points.
   const windowStart = now - LEADERBOARD_WINDOW_DAYS * REFERRAL_DAY_MS;
   const giverStats = new Map<string, { giverId: string; sent: number; won: number; points: number }>();
@@ -5489,39 +5361,28 @@ function ReferralsView({
 
   return (
     <section className="referrals-layout">
-      <div className="glass-panel referral-header">
-        <div>
-          <p className="section-label">Referral exchange</p>
-          <h3>Send a referral. Earn points. Build connections.</h3>
-          <p className="referral-sub">Send a useful opportunity to the right SBRA member. They only need to mark it Won or Not Won.</p>
-          <p className="impact-note">The people and businesses are sourced from SBRA’s public directory; referral activity in this demo is illustrative.</p>
-          <ol className="referral-how" aria-label="How the referral program works">
-            <li><span>1</span><p><strong>Send</strong><small>Share a lead or warm introduction and earn 10 points.</small></p></li>
-            <li><span>2</span><p><strong>Choose the result</strong><small>The receiving member marks it Won or Not Won.</small></p></li>
-            <li><span>3</span><p><strong>Earn the win bonus</strong><small>A Won referral adds 40 more points for the sender.</small></p></li>
-          </ol>
-        </div>
-        <button className="primary-button" onClick={onGive}>
-          <span className="button-icon">+</span>
-          Send a referral
-        </button>
+      <div className="referral-heading">
+        <p>Keep your connections moving.</p>
+        <button className="primary-button" onClick={onGive}>+ Send a referral</button>
       </div>
-
-      {staleReceived.length > 0 && (
-        <div className="glass-panel referral-nudge" role="status">
-          <span className="referral-nudge-icon" aria-hidden="true">!</span>
-          <div className="referral-nudge-body">
-            <strong>
-              {staleReceived.length} referral{staleReceived.length > 1 ? "s" : ""} waiting on you
-            </strong>
-            <span>
-              {staleReceived.length === 1 ? "A referral has" : "Referrals have"} sat for{" "}
-              {STALE_REFERRAL_DAYS}+ days. Mark each one Won or Not Won so the sender gets the right points.
-            </span>
-          </div>
-        </div>
-      )}
-
+      <div className="view-switch" role="group" aria-label="Referral view">
+        <button aria-pressed={referralTab === "pending"} onClick={() => setReferralTab("pending")}>Needs attention ({received.filter((r) => r.status === "sent").length})</button>
+        <button aria-pressed={referralTab === "received"} onClick={() => setReferralTab("received")}>Received ({received.length})</button>
+        <button aria-pressed={referralTab === "sent"} onClick={() => setReferralTab("sent")}>Sent ({given.length})</button>
+      </div>
+      <section className="referral-inbox" aria-label={referralTab === "pending" ? "Needs your attention" : referralTab === "received" ? "Received referrals" : "Sent referrals"}>
+        {(referralTab === "sent" ? given : referralTab === "pending" ? received.filter((r) => r.status === "sent") : received).map((referral) => (
+          <ReferralCard key={referral.id} referral={referral} perspective={referralTab === "sent" ? "given" : "received"} isStale={isReferralStale(referral, now)} memberById={memberById} businessById={businessById} onMarkWon={onMarkWon} onMarkNotWon={onMarkNotWon} />
+        ))}
+        {(referralTab === "sent" ? given.length === 0 : referralTab === "pending" ? !received.some((r) => r.status === "sent") : received.length === 0) && <div className="glass-panel empty-state">{referralTab === "pending" ? "You’re all caught up. No referrals need an update." : referralTab === "sent" ? "You haven’t sent a referral yet." : "No referrals received yet."}</div>}
+      </section>
+      <details className="glass-panel quiet-details">
+        <summary>How referrals work</summary>
+        <p>Send a lead or introduce two members. The receiving member marks the result Won or Not Won. You earn 10 points when you send a referral, plus 40 if it is Won.</p>
+        <p className="impact-note">Referral activity in this demo is illustrative.</p>
+      </details>
+      <details className="glass-panel quiet-details">
+        <summary>Your points & community leaderboard · {points} points</summary>
       <div className="metric-grid">
         <article className="glass-panel metric">
           <span>Sent</span>
@@ -5578,41 +5439,7 @@ function ReferralsView({
         </div>
       )}
 
-      <div className="referral-columns">
-        <section className="referral-column">
-          <p className="section-label">Sent by you ({given.length})</p>
-          {given.map((referral) => (
-            <ReferralCard
-              key={referral.id}
-              referral={referral}
-              perspective="given"
-              isStale={isReferralStale(referral, now)}
-              memberById={memberById}
-              businessById={businessById}
-              onMarkWon={onMarkWon}
-              onMarkNotWon={onMarkNotWon}
-            />
-          ))}
-          {given.length === 0 && <div className="empty-state">You haven&apos;t sent a referral yet.</div>}
-        </section>
-
-        <section className="referral-column">
-          <p className="section-label">Received by you ({received.length})</p>
-          {received.map((referral) => (
-            <ReferralCard
-              key={referral.id}
-              referral={referral}
-              perspective="received"
-              isStale={isReferralStale(referral, now)}
-              memberById={memberById}
-              businessById={businessById}
-              onMarkWon={onMarkWon}
-              onMarkNotWon={onMarkNotWon}
-            />
-          ))}
-          {received.length === 0 && <div className="empty-state">No referrals sent to you yet.</div>}
-        </section>
-      </div>
+      </details>
     </section>
   );
 }
@@ -5758,7 +5585,7 @@ function GiveReferralModal({
 
         <form className="profile-form referral-form" onSubmit={(event) => event.preventDefault()}>
           <label className="wide">
-            Refer to
+            Refer to (required)
             <select value={draft.receiverId} onChange={(event) => onChange({ ...draft, receiverId: event.target.value })}>
               <option value="">Choose a member…</option>
               {others.map((member) => (
@@ -5772,28 +5599,28 @@ function GiveReferralModal({
           {draft.kind === "lead" ? (
             <>
               <label>
-                Prospect name
+                Contact name (optional)
                 <input
                   value={draft.prospectName}
                   onChange={(event) => onChange({ ...draft, prospectName: event.target.value })}
                 />
               </label>
               <label>
-                Prospect contact
+                Email or phone (optional)
                 <input
                   value={draft.prospectContact}
                   onChange={(event) => onChange({ ...draft, prospectContact: event.target.value })}
                 />
               </label>
               <label className="wide">
-                What they need
+                What they need (required)
                 <textarea value={draft.need} onChange={(event) => onChange({ ...draft, need: event.target.value })} />
               </label>
             </>
           ) : (
             <>
               <label className="wide">
-                Member to introduce
+                Member to introduce (required)
                 <select
                   value={draft.introducedMemberId}
                   onChange={(event) => onChange({ ...draft, introducedMemberId: event.target.value })}
@@ -5807,7 +5634,7 @@ function GiveReferralModal({
                 </select>
               </label>
               <label className="wide">
-                Why connect them
+                Why connect them (required)
                 <textarea value={draft.need} onChange={(event) => onChange({ ...draft, need: event.target.value })} />
               </label>
             </>
@@ -5913,6 +5740,7 @@ function EventCard({
   onRsvp: (eventId: string, status: RsvpStatus) => void;
   onToggleCheckIn: (eventId: string) => void;
 }) {
+  const [rsvpOpen, setRsvpOpen] = useState(false);
   const goingCount = eventRsvps.filter((rsvp) => rsvp.status === "going").length;
   const maybeCount = eventRsvps.filter((rsvp) => rsvp.status === "maybe").length;
   const statuses: RsvpStatus[] = ["going", "maybe", "declined"];
@@ -5936,8 +5764,10 @@ function EventCard({
         {event.venueAddress ? <span>{event.venueAddress}</span> : null}
       </p>
 
-      {host && <p className="event-host">Hosted by {host.name}</p>}
-      <p className="event-desc">{event.description}</p>
+      <details className="event-details"><summary>Event details</summary>
+        {host && <p className="event-host">Hosted by {host.name}</p>}
+        <p className="event-desc">{event.description}</p>
+      </details>
 
       <div className="event-meta">
         <span>
@@ -5952,21 +5782,22 @@ function EventCard({
       {canceled ? (
         <p className="event-canceled-note" role="status">This event was canceled. RSVP changes are unavailable.</p>
       ) : (
-        <div className="event-rsvp">
-          {statuses.map((status) => (
+        <div>
+          <button className="secondary-button rsvp-toggle" aria-expanded={rsvpOpen} onClick={() => setRsvpOpen(!rsvpOpen)}>{myRsvp ? `${statusText[myRsvp.status]} · Change RSVP` : "RSVP"}</button>
+          {rsvpOpen && <div className="event-rsvp">{statuses.map((status) => (
             <button
               key={status}
               className={myRsvp?.status === status ? "rsvp-button active" : "rsvp-button"}
               aria-pressed={myRsvp?.status === status}
-              onClick={() => onRsvp(event.id, status)}
+              onClick={() => { onRsvp(event.id, status); setRsvpOpen(false); }}
             >
               {statusText[status]}
             </button>
-          ))}
+          ))}</div>}
         </div>
       )}
 
-      {!canceled && myRsvp?.status === "going" && (
+      {!canceled && myRsvp?.status === "going" && Date.now() >= event.startsAt - 60 * 60 * 1000 && Date.now() <= (event.endsAt ?? event.startsAt + 3 * 60 * 60 * 1000) && (
         <button
           className={myRsvp.checkedIn ? "secondary-button checkin-button checked" : "secondary-button checkin-button"}
           aria-pressed={myRsvp.checkedIn}
