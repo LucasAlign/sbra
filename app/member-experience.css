@@ -34,6 +34,17 @@ body:has(.app-shell[data-community="sbra"])::before {
   line-height: 1.5;
 }
 .app-shell .glass-panel { background: #fff; box-shadow: none; backdrop-filter: none; border-radius: 16px; }
+.app-shell .support-contact-hero { background: #001167; color: #fff; }
+.app-shell .support-contact-actions .primary-button { background: #fff; color: #001167; }
+.app-shell .support-contact-actions .secondary-button { background: transparent; color: #fff; border-color: #fff; }
+.member-notice { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px; margin: 16px 0; }
+.form-feedback { color: #8b2516; }
+.invoice-item-row label { display: grid; gap: 5px; min-width: 0; font-size: 13px; font-weight: 600; }
+.invoice-item-row label input { width: 100%; min-width: 0; box-sizing: border-box; }
+.invoice-item-row { align-items: end; }
+.referral-kind-toggle[hidden] { display: none; }
+.directory-language { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+.login-card .login-brand-lockup { width: min(150px, 100%); }
 .app-shell .sidebar { padding: 18px; overflow-y: auto; }
 .app-shell .brand { gap: 10px; margin-bottom: 20px; }
 .app-shell .brand-logo { width: 44px; height: 44px; box-shadow: none; background: white; }

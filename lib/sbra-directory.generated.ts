@@ -400,7 +400,7 @@ export const sbraBusinessSeed = [
     "id": "good-life-companies",
     "name": "Good Life Companies",
     "category": "Financial Services",
-    "description": "Disclosure Info",
+    "description": "Good Life Companies is listed in the SBRA directory under Financial Services. Contact the business for service details.",
     "servicesOffered": "Financial Services",
     "referralsWanted": "Open to relevant community introductions.",
     "website": "http://www.goodlifeco.com",
@@ -1369,7 +1369,7 @@ export const sbraMemberSeed = [
     "title": "SBRA Member",
     "email": "conor.delaney@goodlifefa.com",
     "phone": "610-898-6927",
-    "bio": "Disclosure Info",
+    "bio": "Good Life Companies is listed in the SBRA directory under Financial Services. Contact the business for service details.",
     "isOwner": false,
     "photo": ""
   },

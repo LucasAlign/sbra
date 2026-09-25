@@ -51,6 +51,7 @@ function cleanDirectoryText(value = "") {
 }
 
 const correctedDescriptionOverrides = {
+  "Good Life Companies": "Good Life Companies is listed in the SBRA directory under Financial Services. Contact the business for service details.",
   "FXV Digital Design": "Digital marketing, web design, and website hosting services for small businesses.",
   "GKS Brown Realty": "Real estate services for buyers, sellers, and property owners in Berks County.",
   "Golden Rule Remodeling": "Residential remodeling and home improvement services in Berks County.",

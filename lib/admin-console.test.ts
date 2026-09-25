@@ -10,9 +10,17 @@ import {
   isStaleReferral,
   recordModerationAction,
   updateBusinessProfile,
-  validateEventTiming
+  validateEventTiming,
+  validateEventCapacity
 } from "./admin-console";
 import type { Business, CommunityEvent, CommunityPost, Referral } from "./types";
+
+test("event capacity rejects invalid limits and protects existing RSVPs", () => {
+  for (const capacity of [-1, 0, 1.5, NaN, Infinity]) assert.ok(validateEventCapacity(capacity));
+  assert.ok(validateEventCapacity(2, 3));
+  assert.equal(validateEventCapacity(3, 3), null);
+  assert.equal(validateEventCapacity(undefined, 3), null);
+});
 
 test("canonicalSupportStatus maps legacy workflow text to an honest admin state", () => {
   assert.equal(canonicalSupportStatus("Resolved yesterday"), "Resolved");
