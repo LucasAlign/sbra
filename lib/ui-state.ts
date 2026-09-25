@@ -4,7 +4,17 @@ export type DisplayPreferences = {
   communityDigest: boolean;
   referralAlerts: boolean;
   compactDirectoryCards: boolean;
+  directoryLanguage?: "en" | "es";
 };
+
+export function readAppLocation(hash: string): { view: ViewKey; community: string } {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const candidate = params.get("view");
+  const views: ViewKey[] = ["community", "directory", "referrals", "events", "learn", "tools", "support", "profile", "admin"];
+  const view = views.find((item) => item === candidate) ?? "community";
+  const community = params.get("community") === "berks-latino-chamber" ? "berks-latino-chamber" : "sbra";
+  return { view: community === "berks-latino-chamber" ? "directory" : view, community };
+}
 
 export const defaultDisplayPreferences: DisplayPreferences = {
   communityDigest: true,

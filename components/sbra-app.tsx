@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from "react";
+import { hasLeadContact, invoiceReadinessError } from "@/lib/member-validation";
+import { validateEventCapacity } from "@/lib/admin-console";
+import { directoryCategory, repairDirectoryBusiness } from "@/lib/directory-quality";
 import { LoginIntroduction } from "./login-introduction";
 import {
   createLiveComment,
@@ -41,6 +44,7 @@ import {
   eligibleReferralMembers,
   isValidEmail,
   matchesSearch,
+  readAppLocation,
   supportAlertDestination,
   type DisplayPreferences
 } from "@/lib/ui-state";
@@ -545,7 +549,7 @@ export function SBRAApp() {
   // Brand/experience come from the community's own config (locale), not a
   // hardcoded tenant id: `brand.spanish` drives copy, `brand.directoryOnly`
   // selects the curated directory experience.
-  const brand = brandFor(activeOrganization.locale);
+  const communityBrand = brandFor(activeOrganization.locale);
   // Keeps the active destination scrolled into view within the horizontally
   // scrollable mobile nav bar, so the selected tab is always visible.
   const activeNavRef = useRef<HTMLButtonElement | null>(null);
@@ -553,7 +557,7 @@ export function SBRAApp() {
     persistLocal ? loadCollection(membersKey(activeOrganizationId), memberSeed) : memberSeed
   );
   const [businesses, setBusinesses] = useState<Business[]>(() =>
-    persistLocal ? loadCollection(businessesKey(activeOrganizationId), businessSeed) : businessSeed
+    persistLocal ? loadCollection(businessesKey(activeOrganizationId), businessSeed).map(repairDirectoryBusiness) : businessSeed
   );
   const [posts, setPosts] = useState<CommunityPost[]>(() =>
     persistLocal ? loadCollection(APP_KEYS.posts, communityPosts) : communityPosts
@@ -565,6 +569,8 @@ export function SBRAApp() {
     persistLocal ? loadCollection(APP_KEYS.referrals, referralSeed) : referralSeed
   );
   const [referralComposerOpen, setReferralComposerOpen] = useState(false);
+  const [editingReferralId, setEditingReferralId] = useState<string | null>(null);
+  const [memberNotice, setMemberNotice] = useState("");
   const [referralDraft, setReferralDraft] = useState<ReferralDraft>(emptyReferralDraft);
   const [events, setEvents] = useState<CommunityEvent[]>(() =>
     persistLocal ? loadCollection(APP_KEYS.events, eventSeed) : eventSeed
@@ -601,10 +607,12 @@ export function SBRAApp() {
   const [preferences, setPreferences] = useState<DisplayPreferences>(() =>
     ({ ...defaultDisplayPreferences, ...loadValue<Partial<DisplayPreferences>>(APP_KEYS.preferences, {}) })
   );
+  const brand = { ...communityBrand, spanish: communityBrand.spanish && preferences.directoryLanguage !== "en" };
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const settingsPopoverRef = useRef<HTMLDivElement | null>(null);
   const [supportCategory, setSupportCategory] = useState(supportCategories[0]);
   const [supportDetail, setSupportDetail] = useState("");
+  const [focusSupportRequest, setFocusSupportRequest] = useState(false);
   const [adminNote, setAdminNote] = useState("Choose an admin tool to preview the next operational workflow.");
   const [importNote, setImportNote] = useState(
     "Upload CSV or Excel columns like name, business, category, email, phone, city, services, referralsWanted."
@@ -717,8 +725,31 @@ export function SBRAApp() {
   }, [settingsOpen]);
 
   useEffect(() => {
+    const location = readAppLocation(window.location.hash);
+    selectOrganization(location.community);
+    setActiveView(location.view === "admin" && role !== "admin" ? "community" : location.view);
     setClientReady(true);
   }, []);
+
+  useEffect(() => {
+    const restoreLocation = () => {
+      const location = readAppLocation(window.location.hash);
+      selectOrganization(location.community);
+      setActiveView(location.view === "admin" && role !== "admin" ? "community" : location.view);
+    };
+    window.addEventListener("popstate", restoreLocation);
+    window.addEventListener("hashchange", restoreLocation);
+    return () => {
+      window.removeEventListener("popstate", restoreLocation);
+      window.removeEventListener("hashchange", restoreLocation);
+    };
+  }, [role]);
+
+  useEffect(() => {
+    if (!clientReady || !role) return;
+    const hash = `#view=${activeView}&community=${activeOrganizationId}`;
+    if (window.location.hash !== hash) window.history.pushState(null, "", hash);
+  }, [activeView, activeOrganizationId, clientReady, role]);
 
   useEffect(() => {
     if (!liveServices) {
@@ -798,7 +829,7 @@ export function SBRAApp() {
     };
   }, [liveServices, role]);
 
-  const visibleNav = (brand.directoryOnly ? latinoNavItems : navItems).filter((item) => !item.adminOnly || role === "admin");
+  const visibleNav = (brand.directoryOnly ? latinoNavItems.map((item) => ({ ...item, label: brand.spanish ? "Directorio" : "Directory" })) : navItems).filter((item) => !item.adminOnly || role === "admin");
   const primaryNav = visibleNav.filter((item) => primaryNavKeys.includes(item.key));
   const moreNav = visibleNav.filter((item) => !primaryNavKeys.includes(item.key));
   // Admins get their tools pinned to the top of the sidebar, above Home. The
@@ -994,6 +1025,7 @@ export function SBRAApp() {
   }
 
   async function signOutCurrentUser() {
+    setMemberNotice("");
     if (liveServices) {
       await signOut(liveServices.auth);
       setLiveNote("Signed out.");
@@ -1007,6 +1039,7 @@ export function SBRAApp() {
   }
 
   function changeView(view: ViewKey, requestedAdminTab?: AdminTab) {
+    setMemberNotice("");
     if (view === "admin" && role !== "admin") {
       setActiveView("community");
       return;
@@ -1189,11 +1222,13 @@ export function SBRAApp() {
   }
 
   function openReferralComposer() {
+    setEditingReferralId(null);
     setReferralDraft(emptyReferralDraft);
     setReferralComposerOpen(true);
   }
 
   function openReferralForBusiness(business: Business) {
+    setEditingReferralId(null);
     if (!currentMember || business.id === currentMember.businessId) return;
     const recipient = eligibleReferralMembers(membersByBusiness.get(business.id) ?? [], currentMember.id)[0];
     if (!recipient) return;
@@ -1202,10 +1237,18 @@ export function SBRAApp() {
     setReferralComposerOpen(true);
   }
 
+  function editReferral(referral: Referral) {
+    if (referral.giverId !== currentMember?.id || referral.status !== "sent") return;
+    setEditingReferralId(referral.id);
+    setReferralDraft({ kind: referral.kind, receiverId: referral.receiverId, introducedMemberId: referral.introducedMemberId ?? "", prospectName: referral.prospectName ?? "", prospectContact: referral.prospectContact ?? "", need: referral.need });
+    setReferralComposerOpen(true);
+  }
+
   async function submitReferral() {
     if (!currentMember) return;
     const draft = referralDraft;
     if (!draft.receiverId || !draft.need.trim()) return;
+    if (draft.kind === "lead" && !hasLeadContact(draft.prospectName, draft.prospectContact)) return;
     if (draft.kind === "intro" && !draft.introducedMemberId) return;
     const eligibleIds = new Set(eligibleReferralMembers(members, currentMember.id).map((member) => member.id));
     if (!eligibleIds.has(draft.receiverId)) return;
@@ -1221,6 +1264,15 @@ export function SBRAApp() {
         : { prospectName: draft.prospectName.trim(), prospectContact: draft.prospectContact.trim() })
     };
 
+    if (editingReferralId) {
+      const existing = referrals.find((referral) => referral.id === editingReferralId);
+      if (!existing || existing.giverId !== currentMember.id || existing.status !== "sent") return;
+      const saved = await patchReferral(editingReferralId, { need: base.need, prospectName: draft.prospectName.trim(), prospectContact: draft.prospectContact.trim() });
+      if (!saved) return;
+      setReferralComposerOpen(false);
+      setMemberNotice("Referral details updated.");
+      return;
+    }
     if (liveServices && liveProfile) {
       try {
         await createLiveReferral(base);
@@ -1239,6 +1291,7 @@ export function SBRAApp() {
       ...base
     };
     setReferrals((records) => [newReferral, ...records]);
+    setMemberNotice("Referral saved in this demo. Find it under Referrals → Sent to review or edit the details.");
     if (dbEnabled) void backendActions.insertReferral(newReferral);
     setReferralComposerOpen(false);
   }
@@ -1247,14 +1300,15 @@ export function SBRAApp() {
     if (liveServices && liveProfile) {
       try {
         await updateLiveReferral(id, changes);
-        return;
+        return true;
       } catch (error) {
         setLiveNote(error instanceof Error ? error.message : "Unable to update this referral.");
-        return;
+        return false;
       }
     }
     setReferrals((records) => records.map((referral) => (referral.id === id ? { ...referral, ...changes } : referral)));
     if (dbEnabled) void backendActions.updateReferral(id, changes);
+    return true;
   }
 
   function markReferralWon(referral: Referral) {
@@ -1316,6 +1370,8 @@ export function SBRAApp() {
     const draft = eventDraft;
     if (!draft.title.trim() || !draft.startsAt || !draft.venueName.trim()) return;
 
+    const capacityError = validateEventCapacity(draft.capacity ? Number(draft.capacity) : undefined);
+    if (capacityError) { setMemberNotice(capacityError); return; }
     const startsAt = new Date(draft.startsAt).getTime();
     const base = {
       title: draft.title.trim(),
@@ -1461,12 +1517,13 @@ export function SBRAApp() {
   }
 
   function selectOrganization(organizationId: string) {
+    setMemberNotice("");
     const latino = organizationId === "berks-latino-chamber";
     const seedBusinesses = latino ? latinoBusinessSeed : businessSeed;
     const seedMembers = latino ? latinoMemberSeed : memberSeed;
     setActiveOrganizationId(organizationId);
     // Restore this org's locally persisted roster (admin edits) if present.
-    setBusinesses(persistLocal ? loadCollection(businessesKey(organizationId), seedBusinesses) : seedBusinesses);
+    setBusinesses(persistLocal ? loadCollection(businessesKey(organizationId), seedBusinesses).map(repairDirectoryBusiness) : seedBusinesses);
     setMembers(persistLocal ? loadCollection(membersKey(organizationId), seedMembers) : seedMembers);
     setActiveView(latino ? "directory" : "community");
     setSearch("");
@@ -1521,8 +1578,6 @@ export function SBRAApp() {
             <img src="/collab-logo.png" alt="Collab — Your community. A wider connection." width={1254} height={1254} />
           </h1>
           <h2 className="login-heading">Your chamber. A wider business network.</h2>
-          <LoginIntroduction />
-          <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
           <p className="login-copy">{liveNote}</p>
           <div className="login-form">
             <div className="role-toggle" role="group" aria-label="Choose sign-in role">
@@ -1566,7 +1621,8 @@ export function SBRAApp() {
                 type="button"
                 onClick={() => {
                   setRole(loginRole);
-                  setActiveView(loginRole === "admin" ? "admin" : "community");
+                  const requested = window.location.hash ? readAppLocation(window.location.hash).view : loginRole === "admin" ? "admin" : "community";
+                  setActiveView(requested === "admin" && loginRole !== "admin" ? "community" : requested);
                 }}
               >
                 Enter {loginRole === "admin" ? "admin" : "member"} demo
@@ -1593,6 +1649,8 @@ export function SBRAApp() {
               Create your member profile
             </button>
           </p>
+          <LoginIntroduction />
+          <div className="login-network"><span>Founding network</span><LogoBlock large /></div>
         </section>
         {onboardingOpen && (
           <OnboardingWizard
@@ -1773,13 +1831,20 @@ export function SBRAApp() {
           )}
         </header>
 
+        {brand.directoryOnly && <label className="directory-language">Language / Idioma
+          <select aria-label="Language / Idioma" value={brand.spanish ? "es" : "en"} onChange={(event) => setPreferences((current) => ({ ...current, directoryLanguage: event.target.value === "es" ? "es" : "en" }))}>
+            <option value="en">English</option><option value="es">Español</option>
+          </select>
+        </label>}
+        {memberNotice && <div className="glass-panel member-notice" role="status">{memberNotice}<button className="link-button" onClick={() => setMemberNotice("")}>Dismiss</button></div>}
+
         {brand.directoryOnly && (
-          <section className="glass-panel scoped-access-note" aria-label="Acceso de la comunidad">
+          <section className="glass-panel scoped-access-note" aria-label={brand.spanish ? "Acceso de la comunidad" : "Community access"}>
             <div>
-              <strong>Sigues conectado a través de SBRA.</strong>
-              <p>Esta comunidad ofrece solo el directorio. Para usar publicaciones, referidos, eventos y herramientas, vuelve a la comunidad SBRA.</p>
+              <strong>{brand.spanish ? "Sigues conectado a través de SBRA." : "You are still signed in through SBRA."}</strong>
+              <p>{brand.spanish ? "Esta comunidad ofrece solo el directorio. Para usar publicaciones, referidos, eventos y herramientas, vuelve a la comunidad SBRA." : "This community offers a directory only. Return to SBRA for posts, referrals, events, and tools."}</p>
             </div>
-            <button type="button" className="secondary-button" onClick={() => selectOrganization("sbra")}>Volver a SBRA</button>
+            <button type="button" className="secondary-button" onClick={() => selectOrganization("sbra")}>{brand.spanish ? "Volver a SBRA" : "Return to SBRA"}</button>
           </section>
         )}
 
@@ -1863,6 +1928,7 @@ export function SBRAApp() {
             onSearch={setSearch}
             onOpenBusiness={openBusiness}
             spanish={brand.spanish}
+            allowOffers={!brand.directoryOnly}
             compact={preferences.compactDirectoryCards}
           />
         )}
@@ -1873,6 +1939,7 @@ export function SBRAApp() {
             businessById={businessById}
             currentMemberId={currentMember?.id ?? ""}
             onGive={openReferralComposer}
+            onEdit={editReferral}
             onMarkWon={markReferralWon}
             onMarkNotWon={markReferralNotWon}
           />
@@ -1887,6 +1954,7 @@ export function SBRAApp() {
               if (role === "admin") {
                 openEventComposer();
               } else {
+                setFocusSupportRequest(true);
                 setSupportCategory("Event proposal");
                 setSupportDetail("I would like to propose an event. Suggested topic, date, location, and audience: ");
                 selectNav("support");
@@ -1919,6 +1987,8 @@ export function SBRAApp() {
             detail={supportDetail}
             onCategory={setSupportCategory}
             onDetail={setSupportDetail}
+            focusRequest={focusSupportRequest}
+            onRequestFocused={() => setFocusSupportRequest(false)}
             onCreateRequest={createSupportRequest}
           />
         )}
@@ -2010,6 +2080,7 @@ export function SBRAApp() {
           members={members}
           businessById={businessById}
           currentMemberId={currentMember.id}
+          editing={Boolean(editingReferralId)}
           onChange={setReferralDraft}
           onClose={() => setReferralComposerOpen(false)}
           onSubmit={submitReferral}
@@ -2419,7 +2490,7 @@ function CommunityView({
           const postComments = comments
             .filter((comment) => comment.postId === post.id)
             .sort((a, b) => a.createdAt - b.createdAt);
-          const commentCount = post.comments + postComments.length;
+          const commentCount = postComments.length;
           const threadOpen = openComments.includes(post.id);
           return (
             <article className="glass-panel post-card" key={post.id}>
@@ -2458,7 +2529,7 @@ function CommunityView({
                 </div>
               )}
               <button className="view-comments" onClick={() => onToggleCommentThread(post.id)}>
-                {threadOpen ? "Hide comments" : `View all ${commentCount} comments`}
+                {threadOpen ? "Hide comments" : commentCount === 0 ? "Add a comment" : `View ${commentCount} ${commentCount === 1 ? "comment" : "comments"}`}
               </button>
               <time className="post-time">{post.timeAgo}</time>
               {threadOpen && (
@@ -2519,17 +2590,6 @@ function AttachmentPreview({ attachment }: { attachment: PostAttachment }) {
   );
 }
 
-function directoryCategory(category: string) {
-  const groups: Record<string, string> = {
-    "Bank": "Banking & credit unions", "Banking": "Banking & credit unions", "Banking solutions": "Banking & credit unions", "Financial Credit Union": "Banking & credit unions",
-    "Accounting": "Accounting & tax", "Certified Public Accountants": "Accounting & tax",
-    "Attorney": "Legal services", "Legal Services": "Legal services",
-    "Real Estate": "Real estate", "Realty": "Real estate",
-    "Chiropractor": "Chiropractic", "Chiropractic Services": "Chiropractic"
-  };
-  return groups[category] ?? category;
-}
-
 function DirectoryView({
   businesses,
   membersByBusiness,
@@ -2540,6 +2600,7 @@ function DirectoryView({
   onSearch,
   onOpenBusiness,
   spanish = false,
+  allowOffers = true,
   compact = false
 }: {
   businesses: Business[];
@@ -2551,14 +2612,15 @@ function DirectoryView({
   onSearch: (value: string) => void;
   onOpenBusiness: (business: Business) => void;
   spanish?: boolean;
+  allowOffers?: boolean;
   compact?: boolean;
 }) {
   const [offersOnly, setOffersOnly] = useState(false);
-  const visibleBusinesses = offersOnly ? businesses.filter((business) => business.memberOffer) : businesses;
+  const visibleBusinesses = allowOffers && offersOnly ? businesses.filter((business) => business.memberOffer) : businesses;
 
   return (
     <section className={compact ? "directory-view compact" : "directory-view"}>
-      {!spanish && <div className="view-switch" role="group" aria-label="Directory view">
+      {allowOffers && <div className="view-switch" role="group" aria-label="Directory view">
         <button aria-pressed={!offersOnly} onClick={() => setOffersOnly(false)}>All members</button>
         <button aria-pressed={offersOnly} onClick={() => setOffersOnly(true)}>Member offers</button>
       </div>}
@@ -3806,7 +3868,11 @@ function InvoiceQuoteTool({ currentMember, currentBusiness }: { currentMember?: 
       profile: alsoProfile
         ? { fromName: patch.fromName ?? store.profile.fromName, fromContact: patch.fromContact ?? store.profile.fromContact }
         : store.profile,
-      docs: store.docs.map((d) => (d.id === id ? { ...d, ...patch } : d))
+      docs: store.docs.map((d) => {
+        if (d.id !== id) return d;
+        const updated = { ...d, ...patch };
+        return updated.status !== "draft" && invoiceReadinessError(updated) ? { ...updated, status: "draft" as const } : updated;
+      })
     });
   }
   function deleteDoc(id: string) {
@@ -3819,6 +3885,7 @@ function InvoiceQuoteTool({ currentMember, currentBusiness }: { currentMember?: 
   // ---- Editor view ----
   if (editing) {
     const { subtotal, tax, total } = invoiceTotals(editing);
+    const readinessError = invoiceReadinessError(editing);
     const setItems = (items: InvoiceItem[]) => updateDoc(editing.id, { items });
     return (
       <div className="tool-body">
@@ -3829,10 +3896,12 @@ function InvoiceQuoteTool({ currentMember, currentBusiness }: { currentMember?: 
             <p className="section-label">{editing.docType} {editing.number}</p>
             <div className="crm-stage-row">
               {invoiceStatuses.map((s) => (
-                <button key={s.key} className={editing.status === s.key ? `crm-stage-pick active inv-status-${s.key}` : "crm-stage-pick"} onClick={() => updateDoc(editing.id, { status: s.key })}>{s.label}</button>
+                <button key={s.key} className={editing.status === s.key ? `crm-stage-pick active inv-status-${s.key}` : "crm-stage-pick"} disabled={s.key !== "draft" && Boolean(readinessError)} aria-pressed={editing.status === s.key} onClick={() => { if (s.key === "draft" || !invoiceReadinessError(editing)) updateDoc(editing.id, { status: s.key }); }}>{s.key === "draft" ? "Mark as draft" : s.key === "sent" ? "Mark as sent" : "Mark as paid"}</button>
               ))}
             </div>
           </div>
+          <p className="tool-hint">Changes save automatically on this device. Incomplete documents are kept as drafts. Marking a document sent only updates its status; download it and send it to your client separately.</p>
+          {readinessError && <p className="form-feedback" role="status">{readinessError}</p>}
           <div className="tool-form">
             <label className="tool-field"><span>From (your business)</span><span className="tool-input-wrap"><input value={editing.fromName} onChange={(e) => updateDoc(editing.id, { fromName: e.target.value }, true)} /></span></label>
             <label className="tool-field"><span>Your contact</span><span className="tool-input-wrap"><input value={editing.fromContact} onChange={(e) => updateDoc(editing.id, { fromContact: e.target.value }, true)} /></span></label>
@@ -3850,9 +3919,9 @@ function InvoiceQuoteTool({ currentMember, currentBusiness }: { currentMember?: 
           <div className="invoice-items">
             {editing.items.map((it) => (
               <div className="invoice-item-row" key={it.id}>
-                <input className="ii-desc" value={it.desc} placeholder="Description" onChange={(e) => setItems(editing.items.map((x) => x.id === it.id ? { ...x, desc: e.target.value } : x))} />
-                <input className="ii-num" type="number" min="0" step="any" value={it.qty} placeholder="Qty" onChange={(e) => setItems(editing.items.map((x) => x.id === it.id ? { ...x, qty: e.target.value } : x))} />
-                <input className="ii-num" type="number" min="0" step="any" value={it.rate} placeholder="Rate" onChange={(e) => setItems(editing.items.map((x) => x.id === it.id ? { ...x, rate: e.target.value } : x))} />
+                <label className="ii-desc">Description<input value={it.desc} placeholder="Description" onChange={(e) => setItems(editing.items.map((x) => x.id === it.id ? { ...x, desc: e.target.value } : x))} /></label>
+                <label>Quantity<input className="ii-num" type="number" min="0" step="any" value={it.qty} placeholder="Qty" onChange={(e) => setItems(editing.items.map((x) => x.id === it.id ? { ...x, qty: e.target.value } : x))} /></label>
+                <label>Rate ($)<input className="ii-num" type="number" min="0" step="any" value={it.rate} placeholder="Rate" onChange={(e) => setItems(editing.items.map((x) => x.id === it.id ? { ...x, rate: e.target.value } : x))} /></label>
                 <span className="ii-amt">{usd(toNum(it.qty) * toNum(it.rate))}</span>
                 <button className="ii-remove" onClick={() => setItems(editing.items.length > 1 ? editing.items.filter((x) => x.id !== it.id) : editing.items)} aria-label="Remove line">×</button>
               </div>
@@ -5098,6 +5167,8 @@ function LibraryEmpty() {
 }
 
 function SupportView({
+  focusRequest,
+  onRequestFocused,
   requests,
   selectedCategory,
   detail,
@@ -5105,6 +5176,8 @@ function SupportView({
   onDetail,
   onCreateRequest
 }: {
+  focusRequest: boolean;
+  onRequestFocused: () => void;
   requests: SupportRequest[];
   selectedCategory: string;
   detail: string;
@@ -5112,6 +5185,16 @@ function SupportView({
   onDetail: (value: string) => void;
   onCreateRequest: () => void;
 }) {
+  const requestRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!focusRequest) return;
+    const frame = requestAnimationFrame(() => {
+      requestRef.current?.focus({ preventScroll: true });
+      requestRef.current?.closest("section")?.scrollIntoView({ block: "start" });
+      onRequestFocused();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusRequest, onRequestFocused]);
   const [resourceQuery, setResourceQuery] = useState("");
   const [resourceGroup, setResourceGroup] = useState("All resources");
   const supportGroups = ["All resources", ...new Set(sbraSupportResources.map((resource) => resource.group))];
@@ -5134,6 +5217,44 @@ function SupportView({
           <a className="secondary-button" href="https://www.sbrassociation.com/contact" target="_blank" rel="noreferrer">Official contact page ↗</a>
         </div>
       </section>
+      <div className="support-layout">
+        <section className="glass-panel support-card">
+        <p className="section-label">Request support</p>
+        <h3>{selectedCategory === "Event proposal" ? "Propose an event" : "Contact the SBRA team"}</h3>
+        <p className="support-intro">Choose a topic and briefly describe what you need. Staff will follow up through your member email.</p>
+        <div className="support-buttons">
+          {!supportCategories.includes(selectedCategory) && <button className="active">{selectedCategory}</button>}
+          {supportCategories.map((item) => (
+            <button className={item === selectedCategory ? "active" : ""} key={item} onClick={() => onCategory(item)}>
+              {item}
+            </button>
+          ))}
+        </div>
+        <textarea
+          ref={requestRef}
+          className="support-detail"
+          aria-label="Support request detail"
+          placeholder="Tell us what happened, what you expected, and any deadline we should know about..."
+          value={detail}
+          onChange={(event) => onDetail(event.target.value)}
+        />
+        <button className="primary-button request-submit" onClick={onCreateRequest}>
+          Send to SBRA staff
+        </button>
+        </section>
+        <section className="glass-panel support-card">
+        <p className="section-label">Open requests</p>
+        {requests.map((request) => (
+          <div className="request-row" key={request.id}>
+            <div>
+              <strong>{request.title}</strong>
+              <small>{request.detail}</small>
+            </div>
+            <span>{request.status}</span>
+          </div>
+        ))}
+        </section>
+      </div>
       <section className="support-resource-library" aria-labelledby="support-resource-title">
         <div className="podcast-heading">
           <div><p className="section-label">Member support documentation</p><h3 id="support-resource-title">Find the right resource</h3></div>
@@ -5158,43 +5279,6 @@ function SupportView({
         </div>
         {!visibleResources.length && <LibraryEmpty />}
       </section>
-      <div className="support-layout">
-        <section className="glass-panel support-card">
-        <p className="section-label">Request support</p>
-        <h3>Contact the SBRA team</h3>
-        <p className="support-intro">Choose a topic and briefly describe what you need. Staff will follow up through your member email.</p>
-        <div className="support-buttons">
-          {!supportCategories.includes(selectedCategory) && <button className="active">{selectedCategory}</button>}
-          {supportCategories.map((item) => (
-            <button className={item === selectedCategory ? "active" : ""} key={item} onClick={() => onCategory(item)}>
-              {item}
-            </button>
-          ))}
-        </div>
-        <textarea
-          className="support-detail"
-          aria-label="Support request detail"
-          placeholder="Tell us what happened, what you expected, and any deadline we should know about..."
-          value={detail}
-          onChange={(event) => onDetail(event.target.value)}
-        />
-        <button className="primary-button request-submit" onClick={onCreateRequest}>
-          Send to SBRA staff
-        </button>
-        </section>
-        <section className="glass-panel support-card">
-        <p className="section-label">Open requests</p>
-        {requests.map((request) => (
-          <div className="request-row" key={request.id}>
-            <div>
-              <strong>{request.title}</strong>
-              <small>{request.detail}</small>
-            </div>
-            <span>{request.status}</span>
-          </div>
-        ))}
-        </section>
-      </div>
     </section>
   );
 }
@@ -5326,6 +5410,7 @@ function ReferralsView({
   businessById,
   currentMemberId,
   onGive,
+  onEdit,
   onMarkWon,
   onMarkNotWon
 }: {
@@ -5334,6 +5419,7 @@ function ReferralsView({
   businessById: Map<string, Business>;
   currentMemberId: string;
   onGive: () => void;
+  onEdit: (referral: Referral) => void;
   onMarkWon: (referral: Referral) => void;
   onMarkNotWon: (referral: Referral) => void;
 }) {
@@ -5372,7 +5458,7 @@ function ReferralsView({
       </div>
       <section className="referral-inbox" aria-label={referralTab === "pending" ? "Needs your attention" : referralTab === "received" ? "Received referrals" : "Sent referrals"}>
         {(referralTab === "sent" ? given : referralTab === "pending" ? received.filter((r) => r.status === "sent") : received).map((referral) => (
-          <ReferralCard key={referral.id} referral={referral} perspective={referralTab === "sent" ? "given" : "received"} isStale={isReferralStale(referral, now)} memberById={memberById} businessById={businessById} onMarkWon={onMarkWon} onMarkNotWon={onMarkNotWon} />
+          <ReferralCard key={referral.id} referral={referral} perspective={referralTab === "sent" ? "given" : "received"} isStale={isReferralStale(referral, now)} memberById={memberById} businessById={businessById} onMarkWon={onMarkWon} onMarkNotWon={onMarkNotWon} onEdit={onEdit} />
         ))}
         {(referralTab === "sent" ? given.length === 0 : referralTab === "pending" ? !received.some((r) => r.status === "sent") : received.length === 0) && <div className="glass-panel empty-state">{referralTab === "pending" ? "You’re all caught up. No referrals need an update." : referralTab === "sent" ? "You haven’t sent a referral yet." : "No referrals received yet."}</div>}
       </section>
@@ -5451,7 +5537,8 @@ function ReferralCard({
   memberById,
   businessById,
   onMarkWon,
-  onMarkNotWon
+  onMarkNotWon,
+  onEdit
 }: {
   referral: Referral;
   perspective: "given" | "received";
@@ -5460,6 +5547,7 @@ function ReferralCard({
   businessById: Map<string, Business>;
   onMarkWon: (referral: Referral) => void;
   onMarkNotWon: (referral: Referral) => void;
+  onEdit: (referral: Referral) => void;
 }) {
   const giver = memberById.get(referral.giverId);
   const receiver = memberById.get(referral.receiverId);
@@ -5510,6 +5598,7 @@ function ReferralCard({
       )}
       {referral.status === "not_won" && <div className="referral-closed lost">Not Won · sender earned 10 points</div>}
 
+      {perspective === "given" && !isClosed && <button className="secondary-button" onClick={() => onEdit(referral)}>Edit referral details</button>}
       {perspective === "received" && !isClosed && (
         <div className="referral-actions">
           <button className="primary-button" onClick={() => onMarkWon(referral)}>
@@ -5526,6 +5615,7 @@ function ReferralCard({
 
 function GiveReferralModal({
   draft,
+  editing = false,
   members,
   currentMemberId,
   businessById,
@@ -5534,6 +5624,7 @@ function GiveReferralModal({
   onSubmit
 }: {
   draft: ReferralDraft;
+  editing?: boolean;
   members: Member[];
   currentMemberId: string;
   businessById: Map<string, Business>;
@@ -5547,7 +5638,7 @@ function GiveReferralModal({
   const canSubmit =
     Boolean(draft.receiverId) &&
     draft.need.trim().length > 0 &&
-    (draft.kind === "lead" || Boolean(draft.introducedMemberId));
+    (draft.kind === "lead" ? hasLeadContact(draft.prospectName, draft.prospectContact) : Boolean(draft.introducedMemberId));
 
   return (
     <div className="modal-backdrop open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -5558,13 +5649,13 @@ function GiveReferralModal({
         <div className="modal-head">
           <div className="avatar large">+</div>
           <div>
-            <p className="section-label">New referral</p>
-            <h3 id="give-referral">Give a referral</h3>
+            <p className="section-label">{editing ? "Update referral" : "New referral"}</p>
+            <h3 id="give-referral">{editing ? "Edit referral details" : "Give a referral"}</h3>
             <p>Send a lead or make an introduction.</p>
           </div>
         </div>
 
-        <div className="role-toggle referral-kind-toggle" role="group" aria-label="Referral kind">
+        <div hidden={editing} className="role-toggle referral-kind-toggle" role="group" aria-label="Referral kind">
           <button
             type="button"
             className={draft.kind === "lead" ? "active" : ""}
@@ -5586,7 +5677,7 @@ function GiveReferralModal({
         <form className="profile-form referral-form" onSubmit={(event) => event.preventDefault()}>
           <label className="wide">
             Refer to (required)
-            <select value={draft.receiverId} onChange={(event) => onChange({ ...draft, receiverId: event.target.value })}>
+            <select disabled={editing} value={draft.receiverId} onChange={(event) => onChange({ ...draft, receiverId: event.target.value })}>
               <option value="">Choose a member…</option>
               {others.map((member) => (
                 <option key={member.id} value={member.id}>
@@ -5599,14 +5690,14 @@ function GiveReferralModal({
           {draft.kind === "lead" ? (
             <>
               <label>
-                Contact name (optional)
+                Contact name (required)
                 <input
                   value={draft.prospectName}
                   onChange={(event) => onChange({ ...draft, prospectName: event.target.value })}
                 />
               </label>
               <label>
-                Email or phone (optional)
+                Email or phone (required)
                 <input
                   value={draft.prospectContact}
                   onChange={(event) => onChange({ ...draft, prospectContact: event.target.value })}
@@ -5622,7 +5713,7 @@ function GiveReferralModal({
               <label className="wide">
                 Member to introduce (required)
                 <select
-                  value={draft.introducedMemberId}
+                  disabled={editing} value={draft.introducedMemberId}
                   onChange={(event) => onChange({ ...draft, introducedMemberId: event.target.value })}
                 >
                   <option value="">Choose a member…</option>
@@ -5646,7 +5737,7 @@ function GiveReferralModal({
             Cancel
           </button>
           <button className="primary-button" disabled={!canSubmit} onClick={onSubmit}>
-            Send Referral
+            {editing ? "Save referral details" : "Send Referral"}
           </button>
         </div>
       </section>
@@ -5822,7 +5913,8 @@ function CreateEventModal({
   onSubmit: () => void;
 }) {
   const dialogRef = useDialogFocus(onClose);
-  const canSubmit = draft.title.trim().length > 0 && Boolean(draft.startsAt) && draft.venueName.trim().length > 0;
+  const capacityError = validateEventCapacity(draft.capacity ? Number(draft.capacity) : undefined);
+  const canSubmit = draft.title.trim().length > 0 && Boolean(draft.startsAt) && draft.venueName.trim().length > 0 && !capacityError;
   const eventTypes = Object.keys(eventTypeLabels) as EventType[];
 
   return (
@@ -5887,10 +5979,11 @@ function CreateEventModal({
             />
           </label>
           <label>
-            Capacity
+            Capacity (leave blank for no limit)
             <input
               type="number"
-              min="0"
+              min="1"
+              step="1"
               value={draft.capacity}
               onChange={(event) => onChange({ ...draft, capacity: event.target.value })}
             />
@@ -5904,6 +5997,7 @@ function CreateEventModal({
           </label>
         </form>
 
+        {capacityError && <p className="form-feedback" role="alert">{capacityError}</p>}
         <div className="modal-actions">
           <button className="secondary-button" onClick={onClose}>
             Cancel

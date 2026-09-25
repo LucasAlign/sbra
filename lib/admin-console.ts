@@ -49,6 +49,13 @@ export function validateEventTiming(startsAt: number, endsAt?: number): string |
   return null;
 }
 
+export function validateEventCapacity(capacity: number | undefined, going = 0): string | null {
+  if (capacity === undefined) return null;
+  if (!Number.isSafeInteger(capacity) || capacity < 1) return "Capacity must be a positive whole number, or leave it blank for no limit.";
+  if (capacity < going) return `Capacity cannot be lower than the ${going} people already going. Existing RSVPs are kept.`;
+  return null;
+}
+
 export function duplicateEvent(event: CommunityEvent, id: string, startsAt: number): CommunityEvent {
   const duration = event.endsAt === undefined ? undefined : event.endsAt - event.startsAt;
   return {

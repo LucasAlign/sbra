@@ -27,6 +27,7 @@ import {
   recordModerationAction,
   updateBusinessProfile,
   validateEventTiming,
+  validateEventCapacity,
   type ModerationFilter
 } from "@/lib/admin-console";
 
@@ -668,10 +669,12 @@ export function AdminView({
   // Event operations -------------------------------------------------------
   const [eventDraft, setEventDraft] = useState<CommunityEvent | null>(null);
   const [expandedAttendanceId, setExpandedAttendanceId] = useState<string | null>(null);
+  const eventCapacityError = eventDraft ? validateEventCapacity(eventDraft.capacity, rsvps.filter((rsvp) => rsvp.eventId === eventDraft.id && rsvp.status === "going").length) : null;
 
   function saveEvent() {
     if (!eventDraft) return;
-    const error = validateEventTiming(eventDraft.startsAt, eventDraft.endsAt);
+    const error = validateEventTiming(eventDraft.startsAt, eventDraft.endsAt) ??
+      validateEventCapacity(eventDraft.capacity, rsvps.filter((rsvp) => rsvp.eventId === eventDraft.id && rsvp.status === "going").length);
     if (!eventDraft.title.trim()) {
       onAdminAction("An event title is required.");
       return;
@@ -1704,6 +1707,8 @@ export function AdminView({
           </div>
           {eventDraft && (
             <div className="glass-panel admin-add-form">
+              <p>Leave capacity blank for no limit. Existing RSVPs are kept; the limit cannot be lower than the number already going.</p>
+              {eventCapacityError && <p className="form-feedback" role="alert">{eventCapacityError}</p>}
               <div className="admin-add-grid">
                 <label><span>Event title*</span><input value={eventDraft.title} onChange={(event) => setEventDraft((draft) => draft ? { ...draft, title: event.target.value } : draft)} /></label>
                 <label><span>Starts*</span><input type="datetime-local" value={toDateTimeLocal(eventDraft.startsAt)} onChange={(event) => setEventDraft((draft) => draft ? { ...draft, startsAt: new Date(event.target.value).getTime() } : draft)} /></label>
