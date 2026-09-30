@@ -20,16 +20,22 @@ async function main() {
         { id: "local-demo-cafe", name: "Market Square Cafe", kind: "business", description: "A fictional neighborhood cafe." },
       ]).onConflictDoNothing();
       await tx.insert(s.communities).values({ id: "local-demo-community", networkId: "local-demo-network", operatorId: "local-demo-operator", slug: "local-demo", name: "Demo Chamber Community", shortName: "Demo", kind: "organizational", status: "active" }).onConflictDoNothing();
+      await tx.insert(s.organizations).values({ id: "local-demo-partner-operator", name: "River County Chamber (fictional)", kind: "chamber" }).onConflictDoNothing();
+      await tx.insert(s.communities).values({ id: "local-demo-partner", networkId: "local-demo-network", operatorId: "local-demo-partner-operator", slug: "local-demo-partner", name: "River County Chamber", shortName: "River County", description: "A fictional partner community for exploring shared connections and independent membership.", locale: "es", kind: "organizational", status: "active" }).onConflictDoNothing();
+      await tx.insert(s.regions).values({ id: "local-demo-region", networkId: "local-demo-network", slug: "local-demo-region", name: "Demo Region" }).onConflictDoNothing();
+      for (const communityId of ["local-demo-community", "local-demo-partner"]) await tx.insert(s.communityRegions).values({ communityId, networkId: "local-demo-network", regionId: "local-demo-region" }).onConflictDoNothing();
       for (const role of ["admin", "member"]) {
         const personId = `local-demo-${role}`;
         await tx.insert(s.people).values({ id: personId, name: role === "admin" ? "Demo Admin" : "Demo Member" }).onConflictDoNothing();
         await tx.insert(s.personIdentities).values({ provider: "demo", subject: role, personId }).onConflictDoNothing();
         await tx.insert(s.personCommunityMemberships).values({ personId, communityId: "local-demo-community", status: "active" }).onConflictDoNothing();
+        await tx.insert(s.personCommunityMemberships).values({ personId, communityId: "local-demo-partner", status: "active" }).onConflictDoNothing();
       }
       await tx.insert(s.roleGrants).values({ id: "local-demo-admin-grant", personId: "local-demo-admin", communityId: "local-demo-community", role: "community_admin", grantedBy: "local-demo-admin" }).onConflictDoNothing();
       await tx.insert(s.organizationAffiliations).values({ personId: "local-demo-member", organizationId: "local-demo-business", status: "active" }).onConflictDoNothing();
       await tx.insert(s.roleGrants).values({ id: "local-demo-business-grant", personId: "local-demo-member", organizationId: "local-demo-business", role: "business_admin", grantedBy: "local-demo-admin" }).onConflictDoNothing();
       for (const organizationId of ["local-demo-business", "local-demo-cafe"]) await tx.insert(s.organizationCommunityMemberships).values({ organizationId, communityId: "local-demo-community", status: "active" }).onConflictDoNothing();
+      await tx.insert(s.organizationCommunityMemberships).values({ organizationId: "local-demo-business", communityId: "local-demo-partner", status: "active" }).onConflictDoNothing();
       await tx.insert(s.opportunities).values({ id: "local-demo-opportunity", communityId: "local-demo-community", authorId: "local-demo-admin", kind: "need", title: "Looking for a local event photographer", detail: "Help capture our next community gathering.", visibility: "community" }).onConflictDoNothing();
       await tx.insert(s.communityEvents).values({ id: "local-demo-event", organizerId: "local-demo-admin", title: "Meet your local business community", location: "Demo Chamber meeting room", startsAt: new Date(Date.now() + 7 * 86400000), timezone: "America/New_York", capacity: 25 }).onConflictDoNothing();
       await tx.insert(s.eventPublications).values({ eventId: "local-demo-event", communityId: "local-demo-community", publishedBy: "local-demo-admin" }).onConflictDoNothing();

@@ -5,6 +5,9 @@ import { hasLeadContact, invoiceReadinessError } from "@/lib/member-validation";
 import { validateEventCapacity } from "@/lib/admin-console";
 import { directoryCategory, repairDirectoryBusiness } from "@/lib/directory-quality";
 import { LoginIntroduction } from "./login-introduction";
+import { CommunitySwitcher } from "./community-switcher";
+import { NetworkExplorer } from "./network-explorer";
+import { memberNavigation } from "@/lib/navigation";
 import {
   createLiveComment,
   createLiveEvent,
@@ -35,6 +38,8 @@ import * as backendActions from "@/app/actions";
 import { loadTool, saveTool, downloadToolData, importToolData, previewToolData, TOOL_KEYS, type ImportPreview } from "@/lib/tool-storage";
 import { APP_KEYS, membersKey, businessesKey, loadCollection, saveCollection, loadValue, saveValue, clearValue, clearAppData } from "@/lib/app-storage";
 import { parseRosterFile } from "@/lib/importers";
+import { normalizeCrmStore } from "@/lib/crm";
+import { nationwideSeed, nationwideCommunities, showcaseMember, showcaseAdmin, demoToolSamples, demoCrmStore } from "@/lib/nationwide-demo";
 import { communityOrganizations, getCommunityOrganization } from "@/lib/organizations";
 import { brandFor } from "@/lib/brand";
 import { sbraArticles, sbraPodcastEpisodes, sbraSupportResources, sbraVideoResources } from "@/lib/sbra-content";
@@ -227,20 +232,17 @@ type NavItem = { key: ViewKey; label: string; count: string; icon: ViewKey; admi
 const navItems: NavItem[] = [
   { key: "community", label: "Home", count: "12", icon: "community" },
   { key: "directory", label: "Directory", count: "Members", icon: "directory" },
-  { key: "referrals", label: "Referrals", count: "Core", icon: "referrals" },
+  { key: "opportunities", label: "Opportunities", count: "Requests & offers", icon: "community" },
+  { key: "referrals", label: "Connections", count: "Referrals", icon: "referrals" },
   { key: "events", label: "Events", count: "Mingles", icon: "events" },
   { key: "learn", label: "Learn", count: String(sbraPodcastEpisodes.length + sbraArticles.length), icon: "learn" },
   { key: "tools", label: "Tools", count: "Kit", icon: "tools" },
   { key: "support", label: "Support", count: String(sbraSupportResources.length), icon: "support" },
   { key: "profile", label: "Profile", count: "You", icon: "profile" },
-  { key: "admin", label: "Admin tools", count: "Reports", icon: "admin", adminOnly: true }
+  { key: "admin", label: "Manage community", count: "Admin", icon: "admin", adminOnly: true }
 ];
 
-const latinoNavItems: NavItem[] = [
-  { key: "directory", label: "Directorio", count: "Miembros", icon: "directory" }
-];
-
-const primaryNavKeys: ViewKey[] = ["community", "directory", "referrals", "events", "tools"];
+const primaryNavKeys: ViewKey[] = memberNavigation.map(item => item.key);
 
 // Business Tools hub. Skeleton only for now: each tool renders a placeholder
 // detail panel; the real calculators/generators get built in later per tool.
@@ -357,7 +359,7 @@ const toolCategories: ToolCategory[] = [
   {
     key: "resources",
     title: "Templates & Resources",
-    blurb: "Grab-and-go documents, checklists, and local programs for Berks County owners.",
+    blurb: "Grab-and-go documents, checklists, and business resources.",
     tools: [
       {
         id: "doc-templates",
@@ -546,10 +548,10 @@ export function SBRAApp() {
   const [pendingToolId, setPendingToolId] = useState<string | null>(null);
   const [activeOrganizationId, setActiveOrganizationId] = useState("sbra");
   const activeOrganization = getCommunityOrganization(activeOrganizationId);
-  // Brand/experience come from the community's own config (locale), not a
-  // hardcoded tenant id: `brand.spanish` drives copy, `brand.directoryOnly`
-  // selects the curated directory experience.
-  const communityBrand = brandFor(activeOrganization.locale);
+  const nationalDemo = nationwideCommunities.find(c => c.id === activeOrganizationId);
+  const collectionKey = (key: string, id = activeOrganizationId) => id.startsWith("demo-") ? `${key}.${id}` : key;
+  // Language and the demo's enabled features are independent settings.
+  const communityBrand = brandFor(activeOrganization.locale, { directoryOnly: activeOrganization.directoryOnly });
   // Keeps the active destination scrolled into view within the horizontally
   // scrollable mobile nav bar, so the selected tab is always visible.
   const activeNavRef = useRef<HTMLButtonElement | null>(null);
@@ -645,7 +647,7 @@ export function SBRAApp() {
 
   // The signed-in person is stable while they browse another community. The
   // active directory changes tenant context, never the actor's identity.
-  const currentMember = liveProfile ?? (role === "admin" ? demoAdminMember : memberSeed[0]);
+  const currentMember = liveProfile ?? (nationalDemo ? (role === "admin" ? showcaseAdmin : showcaseMember) : (role === "admin" ? demoAdminMember : memberSeed[0]));
   const currentBusiness = currentMember
     ? businessById.get(currentMember.businessId) ?? businessSeed.find((business) => business.id === currentMember.businessId)
     : undefined;
@@ -663,32 +665,32 @@ export function SBRAApp() {
   // active organization so each directory keeps its own edits; the community
   // collections are shared. Skipped entirely when a live backend owns the data.
   useEffect(() => {
-    if (persistLocal) saveCollection(membersKey(activeOrganizationId), members);
-  }, [members, activeOrganizationId, persistLocal]);
+    if (persistLocal && clientReady) saveCollection(membersKey(activeOrganizationId), members);
+  }, [members, activeOrganizationId, persistLocal, clientReady]);
   useEffect(() => {
-    if (persistLocal) saveCollection(businessesKey(activeOrganizationId), businesses);
-  }, [businesses, activeOrganizationId, persistLocal]);
+    if (persistLocal && clientReady) saveCollection(businessesKey(activeOrganizationId), businesses);
+  }, [businesses, activeOrganizationId, persistLocal, clientReady]);
   useEffect(() => {
-    if (persistLocal) saveCollection(APP_KEYS.posts, posts);
-  }, [posts, persistLocal]);
+    if (persistLocal && clientReady) saveCollection(collectionKey(APP_KEYS.posts), posts);
+  }, [posts, persistLocal, activeOrganizationId, clientReady]);
   useEffect(() => {
-    if (persistLocal) saveCollection(APP_KEYS.comments, comments);
-  }, [comments, persistLocal]);
+    if (persistLocal && clientReady) saveCollection(collectionKey(APP_KEYS.comments), comments);
+  }, [comments, persistLocal, activeOrganizationId, clientReady]);
   useEffect(() => {
-    if (persistLocal) saveCollection(APP_KEYS.reactions, reactions);
-  }, [reactions, persistLocal]);
+    if (persistLocal && clientReady) saveCollection(collectionKey(APP_KEYS.reactions), reactions);
+  }, [reactions, persistLocal, activeOrganizationId, clientReady]);
   useEffect(() => {
-    if (persistLocal) saveCollection(APP_KEYS.requests, requests);
-  }, [requests, persistLocal]);
+    if (persistLocal && clientReady) saveCollection(collectionKey(APP_KEYS.requests), requests);
+  }, [requests, persistLocal, activeOrganizationId, clientReady]);
   useEffect(() => {
-    if (persistLocal) saveCollection(APP_KEYS.referrals, referrals);
-  }, [referrals, persistLocal]);
+    if (persistLocal && clientReady) saveCollection(collectionKey(APP_KEYS.referrals), referrals);
+  }, [referrals, persistLocal, activeOrganizationId, clientReady]);
   useEffect(() => {
-    if (persistLocal) saveCollection(APP_KEYS.events, events);
-  }, [events, persistLocal]);
+    if (persistLocal && clientReady) saveCollection(collectionKey(APP_KEYS.events), events);
+  }, [events, persistLocal, activeOrganizationId, clientReady]);
   useEffect(() => {
-    if (persistLocal) saveCollection(APP_KEYS.rsvps, rsvps);
-  }, [rsvps, persistLocal]);
+    if (persistLocal && clientReady) saveCollection(collectionKey(APP_KEYS.rsvps), rsvps);
+  }, [rsvps, persistLocal, activeOrganizationId, clientReady]);
   useEffect(() => {
     saveValue(APP_KEYS.preferences, preferences);
   }, [preferences]);
@@ -725,6 +727,15 @@ export function SBRAApp() {
   }, [settingsOpen]);
 
   useEffect(() => {
+    for (const [key, value] of Object.entries(demoToolSamples())) {
+      if (key === TOOL_KEYS.crm) {
+        const existing = loadTool<unknown>(key, null);
+        const store = normalizeCrmStore(existing, memberSeed[0].businessId);
+        if (!store.workspaces[showcaseMember.businessId]) {
+          saveTool(key, { ...store, workspaces: { ...store.workspaces, ...demoCrmStore().workspaces } });
+        }
+      } else if (loadTool(key, null) === null) saveTool(key, value);
+    }
     const location = readAppLocation(window.location.hash);
     selectOrganization(location.community);
     setActiveView(location.view === "admin" && role !== "admin" ? "community" : location.view);
@@ -829,14 +840,13 @@ export function SBRAApp() {
     };
   }, [liveServices, role]);
 
-  const visibleNav = (brand.directoryOnly ? latinoNavItems.map((item) => ({ ...item, label: brand.spanish ? "Directorio" : "Directory" })) : navItems).filter((item) => !item.adminOnly || role === "admin");
-  const primaryNav = visibleNav.filter((item) => primaryNavKeys.includes(item.key));
+  const visibleNav = navItems.filter((item) => !item.adminOnly || role === "admin");
+  const primaryNav = primaryNavKeys.flatMap(key => visibleNav.filter(item => item.key === key));
   const moreNav = visibleNav.filter((item) => !primaryNavKeys.includes(item.key));
-  // Admins get their tools pinned to the top of the sidebar, above Home. The
-  // mobile bar keeps them under More so it stays four tabs wide.
+  // Keep member navigation consistent; management lives in a separate area.
   const adminNavItem = visibleNav.find((item) => item.key === "admin");
-  const sidebarNav = adminNavItem ? [adminNavItem, ...primaryNav] : primaryNav;
-  const mobilePrimaryNav = primaryNav.filter((item) => item.key !== "tools");
+  const sidebarNav = primaryNav;
+  const mobilePrimaryNav = primaryNav;
   const mobileMoreNav = visibleNav.filter((item) => !mobilePrimaryNav.some((primary) => primary.key === item.key));
   const sidebarMoreNav = moreNav.filter((item) => item.key !== "admin");
 
@@ -1519,16 +1529,29 @@ export function SBRAApp() {
   function selectOrganization(organizationId: string) {
     setMemberNotice("");
     const latino = organizationId === "berks-latino-chamber";
-    const seedBusinesses = latino ? latinoBusinessSeed : businessSeed;
-    const seedMembers = latino ? latinoMemberSeed : memberSeed;
+    const demo = nationwideSeed(organizationId);
+    const seedBusinesses = demo?.businesses ?? (latino ? latinoBusinessSeed : businessSeed);
+    const seedMembers = demo?.members ?? (latino ? latinoMemberSeed : memberSeed);
     setActiveOrganizationId(organizationId);
+    setPosts(persistLocal ? loadCollection(collectionKey(APP_KEYS.posts, organizationId), demo?.posts ?? communityPosts) : demo?.posts ?? communityPosts);
+    setComments(persistLocal ? loadCollection(collectionKey(APP_KEYS.comments, organizationId), demo?.comments ?? commentSeed) : demo?.comments ?? commentSeed);
+    setReactions(persistLocal ? loadCollection(collectionKey(APP_KEYS.reactions, organizationId), demo?.reactions ?? reactionSeed) : demo?.reactions ?? reactionSeed);
+    setRequests(persistLocal ? loadCollection(collectionKey(APP_KEYS.requests, organizationId), demo?.requests ?? supportRequests) : demo?.requests ?? supportRequests);
+    setReferrals(persistLocal ? loadCollection(collectionKey(APP_KEYS.referrals, organizationId), demo?.referrals ?? referralSeed) : demo?.referrals ?? referralSeed);
+    setEvents(persistLocal ? loadCollection(collectionKey(APP_KEYS.events, organizationId), demo?.events ?? eventSeed) : demo?.events ?? eventSeed);
+    setRsvps(persistLocal ? loadCollection(collectionKey(APP_KEYS.rsvps, organizationId), demo?.rsvps ?? rsvpSeed) : demo?.rsvps ?? rsvpSeed);
     // Restore this org's locally persisted roster (admin edits) if present.
     setBusinesses(persistLocal ? loadCollection(businessesKey(organizationId), seedBusinesses).map(repairDirectoryBusiness) : seedBusinesses);
     setMembers(persistLocal ? loadCollection(membersKey(organizationId), seedMembers) : seedMembers);
-    setActiveView(latino ? "directory" : "community");
+    setActiveView(current => current === "explore" ? "community" : current);
     setSearch("");
     setCategoryFilter("all");
     setActiveBusiness(null);
+    setActiveMember(null);
+    setComposerOpen(false);
+    setEventComposerOpen(false);
+    setReferralComposerOpen(false);
+    setOpenComments([]);
     setMoreOpen(false);
     setAlertsOpen(false);
     setSettingsOpen(false);
@@ -1539,15 +1562,16 @@ export function SBRAApp() {
   function resetDemoData() {
     clearAppData(communityOrganizations.map((organization) => organization.id));
     const latino = activeOrganizationId === "berks-latino-chamber";
-    setBusinesses(latino ? latinoBusinessSeed : businessSeed);
-    setMembers(latino ? latinoMemberSeed : memberSeed);
-    setPosts(communityPosts);
-    setComments(commentSeed);
-    setReactions(reactionSeed);
-    setRequests(supportRequests);
-    setReferrals(referralSeed);
-    setEvents(eventSeed);
-    setRsvps(rsvpSeed);
+    const demo = nationwideSeed(activeOrganizationId);
+    setBusinesses(demo?.businesses ?? (latino ? latinoBusinessSeed : businessSeed));
+    setMembers(demo?.members ?? (latino ? latinoMemberSeed : memberSeed));
+    setPosts(demo?.posts ?? communityPosts);
+    setComments(demo?.comments ?? commentSeed);
+    setReactions(demo?.reactions ?? reactionSeed);
+    setRequests(demo?.requests ?? supportRequests);
+    setReferrals(demo?.referrals ?? referralSeed);
+    setEvents(demo?.events ?? eventSeed);
+    setRsvps(demo?.rsvps ?? rsvpSeed);
     setPreferences(defaultDisplayPreferences);
     setRole(null);
     setLiveProfile(null);
@@ -1670,45 +1694,30 @@ export function SBRAApp() {
       {dbEnabled && <SessionBridge onSession={setSession} />}
       <aside className="glass-panel sidebar">
         <div className="brand">
-          {activeOrganization.logo ? (
+          {activeView === "explore" ? <span className="collab-wordmark">C</span> : activeOrganization.logo ? (
             <div className="brand-logo organization-logo">
-              <img src={activeOrganization.logo} alt="Cámara de Comercio Latina del Condado de Berks" />
+              <img src={activeOrganization.logo} alt={activeOrganization.name} />
             </div>
           ) : <LogoBlock />}
           <div>
-            <h1>{brand.spanish ? "Red de la Cámara Latina" : `${activeOrganization.shortName} Network`}</h1>
+            <h1>{activeView === "explore" ? "Collab" : activeOrganization.shortName}</h1>
+            <small>{activeView === "explore" ? "Independent communities. Shared connections." : "Connected through Collab"}</small>
           </div>
         </div>
 
-        <label className="organization-switcher">
-          <span>{brand.spanish ? "Comunidad" : "Community"}</span>
-          <select
-            value={activeOrganizationId}
-            onChange={(event) => selectOrganization(event.target.value)}
-            aria-label={brand.spanish ? "Elegir organización comunitaria" : "Choose community organization"}
-          >
-            {communityOrganizations.map((organization) => (
-              <option
-                key={organization.id}
-                value={organization.id}
-                disabled={organization.status !== "active"}
-              >
-                {organization.shortName}{organization.status === "coming_soon" ? " — Coming soon" : ""}
-              </option>
-            ))}
-          </select>
-          <small>{activeOrganization.name}{activeOrganization.isFoundingPartner ? " · Founding partner" : ""}</small>
-        </label>
+        <CommunitySwitcher communities={communityOrganizations.filter(item => item.status === "active")} value={activeView === "explore" ? "network" : activeOrganizationId} onChange={id => id === "network" ? selectNav("explore") : selectOrganization(id)} />
+        <small>{activeView === "explore" ? "Discover participating organizations" : activeOrganization.name}</small>
 
         <nav className="nav-list" aria-label="Primary">
           {sidebarNav.map((item) => (
             <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />
           ))}
-          {!brand.directoryOnly && <button className={moreOpen || sidebarMoreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
+          {<button className={moreOpen || sidebarMoreNav.some((item) => item.key === activeView) ? "nav-item active" : "nav-item"} onClick={() => setMoreOpen((open) => !open)} aria-expanded={moreOpen}>
             <span className="nav-icon">•••</span><span>More</span>
           </button>}
-          {!brand.directoryOnly && moreOpen && <div className="more-menu">{sidebarMoreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
+          {moreOpen && <div className="more-menu">{sidebarMoreNav.map((item) => <NavButton key={item.key} item={item} active={activeView === item.key} onClick={() => selectNav(item.key)} />)}</div>}
         </nav>
+        {adminNavItem && !brand.directoryOnly && <nav className="nav-list community-management" aria-label="Community management"><NavButton item={adminNavItem} active={activeView === "admin"} onClick={() => selectNav("admin")} /></nav>}
 
         <section className="theme-card">
           <p className="section-label">{brand.spanish ? "Sesión activa" : "Signed in"}</p>
@@ -1732,8 +1741,8 @@ export function SBRAApp() {
       <main className="main-panel">
         <header className="glass-panel topbar">
           <div>
-            <p className="eyebrow">{brand.spanish ? `${activeOrganization.shortName} · Bienvenido` : `${activeOrganization.shortName} · Welcome back, ${currentMember?.name.split(" ")[0] || "there"}`}</p>
-            <h2>{brand.spanish ? "Directorio de miembros" : viewTitles[activeView]}</h2>
+            <p className="eyebrow">{activeView === "explore" ? "Collab · Independent communities, shared connections" : brand.spanish ? `${activeOrganization.shortName} · Bienvenido` : `${activeOrganization.shortName} · Welcome back, ${currentMember?.name.split(" ")[0] || "there"}`}</p>
+            <h2>{brand.spanish && activeView === "directory" ? "Directorio de miembros" : viewTitles[activeView]}</h2>
           </div>
           <div className="top-actions">
             <span className="session-pill">{brand.spanish ? (role === "admin" ? "Administrador" : "Miembro") : roleLabel}</span>
@@ -1779,7 +1788,7 @@ export function SBRAApp() {
           {globalSearchOpen && (
             <div className="top-popover search-popover">
               <input
-                aria-label={brand.spanish ? "Buscar en el directorio" : "Search Berks County Collab"}
+                aria-label={brand.spanish ? "Buscar en el directorio" : "Search this community"}
                 autoFocus
                 placeholder={brand.spanish ? "Buscar negocios, miembros o servicios..." : "Search businesses, members, posts, support..."}
                 value={globalSearch}
@@ -1831,6 +1840,12 @@ export function SBRAApp() {
           )}
         </header>
 
+        {activeView === "community" && <section className="glass-panel nationwide-demo-banner" aria-label="Nationwide demo">
+          <div><strong>Nationwide showcase · fictional activity</strong><p>{nationalDemo ? `${nationalDemo.name} · ${nationalDemo.city}. Browse local activity, RSVP, or try the business tools as a sample member.` : "Explore 10 fictional networks with local businesses, events, referrals, and ready-to-use tool examples."}</p></div>
+          <button className="secondary-button" onClick={() => { selectOrganization("demo-boston"); setActiveView("community"); }}>Start demo tour</button>
+          <button className="secondary-button" onClick={() => selectNav("explore")}>Explore networks</button>
+          <button className="secondary-button" onClick={() => { if (!nationalDemo) selectOrganization("demo-boston"); selectNav("tools"); }}>Try business tools</button>
+        </section>}
         {brand.directoryOnly && <label className="directory-language">Language / Idioma
           <select aria-label="Language / Idioma" value={brand.spanish ? "es" : "en"} onChange={(event) => setPreferences((current) => ({ ...current, directoryLanguage: event.target.value === "es" ? "es" : "en" }))}>
             <option value="en">English</option><option value="es">Español</option>
@@ -1838,19 +1853,21 @@ export function SBRAApp() {
         </label>}
         {memberNotice && <div className="glass-panel member-notice" role="status">{memberNotice}<button className="link-button" onClick={() => setMemberNotice("")}>Dismiss</button></div>}
 
-        {brand.directoryOnly && (
+        {brand.directoryOnly && activeView !== "explore" && (
           <section className="glass-panel scoped-access-note" aria-label={brand.spanish ? "Acceso de la comunidad" : "Community access"}>
             <div>
-              <strong>{brand.spanish ? "Sigues conectado a través de SBRA." : "You are still signed in through SBRA."}</strong>
-              <p>{brand.spanish ? "Esta comunidad ofrece solo el directorio. Para usar publicaciones, referidos, eventos y herramientas, vuelve a la comunidad SBRA." : "This community offers a directory only. Return to SBRA for posts, referrals, events, and tools."}</p>
+              <strong>{activeOrganization.name}</strong>
+              <p>{brand.spanish ? "Esta comunidad tiene un directorio de demostración. Las demás funciones aún no están habilitadas aquí." : "This community has a demo directory. Its other features have not been enabled yet."}</p>
             </div>
-            <button type="button" className="secondary-button" onClick={() => selectOrganization("sbra")}>{brand.spanish ? "Volver a SBRA" : "Return to SBRA"}</button>
+            <button type="button" className="secondary-button" onClick={() => selectNav("directory")}>{brand.spanish ? "Ver directorio" : "View directory"}</button>
           </section>
         )}
 
-        {!brand.directoryOnly && <AdBanner ads={mockAds} spanish={brand.spanish} />}
+        {!brand.directoryOnly && !nationalDemo && activeView !== "explore" && <AdBanner ads={mockAds} spanish={brand.spanish} />}
+        {activeView === "explore" && <NetworkExplorer demo memberIds={communityOrganizations.map(item => item.id)} onOpen={selectOrganization} />}
+        {activeView === "opportunities" && !brand.directoryOnly && <section className="glass-panel opportunity-board"><p className="eyebrow">{activeOrganization.shortName} · Member offers</p><h3>Opportunities in your community</h3><p>Find an offer from a member business or ask your community for help.</p><button className="primary-button" onClick={() => { setPostCategory("Question"); setComposerOpen(true); selectNav("community"); }}>Ask the community</button><div className="opportunity-grid">{businesses.filter(business => business.memberOffer).map(business => <article key={business.id}><small>{activeOrganization.shortName} · Member offer</small><h3>{business.name}</h3><p>{business.memberOffer}</p><button className="secondary-button" onClick={() => openBusiness(business)}>View business</button></article>)}</div>{!businesses.some(business => business.memberOffer) && <p>No member offers yet.</p>}</section>}
 
-        {activeView === "community" && (
+        {!brand.directoryOnly && activeView === "community" && (
           <CommunityView
             events={events}
             onViewReferrals={() => selectNav("referrals")}
@@ -1888,7 +1905,7 @@ export function SBRAApp() {
             onViewEvents={() => selectNav("events")}
           />
         )}
-        {activeView === "community" && (
+        {!brand.directoryOnly && activeView === "community" && (
           <section className="glass-panel home-tools" aria-labelledby="home-tools-title">
             <div className="home-tools-head">
               <div>
@@ -1932,7 +1949,7 @@ export function SBRAApp() {
             compact={preferences.compactDirectoryCards}
           />
         )}
-        {activeView === "referrals" && (
+        {!brand.directoryOnly && activeView === "referrals" && (
           <ReferralsView
             referrals={referrals}
             memberById={memberById}
@@ -1944,7 +1961,7 @@ export function SBRAApp() {
             onMarkNotWon={markReferralNotWon}
           />
         )}
-        {activeView === "events" && (
+        {!brand.directoryOnly && activeView === "events" && (
           <EventsView
             events={events}
             rsvps={rsvps}
@@ -1965,8 +1982,8 @@ export function SBRAApp() {
             canCreate={role === "admin"}
           />
         )}
-        {activeView === "learn" && <LearnView />}
-        {activeView === "tools" && (
+        {!brand.directoryOnly && activeView === "learn" && <LearnView />}
+        {!brand.directoryOnly && activeView === "tools" && (
           <ToolsView
             referrals={referrals}
             currentMemberId={currentMember?.id ?? ""}
@@ -1980,7 +1997,7 @@ export function SBRAApp() {
             onInitialToolConsumed={() => setPendingToolId(null)}
           />
         )}
-        {activeView === "support" && (
+        {!brand.directoryOnly && activeView === "support" && (
           <SupportView
             requests={requests}
             selectedCategory={supportCategory}
@@ -1992,10 +2009,10 @@ export function SBRAApp() {
             onCreateRequest={createSupportRequest}
           />
         )}
-        {activeView === "profile" && (
+        {!brand.directoryOnly && activeView === "profile" && (
           <ProfileView member={currentMember} business={currentBusiness} onEdit={openMemberEditor} />
         )}
-        {activeView === "admin" && role === "admin" && (
+        {!brand.directoryOnly && activeView === "admin" && role === "admin" && (
           <AdminView
             businesses={businesses}
             members={members}
@@ -2043,7 +2060,7 @@ export function SBRAApp() {
             <span>{item.label}</span>
           </button>
         ))}
-        {!brand.directoryOnly && <button className={moreOpen || mobileMoreNav.some((item) => item.key === activeView) ? "active" : ""} onClick={() => setMoreOpen((open) => !open)} aria-label="More" aria-expanded={moreOpen} aria-controls="mobile-more-menu">
+        {<button className={moreOpen || mobileMoreNav.some((item) => item.key === activeView) ? "active" : ""} onClick={() => setMoreOpen((open) => !open)} aria-label="More" aria-expanded={moreOpen} aria-controls="mobile-more-menu">
           <span className="mobile-icon">•••</span><span>More</span>
         </button>}
       </nav>
@@ -2111,7 +2128,7 @@ function AdBanner({ ads, spanish = false }: { ads: MemberAd[]; spanish?: boolean
   const ad = ads[activeAd % ads.length];
   if (!ad) return null;
   return (
-    <aside className="sponsor-banner" aria-label={spanish ? "Miembro destacado" : "Member spotlight"}>
+    <aside key={`${activeAd}-${ad.sponsor}`} className="sponsor-banner" aria-label={spanish ? "Miembro destacado" : "Member spotlight"}>
       <div className="sponsor-mark">
         <img src={ad.logo} alt={`${ad.sponsor} logo`} />
       </div>
@@ -2497,7 +2514,7 @@ function CommunityView({
               <div className="post-head">
                 <div className={`avatar ${post.tone}`}>{initials(post.author)}</div>
                 <div className="post-author">
-                  <h3>{post.author}<span className="member-check" aria-label="Verified SBRA member">✓</span></h3>
+                  <h3>{post.author}<span className="member-check" aria-label="Community member">✓</span></h3>
                   <p>{post.businessName}</p>
                 </div>
                 <span className={`pill ${post.tone === "violet" ? "violet" : ""}`}>{post.category}</span>
@@ -2524,7 +2541,7 @@ function CommunityView({
               <p className="post-copy"><strong>{post.author}</strong> {post.body}</p>
               {post.note && (
                 <div className="reply-box">
-                  <strong>SBRA note</strong>
+                  <strong>Community note</strong>
                   <span>{post.note}</span>
                 </div>
               )}
@@ -2929,7 +2946,7 @@ function ToolsView({
     } else if (openTool.id === "marketing-content") {
       body = <MarketingContentTool currentBusiness={currentBusiness} onRequestAi={onGetHelp} />;
     } else if (openTool.id === "networking-crm") {
-      body = <BusinessCrmTool businessId={currentBusiness?.id ?? currentMember?.businessId ?? "member-business"} members={members} businessById={businessById} referrals={referrals} currentMemberId={currentMemberId} />;
+      body = <BusinessCrmTool key={currentBusiness?.id ?? currentMember?.businessId} businessId={currentBusiness?.id ?? currentMember?.businessId ?? "member-business"} members={members} businessById={businessById} referrals={referrals} currentMemberId={currentMemberId} />;
     } else if (openTool.id === "tax-calendar") {
       body = <TaxCalendarTool />;
     } else if (openTool.id === "grant-finder") {
@@ -2941,7 +2958,7 @@ function ToolsView({
         <article className="glass-panel tool-detail">
           <p className="tool-detail-copy">{openTool.description}</p>
           <div className="tool-detail-note">
-            <strong>Coming soon.</strong> This tool is on the SBRA roadmap — the working version
+            <strong>Coming soon.</strong> This tool is on the Collab roadmap — the working version
             gets built out next. Tell us how you'd use it and we'll prioritize it.
           </div>
           <div className="tool-detail-actions">
@@ -2980,7 +2997,7 @@ function ToolsView({
         <div className="tools-hero-main">
           <p className="section-label">Member toolkit</p>
           <h3>Power tools to run and grow your business</h3>
-          <p>Calculators, generators, and templates built for SBRA members — be better, grow faster.</p>
+          <p>Calculators, generators, and templates for growing your business.</p>
         </div>
         <div className="tools-hero-stats" aria-hidden="true">
           <div><strong>{toolCount}</strong><span>Tools</span></div>
@@ -3185,7 +3202,7 @@ function ReferralRoiTool({
           <div className="tool-metric"><strong>{stats.givenCount}</strong><span>Referrals given</span></div>
           <div className="tool-metric"><strong>{stats.receivedCount}</strong><span>Referrals received</span></div>
           <div className="tool-metric"><strong>{stats.givenWonCount}</strong><span>Successful referrals</span></div>
-          <div className="tool-metric"><strong>{stats.pointsEarned}</strong><span>SBRA Points</span></div>
+          <div className="tool-metric"><strong>{stats.pointsEarned}</strong><span>Referral Points</span></div>
         </div>
         {stats.givenCount === 0 && stats.receivedCount === 0 && (
           <p className="tool-hint">Send a referral to earn your first 10 points.</p>
@@ -3511,7 +3528,7 @@ const scorecardSections: { key: string; label: string; tip: string; items: strin
     items: [
       "We have a dependable pipeline of new leads.",
       "We follow up on every lead and referral promptly.",
-      "We actively give and receive referrals through SBRA."
+      "We actively give and receive referrals through our community."
     ]
   },
   {
@@ -4149,7 +4166,7 @@ function buildDrafts(kind: ContentKind, biz: string, topic: string, tone: string
     case "social":
       return [
         `📣 ${t} is what we do best at ${b}. Ready to see the difference? Send us a message today.${toneTag}`,
-        `At ${b}, we help Berks County get more from ${t}. Here's one tip you can use this week 👇 — and if you want the full version, reach out.`,
+        `At ${b}, we help our community get more from ${t}. Here's one tip you can use this week 👇 — and if you want the full version, reach out.`,
         `Proud to serve our neighbors at ${b}. Whether it's ${t} or a question you've been sitting on, we're here. Comment or DM us.`
       ];
     case "email":
@@ -4165,11 +4182,11 @@ function buildDrafts(kind: ContentKind, biz: string, topic: string, tone: string
     case "event":
       return [
         `You're invited! ${b} is hosting a get-together about ${t}. Come for the conversation, stay for the connections. RSVP and bring a fellow business owner.`,
-        `Save the date 🗓️ — ${b} is putting on an event around ${t}. Great for anyone in Berks County looking to learn and network. Details and RSVP inside.`
+        `Save the date 🗓️ — ${b} is putting on an event around ${t}. Great for anyone in our community looking to learn and network. Details and RSVP inside.`
       ];
     case "referral":
       return [
-        `Quick ask for my SBRA network: if you know someone who needs ${t}, ${b} would love an introduction. I promise to take great care of them — and I'll return the favor.`,
+        `Quick ask for my business network: if you know someone who needs ${t}, ${b} would love an introduction. I promise to take great care of them — and I'll return the favor.`,
         `The best compliment is a referral. If ${b} has helped you with ${t}, sending a friend our way means the world. Thank you for thinking of us!`
       ];
     default:
@@ -4386,7 +4403,7 @@ function NetworkingCrmTool({ members, businessById }: { members: Member[]; busin
       company: biz?.name ?? "",
       email: m.email,
       phone: m.phone,
-      metAt: "SBRA directory",
+      metAt: "community directory",
       stage: "connected"
     });
     persist([...contacts, c]);
@@ -4612,7 +4629,7 @@ function NetworkingCrmTool({ members, businessById }: { members: Member[]; busin
             <button className="primary-button" onClick={addContact}>Add contact</button>
             {uncontacted.length > 0 && (
               <label className="crm-import">
-                <span>or import from SBRA directory</span>
+                <span>or import from community directory</span>
                 <select value={importId} onChange={(e) => { setImportId(e.target.value); if (e.target.value) importFromDirectory(e.target.value); }}>
                   <option value="">Choose a member…</option>
                   {uncontacted.map((m) => (
@@ -4629,7 +4646,7 @@ function NetworkingCrmTool({ members, businessById }: { members: Member[]; busin
         <article className="glass-panel tool-panel">
           <p className="tool-hint">
             {contacts.length === 0
-              ? "No contacts yet. Add the people you meet at Breakfast Club and Mingles, or import them from the SBRA directory — everything saves on this device."
+              ? "No contacts yet. Add the people you meet at Breakfast Club and Mingles, or import them from the community directory — everything saves on this device."
               : "No contacts match your search or filter."}
           </p>
         </article>
@@ -4932,7 +4949,7 @@ const docTemplates: { id: string; name: string; category: string; body: string }
     name: "Referral Thank-You",
     category: "Client",
     body:
-      "Hi [NAME],\n\nThank you so much for referring [WHO] to [YOUR BUSINESS]. Referrals from people I respect mean everything, and I'll take great care of them.\n\nIf there's ever anyone I can introduce you to in the SBRA network, just say the word — I'm always happy to return the favor.\n\nGratefully,\n[YOUR NAME]"
+      "Hi [NAME],\n\nThank you so much for referring [WHO] to [YOUR BUSINESS]. Referrals from people I respect mean everything, and I'll take great care of them.\n\nIf there's ever anyone I can introduce you to in our community network, just say the word — I'm always happy to return the favor.\n\nGratefully,\n[YOUR NAME]"
   }
 ];
 
@@ -5207,14 +5224,14 @@ function SupportView({
     <section className="support-page">
       <section className="glass-panel support-contact-hero">
         <div>
-          <p className="section-label">Official SBRA help center</p>
-          <h3>How can we help?</h3>
-          <p>Get an answer from the SBRA team or go directly to the right member program, benefit, or business-promotion resource.</p>
+          <p className="section-label">SBRA Help Center</p>
+          <h3>A little guidance. A real connection.</h3>
+          <p>Connect with the SBRA team for help with your membership, benefits, or next business opportunity.</p>
         </div>
         <div className="support-contact-actions">
           <a className="primary-button" href="tel:+18148087272">Call 814-808-7272</a>
           <a className="secondary-button" href="mailto:gseibert@sbrassociation.com">Email SBRA</a>
-          <a className="secondary-button" href="https://www.sbrassociation.com/contact" target="_blank" rel="noreferrer">Official contact page ↗</a>
+          <a className="secondary-button" href="https://www.sbrassociation.com/contact" target="_blank" rel="noreferrer">Visit contact page ↗</a>
         </div>
       </section>
       <div className="support-layout">
@@ -5486,7 +5503,7 @@ function ReferralsView({
           <p>Your referrals marked Won</p>
         </article>
         <article className="glass-panel metric">
-          <span>SBRA Points</span>
+          <span>Referral Points</span>
           <strong>{points}</strong>
           <p>10 sent + 40 Won bonus</p>
         </article>

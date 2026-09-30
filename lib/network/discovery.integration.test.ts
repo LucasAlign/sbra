@@ -4,7 +4,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import * as schema from "../db/schema";
-import { resolveCommunityBySlug, resolveRegionBySlug } from "./discovery";
+import { readNetworkCommunities, resolveCommunityBySlug, resolveRegionBySlug } from "./discovery";
 
 // Proves slug routing resolves to exactly one active community, never falls back
 // to another tenant on an unknown or non-active slug, projects only public brand
@@ -70,6 +70,13 @@ test("Postgres: slug routing resolves scoped, public community context", { skip:
     // The Lehigh community and the draft never leak into Berks.
     assert.ok(!berks.communities.some(c => c.id === "disc-cl" || c.id === "disc-cd"));
     assert.equal((await resolveRegionBySlug(db, "disc-lehigh")).communities.map(c => c.id).join(","), "disc-cl");
+
+    const discovered = await readNetworkCommunities(db, { regionId: "disc-berks" });
+    assert.deepEqual(discovered.communities.map(c => c.id), ["disc-ca", "disc-cb"]);
+    assert.deepEqual(Object.keys(discovered.communities[0]).sort(), Object.keys(alpha).sort());
+    assert.deepEqual((await readNetworkCommunities(db, { query: "Cámara", regionId: "disc-berks" })).communities.map(c => c.id), ["disc-cb"]);
+    assert.equal((await readNetworkCommunities(db, { query: "Draft Collab" })).communities.length, 0);
+    assert.equal((await readNetworkCommunities(db, { query: "%", regionId: "disc-berks" })).communities.length, 0);
 
     // Unknown region errors.
     await assert.rejects(resolveRegionBySlug(db, "disc-none"));

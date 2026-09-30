@@ -26,10 +26,25 @@ import {
   supportAlertDestination
 } from "./ui-state";
 
-test("bookmarks restore valid screens and keep directory-only communities scoped", () => {
+test("bookmarks preserve destinations across communities without treating locale as access", () => {
   assert.deepEqual(readAppLocation("#view=support&community=sbra"), { view: "support", community: "sbra" });
-  assert.deepEqual(readAppLocation("#view=admin&community=berks-latino-chamber"), { view: "directory", community: "berks-latino-chamber" });
+  assert.deepEqual(readAppLocation("#view=events&community=berks-latino-chamber"), { view: "events", community: "berks-latino-chamber" });
   assert.deepEqual(readAppLocation("#view=bad&community=bad"), { view: "community", community: "sbra" });
+});
+
+import { brandFor } from "./brand";
+import { readWorkspaceLocation, workspaceHash } from "./navigation";
+
+test("language selection does not disable community features", () => {
+  for (const locale of ["en", "es", "fr", "en-US"]) assert.equal(brandFor(locale).directoryOnly, false);
+  assert.equal(brandFor("en", { directoryOnly: true }).directoryOnly, true);
+});
+
+test("workspace links round-trip arbitrary community IDs and preserve unknown scope for validation", () => {
+  const communityId = "a community&another=one";
+  assert.deepEqual(readWorkspaceLocation(workspaceHash("events", communityId)), { view: "events", communityId });
+  assert.deepEqual(readWorkspaceLocation("#view=invalid&community=unavailable"), { view: "community", communityId: "unavailable" });
+  assert.deepEqual(readWorkspaceLocation(workspaceHash("explore", "sbra")), { view: "explore", communityId: "sbra" });
 });
 
 test("directory search matches every normalized token regardless of word order", () => {

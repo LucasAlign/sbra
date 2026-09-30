@@ -5,12 +5,12 @@ import "./globals.css";
 import "./member-experience.css";
 
 export const metadata: Metadata = {
-  title: "Berks County Collab — Local Networks, One Community",
+  title: "Collab — Your Community. A Wider Business Network.",
   description:
-    "A shared digital home for Berks County business organizations, founded with the Small Business Resource Association.",
+    "Independent chambers and business organizations, connected through a shared network. Your community, your identity, and a wider world of connections.",
   icons: {
-    icon: "/sbra-mark.png",
-    apple: "/sbra-mark.png"
+    icon: "/collab-logo.png",
+    apple: "/collab-logo.png"
   }
 };
 

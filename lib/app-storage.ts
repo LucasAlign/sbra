@@ -98,7 +98,7 @@ export function clearAppData(orgIds: string[]): void {
   if (typeof window === "undefined") return;
   const keys = [
     ...Object.values(APP_KEYS),
-    ...orgIds.flatMap((orgId) => [membersKey(orgId), businessesKey(orgId)])
+    ...orgIds.flatMap((orgId) => [membersKey(orgId), businessesKey(orgId), ...(orgId.startsWith("demo-") ? [APP_KEYS.posts, APP_KEYS.comments, APP_KEYS.reactions, APP_KEYS.requests, APP_KEYS.referrals, APP_KEYS.events, APP_KEYS.rsvps].map(key => `${key}.${orgId}`) : [])])
   ];
   for (const key of keys) {
     try {

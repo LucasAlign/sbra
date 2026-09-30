@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gt, ilike, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type * as fullSchema from "../db/schema";
 import * as s from "../db/network-schema";
@@ -40,6 +40,22 @@ export async function resolveCommunityBySlug(db: Database, slug: string): Promis
 }
 
 export type RegionDiscovery = { region: { slug: string; name: string }; communities: CommunityContext[] };
+
+export async function readNetworkCommunities(db: Database, input: { query?: string; regionId?: string; after?: string }) {
+  const query = input.query?.trim() ?? "";
+  if (query.length > 100) throw new Error("Search is too long.");
+  if (input.regionId) boundedText(input.regionId, 200);
+  if (input.after) boundedText(input.after, 200);
+  const pattern = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
+  const rows = await db.select(communityPublic).from(s.communities).where(and(
+    eq(s.communities.status, "active"),
+    query ? or(ilike(s.communities.name, pattern), ilike(s.communities.description, pattern)) : undefined,
+    input.regionId ? sql`exists (select 1 from ${s.communityRegions} cr where cr.community_id = ${s.communities.id} and cr.region_id = ${input.regionId})` : undefined,
+    input.after ? gt(s.communities.id, input.after) : undefined,
+  )).orderBy(asc(s.communities.id)).limit(25);
+  const regions = await db.select({ id: s.regions.id, name: s.regions.name }).from(s.regions).orderBy(asc(s.regions.name)).limit(500);
+  return { communities: rows.slice(0, 24), nextCursor: rows.length > 24 ? rows[23].id : null, regions };
+}
 
 export async function resolveRegionBySlug(db: Database, slug: string): Promise<RegionDiscovery> {
   boundedText(slug, 200);

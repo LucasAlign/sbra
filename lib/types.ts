@@ -3,6 +3,8 @@ export type UserRole = "member" | "staff" | "admin";
 export type ViewKey =
   | "community"
   | "directory"
+  | "opportunities"
+  | "explore"
   | "referrals"
   | "events"
   | "learn"

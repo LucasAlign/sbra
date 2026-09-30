@@ -570,7 +570,9 @@ export const supportRequests: SupportRequest[] = [
 export const viewTitles = {
   community: "Community Home",
   directory: "Member Directory",
-  referrals: "Referrals",
+  referrals: "Connections & Referrals",
+  opportunities: "Opportunities",
+  explore: "Explore the Network",
   events: "Events & Mingles",
   learn: "Learning Hub",
   tools: "Business Tools",

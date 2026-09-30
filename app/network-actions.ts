@@ -14,7 +14,8 @@ export async function loadWorkspace() {
   const { db, person } = await requirePerson();
   return withActor(db, person.id, async tx => {
     const memberships = await tx.select({ id: s.communities.id, name: s.communities.name,
-      shortName: s.communities.shortName, status: s.personCommunityMemberships.status,
+      shortName: s.communities.shortName, logo: s.communities.logo, locale: s.communities.locale,
+      description: s.communities.description, slug: s.communities.slug, status: s.personCommunityMemberships.status,
       canAdmin: communityAdminAccess(person.id, s.communities.id) })
       .from(s.personCommunityMemberships).innerJoin(s.communities, eq(s.communities.id, s.personCommunityMemberships.communityId))
       .where(and(eq(s.personCommunityMemberships.personId, person.id), eq(s.communities.status, "active")))

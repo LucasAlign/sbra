@@ -38,6 +38,10 @@ Seeding is idempotent: stable IDs preserve edits and content on subsequent runs.
 
 ## Walkthrough
 
+- The switcher includes two fictional communities: Demo Chamber Community and River County Chamber. Both demo accounts belong to both; the admin grant applies only to Demo Chamber Community. Switch while viewing Events to verify the page is preserved and management access changes independently.
+- The partner community has Spanish locale configuration with the same available features, demonstrating that locale does not restrict capabilities.
+- As the event organizer, expand “Share with another community” to publish the seeded event to River County Chamber without copying it. Explore the network searches public community identities, including Demo Region.
+
 - Admin (`local-demo-admin`): publish announcements, organize events, review claims, manage invitations and memberships, inspect audit history.
 - Member (`local-demo-member`): edit River Street Studio, claim Market Square Cafe, respond to the sample request, RSVP to the sample event, comment on announcements.
 - Request an introduction using the other account's ID, then sign out and accept as that account. Contact appears after mutual acceptance. Connections support private notes and referrals.

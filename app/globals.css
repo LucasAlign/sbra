@@ -15,6 +15,14 @@
   --font-body: "Work Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+.collab-wordmark { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; background: #173f4f; color: #fff; font-size: 28px; font-weight: 700; }
+.brand small { display: block; margin-top: 5px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.community-management { border-top: 1px solid var(--line); padding-top: 16px; }
+.opportunity-board { padding: 28px; border-radius: 20px; }
+.opportunity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 18px; margin-top: 24px; }
+.opportunity-grid article { padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.opportunity-grid p { line-height: 1.6; }
+
 * {
   box-sizing: border-box;
 }
@@ -5974,3 +5982,7 @@ button {
     break-inside: avoid;
   }
 }
+
+.nationwide-demo-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px 22px; margin-bottom: 20px; border-left: 4px solid #206b71; }
+.nationwide-demo-banner > div { flex: 1 1 300px; }
+.nationwide-demo-banner p { margin: 5px 0 0; font-size: 13px; line-height: 1.5; }
